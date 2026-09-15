@@ -8,11 +8,11 @@ import type { PhotoExif } from "../lib/exif";
 interface Props {
   photo: CollectionEntry<"photos">;
   exif: PhotoExif;
-  prevSlug?: string;
-  nextSlug?: string;
+  slugs: string[];
+  currentIndex: number;
 }
 
-const { photo, exif, prevSlug, nextSlug } = Astro.props;
+const { photo, exif, slugs, currentIndex } = Astro.props;
 const { title, image, alt, caption, location } = photo.data;
 const isPortrait = image.height > image.width;
 const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
@@ -56,20 +56,16 @@ const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
     <div class="container photo-footer">
       {caption && <p class="caption-text">{caption}</p>}
 
-      <nav class="photo-nav">
+      <nav class="photo-dots" aria-label="Other photos">
         {
-          prevSlug ? (
-            <a href={withBase(`photography/${prevSlug}`)}>← Previous</a>
-          ) : (
-            <span />
-          )
-        }
-        {
-          nextSlug ? (
-            <a href={withBase(`photography/${nextSlug}`)}>Next →</a>
-          ) : (
-            <span />
-          )
+          slugs.map((slug, i) => (
+            <a
+              href={withBase(`photography/${slug}`)}
+              class={`dot ${i === currentIndex ? "active" : ""}`}
+              aria-label={`Photo ${i + 1} of ${slugs.length}`}
+              aria-current={i === currentIndex ? "true" : undefined}
+            />
+          ))
         }
       </nav>
     </div>
@@ -92,10 +88,12 @@ const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
 
   .back-arrow {
     flex: none;
-    font-size: 1.75rem;
+    align-self: flex-start;
+    font-size: 1.1rem;
     line-height: 1;
     color: var(--color-text);
     padding: var(--space-2);
+    margin-top: var(--space-4);
   }
 
   .back-arrow:hover {
@@ -202,12 +200,35 @@ const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
     max-width: 640px;
   }
 
-  .photo-nav {
+  .photo-dots {
     display: flex;
-    justify-content: space-between;
-    font-family: var(--font-body);
-    font-weight: 500;
-    font-size: 0.9rem;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .dot {
+    display: block;
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--color-border);
+    padding: 0;
+    transition: height var(--transition-fast), background-color var(--transition-fast);
+  }
+
+  .dot:hover {
+    background: var(--color-text-muted);
+  }
+
+  .dot.active {
+    height: 16px;
+    background: var(--color-accent);
+  }
+
+  .dot.active:hover {
+    background: var(--color-accent);
   }
 
   @media (max-width: 640px) {

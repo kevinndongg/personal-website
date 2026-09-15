@@ -7,18 +7,20 @@ import { sortPhotos } from "../../lib/photos";
 export async function getStaticPaths() {
   const photos = sortPhotos(await getCollection("photos"));
 
+  const slugs = photos.map((photo) => photo.id);
+
   return photos.map((photo, index) => ({
     params: { slug: photo.id },
     props: {
       photo,
-      prevSlug: photos[index - 1]?.id,
-      nextSlug: photos[index + 1]?.id,
+      slugs,
+      currentIndex: index,
     },
   }));
 }
 
-const { photo, prevSlug, nextSlug } = Astro.props;
+const { photo, slugs, currentIndex } = Astro.props;
 const exif = await getPhotoExif(photo.id);
 ---
 
-<PhotoLayout photo={photo} exif={exif} prevSlug={prevSlug} nextSlug={nextSlug} />
+<PhotoLayout photo={photo} exif={exif} slugs={slugs} currentIndex={currentIndex} />
