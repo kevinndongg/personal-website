@@ -1,0 +1,55 @@
+---
+import { withBase } from "../lib/url";
+
+const path = Astro.url.pathname;
+const homeHref = withBase("");
+const photographyHref = withBase("photography");
+const isPhotography = path.startsWith(photographyHref);
+---
+
+<nav class="section-nav" aria-label="Site sections">
+  <div class="container">
+    <ul>
+      <li>
+        <a href={homeHref} aria-current={isPhotography ? undefined : "page"}>
+          Robotics
+        </a>
+      </li>
+      <li>
+        <a href={photographyHref} aria-current={isPhotography ? "page" : undefined}>
+          Photography
+        </a>
+      </li>
+    </ul>
+  </div>
+</nav>
+
+<style>
+  .section-nav {
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .section-nav ul {
+    list-style: none;
+    display: flex;
+    gap: var(--space-6);
+    margin: 0;
+    padding: var(--space-3) 0;
+  }
+
+  .section-nav a {
+    font-family: var(--font-body);
+    font-weight: 500;
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+  }
+
+  .section-nav a:hover {
+    color: var(--color-text);
+    text-decoration: none;
+  }
+
+  .section-nav a[aria-current="page"] {
+    color: var(--color-accent);
+  }
+</style>
