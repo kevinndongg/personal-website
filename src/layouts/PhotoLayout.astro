@@ -18,6 +18,13 @@ const isPortrait = image.height > image.width;
 const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
   (v): v is string => Boolean(v)
 );
+
+const DOT_WINDOW = 3;
+const nearStart = Math.max(0, currentIndex - DOT_WINDOW);
+const nearEnd = Math.min(slugs.length - 1, currentIndex + DOT_WINDOW);
+const farBefore = slugs.slice(0, nearStart);
+const near = slugs.slice(nearStart, nearEnd + 1);
+const farAfter = slugs.slice(nearEnd + 1);
 ---
 
 <BaseLayout title={`${title} — Kevin Dong`} description={caption ?? alt} hideNav>
@@ -58,16 +65,39 @@ const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
 
       <nav class="photo-dots" aria-label="Other photos">
         {
-          slugs.map((slug, i) => (
-            <a
-              href={withBase(`photography/${slug}`)}
-              class={`dot ${i === currentIndex ? "active" : ""}`}
-              aria-label={`Photo ${i + 1} of ${slugs.length}`}
-              aria-current={i === currentIndex ? "true" : undefined}
-            >
-              <span class="dot-visual" />
-            </a>
-          ))
+          farBefore.length > 0 && (
+            <div class="dots-far">
+              {farBefore.map(() => (
+                <span class="dot-far" aria-hidden="true" />
+              ))}
+            </div>
+          )
+        }
+        <div class="dots-near">
+          {
+            near.map((slug, idx) => {
+              const i = nearStart + idx;
+              return (
+                <a
+                  href={withBase(`photography/${slug}`)}
+                  class={`dot ${i === currentIndex ? "active" : ""}`}
+                  aria-label={`Photo ${i + 1} of ${slugs.length}`}
+                  aria-current={i === currentIndex ? "true" : undefined}
+                >
+                  <span class="dot-visual" />
+                </a>
+              );
+            })
+          }
+        </div>
+        {
+          farAfter.length > 0 && (
+            <div class="dots-far">
+              {farAfter.map(() => (
+                <span class="dot-far" aria-hidden="true" />
+              ))}
+            </div>
+          )
         }
       </nav>
     </div>
@@ -206,7 +236,28 @@ const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
     display: flex;
     align-items: center;
     flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .dots-near {
+    display: flex;
+    align-items: center;
     gap: var(--space-1);
+  }
+
+  .dots-far {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .dot-far {
+    display: block;
+    flex: none;
+    width: 4px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-border);
   }
 
   .dot {
