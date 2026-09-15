@@ -1,0 +1,122 @@
+---
+const sweepDuration = 4; // seconds, must match the CSS animation-duration below
+
+const blips = [
+  { angle: 45, radius: 70 },
+  { angle: 170, radius: 55 },
+  { angle: 280, radius: 85 },
+].map((b) => ({
+  ...b,
+  x: 120 + b.radius * Math.cos((b.angle * Math.PI) / 180),
+  y: 120 + b.radius * Math.sin((b.angle * Math.PI) / 180),
+  delay: (b.angle / 360) * sweepDuration,
+}));
+
+const rings = [35, 60, 85];
+---
+
+<div class="radar" style={`--sweep-duration: ${sweepDuration}s;`}>
+  <svg viewBox="0 0 240 240" role="img" aria-label="Radar scanning for obstacles" class="radar-svg">
+    {rings.map((r) => <circle cx="120" cy="120" r={r} class="ring" />)}
+    <line x1="120" y1="30" x2="120" y2="210" class="crosshair" />
+    <line x1="30" y1="120" x2="210" y2="120" class="crosshair" />
+    {
+      blips.map((b) => (
+        <circle
+          cx={b.x}
+          cy={b.y}
+          r="4"
+          class="blip"
+          style={`animation-delay: ${b.delay}s;`}
+        />
+      ))
+    }
+  </svg>
+  <div class="sweep" aria-hidden="true"></div>
+</div>
+
+<style>
+  .radar {
+    position: relative;
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: var(--color-bg);
+  }
+
+  .radar-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .ring {
+    fill: none;
+    stroke: var(--color-border);
+    stroke-width: 1;
+  }
+
+  .crosshair {
+    stroke: var(--color-border);
+    stroke-width: 1;
+  }
+
+  .blip {
+    fill: var(--color-accent);
+    opacity: 0.15;
+  }
+
+  .sweep {
+    position: absolute;
+    inset: 0;
+    background: conic-gradient(
+      from 0deg,
+      transparent 0deg,
+      color-mix(in srgb, var(--color-accent) 45%, transparent) 18deg,
+      color-mix(in srgb, var(--color-accent) 8%, transparent) 45deg,
+      transparent 60deg
+    );
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .sweep {
+      animation: rotate-sweep var(--sweep-duration) linear infinite;
+    }
+
+    .blip {
+      animation: blip-pulse var(--sweep-duration) ease-out infinite;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .blip {
+      opacity: 0.6;
+    }
+  }
+
+  @keyframes rotate-sweep {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes blip-pulse {
+    0% {
+      opacity: 0.15;
+    }
+    4% {
+      opacity: 1;
+    }
+    20% {
+      opacity: 0.15;
+    }
+    100% {
+      opacity: 0.15;
+    }
+  }
+</style>
