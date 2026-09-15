@@ -2,6 +2,7 @@
 import { getCollection, render } from "astro:content";
 import ProjectLayout from "../../layouts/ProjectLayout.astro";
 import FtcGears from "../../components/animations/FtcGears.astro";
+import RacingSpeedLines from "../../components/animations/RacingSpeedLines.astro";
 
 export async function getStaticPaths() {
   const projects = await getCollection("projects");
@@ -16,6 +17,7 @@ const { Content } = await render(project);
 
 const animationComponents: Record<string, any> = {
   "ftc-gears": FtcGears,
+  "racing-speed-lines": RacingSpeedLines,
 };
 
 const AnimationComponent = animationComponents[project.data.animation];
