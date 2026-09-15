@@ -20,67 +20,87 @@ const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
 );
 ---
 
-<BaseLayout title={`${title} — Kevin Dong`} description={caption ?? alt}>
-  <main class="container photo-page">
-    <a class="back-link" href={withBase("photography")}>← Back to photography</a>
+<BaseLayout title={`${title} — Kevin Dong`} description={caption ?? alt} hideNav>
+  <main class="photo-page">
+    <div class="photo-stage">
+      <a class="back-arrow" href={withBase("photography")} aria-label="Back to photography">
+        ←
+      </a>
 
-    <figure class={`photo-frame ${isPortrait ? "portrait" : "landscape"}`}>
-      <Image
-        src={image}
-        alt={alt}
-        width={1200}
-        widths={[480, 768, 1200]}
-        sizes="(max-width: 900px) 100vw, 900px"
-        quality={70}
-        loading="eager"
-        fetchpriority="high"
-        transition:name={`photo-${photo.id}`}
-      />
-      <figcaption class="meta">
-        <span class="meta-inner">
-          <span class="meta-title">{title}</span>
-          {location && <span class="meta-location">{location}</span>}
-          {
-            metaParts.length > 0 && (
-              <span class="meta-exif">{metaParts.join(" · ")}</span>
-            )
-          }
-        </span>
-      </figcaption>
-    </figure>
+      <figure class={`photo-frame ${isPortrait ? "portrait" : "landscape"}`}>
+        <Image
+          src={image}
+          alt={alt}
+          width={1200}
+          widths={[480, 768, 1200]}
+          sizes="(max-width: 900px) 100vw, 900px"
+          quality={70}
+          loading="eager"
+          fetchpriority="high"
+          transition:name={`photo-${photo.id}`}
+        />
+        <figcaption class="meta">
+          <span class="meta-inner">
+            <span class="meta-title">{title}</span>
+            {location && <span class="meta-location">{location}</span>}
+            {
+              metaParts.length > 0 && (
+                <span class="meta-exif">{metaParts.join(" · ")}</span>
+              )
+            }
+          </span>
+        </figcaption>
+      </figure>
+    </div>
 
-    {caption && <p class="caption-text">{caption}</p>}
+    <div class="container photo-footer">
+      {caption && <p class="caption-text">{caption}</p>}
 
-    <nav class="photo-nav">
-      {
-        prevSlug ? (
-          <a href={withBase(`photography/${prevSlug}`)}>← Previous</a>
-        ) : (
-          <span />
-        )
-      }
-      {
-        nextSlug ? (
-          <a href={withBase(`photography/${nextSlug}`)}>Next →</a>
-        ) : (
-          <span />
-        )
-      }
-    </nav>
+      <nav class="photo-nav">
+        {
+          prevSlug ? (
+            <a href={withBase(`photography/${prevSlug}`)}>← Previous</a>
+          ) : (
+            <span />
+          )
+        }
+        {
+          nextSlug ? (
+            <a href={withBase(`photography/${nextSlug}`)}>Next →</a>
+          ) : (
+            <span />
+          )
+        }
+      </nav>
+    </div>
   </main>
 </BaseLayout>
 
 <style>
   .photo-page {
-    padding: var(--space-8) 0 var(--space-16);
+    display: flex;
+    flex-direction: column;
   }
 
-  .back-link {
-    display: inline-block;
-    margin-bottom: var(--space-6);
-    font-family: var(--font-body);
-    font-weight: 500;
-    font-size: 0.9rem;
+  .photo-stage {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-height: 100svh;
+    padding: var(--space-4) var(--space-6);
+  }
+
+  .back-arrow {
+    flex: none;
+    font-size: 1.75rem;
+    line-height: 1;
+    color: var(--color-text);
+    padding: var(--space-2);
+  }
+
+  .back-arrow:hover {
+    color: var(--color-accent);
+    text-decoration: none;
   }
 
   .photo-frame {
@@ -100,7 +120,7 @@ const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
 
   .photo-frame.portrait {
     flex-direction: row;
-    max-height: 85vh;
+    max-height: 92vh;
   }
 
   .photo-frame :global(img) {
@@ -109,9 +129,13 @@ const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
     height: auto;
   }
 
+  .photo-frame.landscape :global(img) {
+    max-height: 88vh;
+  }
+
   .photo-frame.portrait :global(img) {
     height: 100%;
-    max-height: 85vh;
+    max-height: 92vh;
     width: auto;
     max-width: 100%;
     object-fit: contain;
@@ -168,27 +192,64 @@ const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
     margin-left: 0;
   }
 
+  .photo-footer {
+    padding-bottom: var(--space-16);
+  }
+
   .caption-text {
-    margin-top: var(--space-4);
+    margin-top: 0;
+    margin-bottom: var(--space-4);
     max-width: 640px;
   }
 
   .photo-nav {
     display: flex;
     justify-content: space-between;
-    margin-top: var(--space-8);
     font-family: var(--font-body);
     font-weight: 500;
     font-size: 0.9rem;
   }
 
   @media (max-width: 640px) {
-    .photo-frame.portrait {
+    .photo-stage {
+      align-items: flex-start;
+      padding: var(--space-3) var(--space-4);
+    }
+
+    .photo-frame.landscape :global(img) {
       max-height: 70vh;
     }
 
+    /* Not enough width for the side-by-side portrait strip - stack like landscape instead */
+    .photo-frame.portrait {
+      flex-direction: column;
+      max-height: none;
+    }
+
     .photo-frame.portrait :global(img) {
+      height: auto;
       max-height: 70vh;
+      width: 100%;
+      object-fit: initial;
+    }
+
+    .photo-frame.portrait .meta {
+      width: auto;
+      flex-direction: row;
+      align-items: baseline;
+      justify-content: flex-start;
+      writing-mode: horizontal-tb;
+      border-left: none;
+      border-top: 1px solid var(--color-border);
+      padding: var(--space-3) var(--space-4);
+    }
+
+    .photo-frame.portrait .meta-inner {
+      display: contents;
+    }
+
+    .photo-frame.portrait .meta-exif {
+      margin-left: auto;
     }
   }
 </style>

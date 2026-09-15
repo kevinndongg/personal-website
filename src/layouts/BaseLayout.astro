@@ -11,11 +11,13 @@ import SectionNav from "../components/SectionNav.astro";
 interface Props {
   title: string;
   description?: string;
+  hideNav?: boolean;
 }
 
 const {
   title,
   description = "Robotics engineer — projects in autonomous systems, computer vision, and mechanical design.",
+  hideNav = false,
 } = Astro.props;
 ---
 
@@ -30,7 +32,7 @@ const {
     <ClientRouter />
   </head>
   <body>
-    <SectionNav />
+    {!hideNav && <SectionNav />}
     <slot />
   </body>
 </html>
