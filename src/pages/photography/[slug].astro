@@ -1,0 +1,24 @@
+---
+import { getCollection } from "astro:content";
+import PhotoLayout from "../../layouts/PhotoLayout.astro";
+import { getPhotoExif } from "../../lib/exif";
+import { sortPhotos } from "../../lib/photos";
+
+export async function getStaticPaths() {
+  const photos = sortPhotos(await getCollection("photos"));
+
+  return photos.map((photo, index) => ({
+    params: { slug: photo.id },
+    props: {
+      photo,
+      prevSlug: photos[index - 1]?.id,
+      nextSlug: photos[index + 1]?.id,
+    },
+  }));
+}
+
+const { photo, prevSlug, nextSlug } = Astro.props;
+const exif = await getPhotoExif(photo.id);
+---
+
+<PhotoLayout photo={photo} exif={exif} prevSlug={prevSlug} nextSlug={nextSlug} />

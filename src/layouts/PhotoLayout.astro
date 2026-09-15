@@ -1,0 +1,181 @@
+---
+import BaseLayout from "./BaseLayout.astro";
+import { Image } from "astro:assets";
+import { withBase } from "../lib/url";
+import type { CollectionEntry } from "astro:content";
+import type { PhotoExif } from "../lib/exif";
+
+interface Props {
+  photo: CollectionEntry<"photos">;
+  exif: PhotoExif;
+  prevSlug?: string;
+  nextSlug?: string;
+}
+
+const { photo, exif, prevSlug, nextSlug } = Astro.props;
+const { title, image, alt, caption, location } = photo.data;
+const isPortrait = image.height > image.width;
+const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
+  (v): v is string => Boolean(v)
+);
+---
+
+<BaseLayout title={`${title} — Kevin Dong`} description={caption ?? alt}>
+  <main class="container photo-page">
+    <a class="back-link" href={withBase("photography")}>← Back to photography</a>
+
+    <figure class={`photo-frame ${isPortrait ? "portrait" : "landscape"}`}>
+      <Image
+        src={image}
+        alt={alt}
+        widths={[480, 768, 1200]}
+        sizes="(max-width: 900px) 100vw, 900px"
+        loading="eager"
+        transition:name={`photo-${photo.id}`}
+      />
+      <figcaption class="meta">
+        <span class="meta-title">{title}</span>
+        {location && <span class="meta-location">{location}</span>}
+        {
+          metaParts.length > 0 && (
+            <span class="meta-exif">{metaParts.join(" · ")}</span>
+          )
+        }
+      </figcaption>
+    </figure>
+
+    {caption && <p class="caption-text">{caption}</p>}
+
+    <nav class="photo-nav">
+      {
+        prevSlug ? (
+          <a href={withBase(`photography/${prevSlug}`)}>← Previous</a>
+        ) : (
+          <span />
+        )
+      }
+      {
+        nextSlug ? (
+          <a href={withBase(`photography/${nextSlug}`)}>Next →</a>
+        ) : (
+          <span />
+        )
+      }
+    </nav>
+  </main>
+</BaseLayout>
+
+<style>
+  .photo-page {
+    padding: var(--space-8) 0 var(--space-16);
+  }
+
+  .back-link {
+    display: inline-block;
+    margin-bottom: var(--space-6);
+    font-family: var(--font-body);
+    font-weight: 500;
+    font-size: 0.9rem;
+  }
+
+  .photo-frame {
+    margin: 0;
+    display: flex;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .photo-frame.landscape {
+    flex-direction: column;
+  }
+
+  .photo-frame.portrait {
+    flex-direction: row;
+    max-height: 85vh;
+    width: fit-content;
+    max-width: 100%;
+  }
+
+  .photo-frame :global(img) {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .photo-frame.portrait :global(img) {
+    height: 100%;
+    max-height: 85vh;
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+  }
+
+  .meta {
+    display: flex;
+    gap: var(--space-4);
+    align-items: baseline;
+    flex-wrap: wrap;
+    padding: var(--space-3) var(--space-4);
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .meta-title {
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .meta-exif {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .photo-frame.portrait .meta {
+    flex: none;
+    width: auto;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    border-top: none;
+    border-left: 1px solid var(--color-border);
+    white-space: nowrap;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-3);
+  }
+
+  .photo-frame.portrait .meta-exif {
+    margin-left: 0;
+    margin-top: auto;
+  }
+
+  .caption-text {
+    margin-top: var(--space-4);
+    max-width: 640px;
+  }
+
+  .photo-nav {
+    display: flex;
+    justify-content: space-between;
+    margin-top: var(--space-8);
+    font-family: var(--font-body);
+    font-weight: 500;
+    font-size: 0.9rem;
+  }
+
+  @media (max-width: 640px) {
+    .photo-frame.portrait {
+      max-height: 70vh;
+    }
+
+    .photo-frame.portrait :global(img) {
+      max-height: 70vh;
+    }
+  }
+</style>
