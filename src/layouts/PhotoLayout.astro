@@ -37,13 +37,15 @@ const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
         transition:name={`photo-${photo.id}`}
       />
       <figcaption class="meta">
-        <span class="meta-title">{title}</span>
-        {location && <span class="meta-location">{location}</span>}
-        {
-          metaParts.length > 0 && (
-            <span class="meta-exif">{metaParts.join(" · ")}</span>
-          )
-        }
+        <span class="meta-inner">
+          <span class="meta-title">{title}</span>
+          {location && <span class="meta-location">{location}</span>}
+          {
+            metaParts.length > 0 && (
+              <span class="meta-exif">{metaParts.join(" · ")}</span>
+            )
+          }
+        </span>
       </figcaption>
     </figure>
 
@@ -128,6 +130,10 @@ const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
     border-top: 1px solid var(--color-border);
   }
 
+  .meta-inner {
+    display: contents;
+  }
+
   .meta-title {
     font-weight: 600;
     color: var(--color-text);
@@ -140,22 +146,26 @@ const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
 
   .photo-frame.portrait .meta {
     flex: none;
-    width: auto;
-    flex-direction: column;
-    align-items: flex-start;
+    width: 64px;
+    align-items: center;
     justify-content: center;
-    writing-mode: vertical-lr;
-    text-orientation: mixed;
     border-top: none;
     border-left: 1px solid var(--color-border);
-    white-space: nowrap;
+    padding: var(--space-3);
+    overflow: hidden;
+  }
+
+  .photo-frame.portrait .meta-inner {
+    display: flex;
+    flex-direction: row-reverse;
+    align-items: baseline;
     gap: var(--space-4);
-    padding: var(--space-4) var(--space-3);
+    white-space: nowrap;
+    transform: rotate(-90deg);
   }
 
   .photo-frame.portrait .meta-exif {
     margin-left: 0;
-    margin-top: auto;
   }
 
   .caption-text {
