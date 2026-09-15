@@ -1,9 +1,7 @@
 ---
 import { getCollection, render } from "astro:content";
 import ProjectLayout from "../../layouts/ProjectLayout.astro";
-import FtcGears from "../../components/animations/FtcGears.astro";
-import RacingSpeedLines from "../../components/animations/RacingSpeedLines.astro";
-import UavRadarSweep from "../../components/animations/UavRadarSweep.astro";
+import PlaceholderAnimation from "../../components/animations/FtcGears.astro";
 
 export async function getStaticPaths() {
   const projects = await getCollection("projects");
@@ -15,19 +13,11 @@ export async function getStaticPaths() {
 
 const { project } = Astro.props;
 const { Content } = await render(project);
-
-const animationComponents: Record<string, any> = {
-  "ftc-gears": FtcGears,
-  "racing-speed-lines": RacingSpeedLines,
-  "uav-radar-sweep": UavRadarSweep,
-};
-
-const AnimationComponent = animationComponents[project.data.animation];
 ---
 
 <ProjectLayout project={project}>
   <Fragment slot="animation">
-    {AnimationComponent && <AnimationComponent />}
+    <PlaceholderAnimation />
   </Fragment>
   <Content />
 </ProjectLayout>

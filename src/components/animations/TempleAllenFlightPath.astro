@@ -1,0 +1,122 @@
+---
+const pathD = "M30,190 C90,40 190,230 310,50";
+const cycleDuration = 3.2; // seconds
+---
+
+<div class="flight" style={`--cycle: ${cycleDuration}s;`}>
+  <svg viewBox="0 0 340 240" role="img" aria-label="Drone flight path trace" class="flight-svg">
+    <defs>
+      <pattern id="grid-dots" width="24" height="24" patternUnits="userSpaceOnUse">
+        <circle cx="2" cy="2" r="1.2" class="grid-dot" />
+      </pattern>
+    </defs>
+    <rect x="0" y="0" width="340" height="240" fill="url(#grid-dots)" />
+
+    <path d={pathD} class="flight-path" pathLength="1" />
+
+    <circle cx="30" cy="190" r="4" class="waypoint" />
+    <circle cx="310" cy="50" r="4" class="waypoint" />
+
+    <g class="drone">
+      <path d="M-8,0 L6,-4 L6,4 Z" class="drone-body" />
+    </g>
+  </svg>
+</div>
+
+<style>
+  .flight {
+    width: 100%;
+    height: 100%;
+    max-width: 420px;
+  }
+
+  .flight-svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .grid-dot {
+    fill: var(--color-border);
+  }
+
+  .flight-path {
+    fill: none;
+    stroke: var(--color-accent);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+  }
+
+  .waypoint {
+    fill: var(--color-bg);
+    stroke: var(--color-accent);
+    stroke-width: 2;
+  }
+
+  .drone {
+    offset-path: path("M30,190 C90,40 190,230 310,50");
+    offset-rotate: auto;
+    offset-distance: 0%;
+  }
+
+  .drone-body {
+    fill: var(--color-text);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .flight-path {
+      animation: draw-path var(--cycle) ease-in-out infinite;
+    }
+
+    .drone {
+      animation: fly-path var(--cycle) ease-in-out infinite;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .flight-path {
+      stroke-dashoffset: 0;
+    }
+
+    .drone {
+      offset-distance: 100%;
+    }
+  }
+
+  @keyframes draw-path {
+    0% {
+      stroke-dashoffset: 1;
+    }
+    55% {
+      stroke-dashoffset: 0;
+    }
+    85% {
+      stroke-dashoffset: 0;
+    }
+    100% {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  @keyframes fly-path {
+    0% {
+      offset-distance: 0%;
+      opacity: 0;
+    }
+    5% {
+      opacity: 1;
+    }
+    55% {
+      offset-distance: 100%;
+      opacity: 1;
+    }
+    70% {
+      opacity: 0;
+    }
+    100% {
+      offset-distance: 100%;
+      opacity: 0;
+    }
+  }
+</style>
