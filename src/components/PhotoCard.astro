@@ -1,0 +1,48 @@
+---
+import { Image } from "astro:assets";
+import { withBase } from "../lib/url";
+import type { ImageMetadata } from "astro";
+
+interface Props {
+  slug: string;
+  title: string;
+  image: ImageMetadata;
+  alt: string;
+}
+
+const { slug, title, image, alt } = Astro.props;
+---
+
+<a class="card" href={withBase(`photography/${slug}`)} aria-label={title}>
+  <Image
+    src={image}
+    alt={alt}
+    widths={[320, 480, 640]}
+    sizes="(max-width: 640px) 100vw, 320px"
+    loading="lazy"
+    transition:name={`photo-${slug}`}
+  />
+</a>
+
+<style>
+  .card {
+    display: block;
+    break-inside: avoid;
+    margin-bottom: var(--space-6);
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    transition: transform var(--transition-fast), border-color var(--transition-fast);
+  }
+
+  .card:hover {
+    transform: translateY(-4px);
+    border-color: var(--color-accent);
+  }
+
+  .card :global(img) {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+</style>
