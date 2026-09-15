@@ -146,6 +146,7 @@ const farAfter = slugs.slice(nearEnd + 1);
 
   .photo-frame.landscape {
     flex-direction: column;
+    align-items: center;
   }
 
   .photo-frame.portrait {
@@ -160,7 +161,9 @@ const farAfter = slugs.slice(nearEnd + 1);
   }
 
   .photo-frame.landscape :global(img) {
+    width: auto;
     max-height: 88vh;
+    object-fit: contain;
   }
 
   .photo-frame.portrait :global(img) {
