@@ -3,7 +3,6 @@ import { getCollection } from "astro:content";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import ContactBar from "../components/ContactBar.astro";
 import ProjectCard from "../components/ProjectCard.astro";
-import DesertCorner from "../components/DesertCorner.astro";
 
 const projects = (await getCollection("projects")).sort(
   (a, b) => a.data.order - b.data.order
@@ -14,15 +13,12 @@ const projects = (await getCollection("projects")).sort(
   <main class="container">
     <ContactBar />
 
-    <header class="hero-wrap">
-      <div class="hero">
-        <h1>Kevin Dong</h1>
-        <p>
-          Robotics engineer building mechanical systems, autonomous flight,
-          and vision models.
-        </p>
-      </div>
-      <DesertCorner />
+    <header class="hero">
+      <h1>Kevin Dong</h1>
+      <p>
+        Robotics engineer building mechanical systems, autonomous flight, and
+        vision models.
+      </p>
     </header>
 
     <section class="grid" aria-label="Projects">
@@ -41,16 +37,9 @@ const projects = (await getCollection("projects")).sort(
 </BaseLayout>
 
 <style>
-  .hero-wrap {
-    position: relative;
-    padding: var(--space-8) 0 var(--space-12);
-    min-height: 170px;
-  }
-
   .hero {
+    padding: var(--space-8) 0 var(--space-12);
     max-width: 640px;
-    position: relative;
-    z-index: 1;
   }
 
   .grid {
