@@ -1,4 +1,6 @@
 ---
+import { withBase } from "../lib/url";
+
 interface Props {
   slug: string;
   title: string;
@@ -14,7 +16,7 @@ const { slug, title, summary, animation } = Astro.props;
     <slot name="animation" />
   </div>
   <div class="hero-text container">
-    <a class="back" href="/">← Back to all projects</a>
+    <a class="back" href={withBase("")}>← Back to all projects</a>
     <h1 transition:name={`project-title-${slug}`}>{title}</h1>
     <p>{summary}</p>
   </div>

@@ -1,4 +1,6 @@
 ---
+import { withBase } from "../lib/url";
+
 interface Props {
   slug: string;
   title: string;
@@ -9,7 +11,7 @@ interface Props {
 const { slug, title, summary, tags } = Astro.props;
 ---
 
-<a class="card" href={`/projects/${slug}`}>
+<a class="card" href={withBase(`projects/${slug}`)}>
   <h3 transition:name={`project-title-${slug}`}>{title}</h3>
   <p>{summary}</p>
   <ul class="tags">
