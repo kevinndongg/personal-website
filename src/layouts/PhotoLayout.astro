@@ -64,7 +64,9 @@ const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
               class={`dot ${i === currentIndex ? "active" : ""}`}
               aria-label={`Photo ${i + 1} of ${slugs.length}`}
               aria-current={i === currentIndex ? "true" : undefined}
-            />
+            >
+              <span class="dot-visual" />
+            </a>
           ))
         }
       </nav>
@@ -204,30 +206,38 @@ const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: var(--space-3);
+    gap: var(--space-1);
   }
 
   .dot {
-    display: block;
+    display: flex;
     flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+  }
+
+  .dot-visual {
+    display: block;
     width: 6px;
     height: 6px;
     border-radius: 999px;
     background: var(--color-border);
-    padding: 0;
     transition: height var(--transition-fast), background-color var(--transition-fast);
   }
 
-  .dot:hover {
+  .dot:hover .dot-visual {
     background: var(--color-text-muted);
   }
 
-  .dot.active {
+  .dot.active .dot-visual {
     height: 16px;
     background: var(--color-accent);
   }
 
-  .dot.active:hover {
+  .dot.active:hover .dot-visual {
     background: var(--color-accent);
   }
 
