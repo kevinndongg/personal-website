@@ -14,7 +14,7 @@ const projects = (await getCollection("projects")).sort(
     <ContactBar />
 
     <header class="hero">
-      <h1>Kevin Dong</h1>
+      <h1 class="name">Kevin Dong</h1>
       <p class="subtitle">Computer Science at CMU</p>
       <p>
         Robotics engineer building mechanical systems, autonomous flight, and
@@ -41,6 +41,12 @@ const projects = (await getCollection("projects")).sort(
   .hero {
     padding: var(--space-8) 0 var(--space-12);
     max-width: 640px;
+  }
+
+  .name {
+    font-family: var(--font-name);
+    font-weight: 400;
+    font-size: clamp(3rem, 8vw, 5rem);
   }
 
   .subtitle {
