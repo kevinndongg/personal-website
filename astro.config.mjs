@@ -5,4 +5,5 @@ import { defineConfig } from 'astro/config';
 export default defineConfig({
   site: 'https://kevinndongg.github.io',
   base: '/personal-website',
+  prefetch: true,
 });

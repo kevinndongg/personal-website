@@ -28,9 +28,12 @@ const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
       <Image
         src={image}
         alt={alt}
+        width={1200}
         widths={[480, 768, 1200]}
         sizes="(max-width: 900px) 100vw, 900px"
+        quality={70}
         loading="eager"
+        fetchpriority="high"
         transition:name={`photo-${photo.id}`}
       />
       <figcaption class="meta">

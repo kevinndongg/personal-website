@@ -17,8 +17,10 @@ const { slug, title, image, alt } = Astro.props;
   <Image
     src={image}
     alt={alt}
+    width={640}
     widths={[320, 480, 640]}
     sizes="(max-width: 640px) 100vw, 320px"
+    quality={70}
     loading="lazy"
     transition:name={`photo-${slug}`}
   />
