@@ -1,0 +1,55 @@
+---
+interface Props {
+  slug: string;
+  title: string;
+  summary: string;
+  animation: string;
+}
+
+const { slug, title, summary, animation } = Astro.props;
+---
+
+<header class="hero">
+  <div class="hero-animation" data-animation={animation} aria-hidden="true">
+    <slot name="animation" />
+  </div>
+  <div class="hero-text container">
+    <a class="back" href="/">← Back to all projects</a>
+    <h1 transition:name={`project-title-${slug}`}>{title}</h1>
+    <p>{summary}</p>
+  </div>
+</header>
+
+<style>
+  .hero {
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: var(--space-8);
+  }
+
+  .hero-animation {
+    height: 240px;
+    background: var(--color-surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-animation {
+      animation: none;
+    }
+  }
+
+  .hero-text {
+    padding-top: var(--space-6);
+    max-width: 720px;
+  }
+
+  .back {
+    display: inline-block;
+    margin-bottom: var(--space-4);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+  }
+</style>

@@ -1,0 +1,43 @@
+---
+import BaseLayout from "./BaseLayout.astro";
+import ProjectHero from "../components/ProjectHero.astro";
+import type { CollectionEntry } from "astro:content";
+
+interface Props {
+  project: CollectionEntry<"projects">;
+}
+
+const { project } = Astro.props;
+---
+
+<BaseLayout
+  title={`${project.data.title} — Kevin Dong`}
+  description={project.data.summary}
+>
+  <ProjectHero
+    slug={project.id}
+    title={project.data.title}
+    summary={project.data.summary}
+    animation={project.data.animation}
+  >
+    <slot name="animation" slot="animation" />
+  </ProjectHero>
+  <main class="container project-body">
+    <slot />
+    <a class="back-link" href="/">← Back to all projects</a>
+  </main>
+</BaseLayout>
+
+<style>
+  .project-body {
+    padding: var(--space-8) 0 var(--space-16);
+    max-width: 720px;
+  }
+
+  .back-link {
+    display: inline-block;
+    margin-top: var(--space-8);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+  }
+</style>
