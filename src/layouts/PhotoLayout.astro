@@ -106,6 +106,8 @@ const farAfter = slugs.slice(nearEnd + 1);
 
 <style>
   .photo-page {
+    height: 100svh;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
   }
@@ -114,7 +116,8 @@ const farAfter = slugs.slice(nearEnd + 1);
     display: flex;
     align-items: center;
     gap: var(--space-4);
-    min-height: 100svh;
+    flex: 1 1 0;
+    min-height: 0;
     padding: var(--space-4) var(--space-6);
   }
 
@@ -138,6 +141,7 @@ const farAfter = slugs.slice(nearEnd + 1);
     display: flex;
     width: fit-content;
     max-width: 100%;
+    max-height: 100%;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
@@ -151,7 +155,6 @@ const farAfter = slugs.slice(nearEnd + 1);
 
   .photo-frame.portrait {
     flex-direction: row;
-    max-height: 92vh;
   }
 
   .photo-frame :global(img) {
@@ -161,15 +164,15 @@ const farAfter = slugs.slice(nearEnd + 1);
   }
 
   .photo-frame.landscape :global(img) {
-    width: auto;
-    max-height: 88vh;
+    flex: 1 1 auto;
+    min-height: 0;
     object-fit: contain;
   }
 
   .photo-frame.portrait :global(img) {
+    flex: 1 1 auto;
+    min-width: 0;
     height: 100%;
-    max-height: 92vh;
-    width: auto;
     max-width: 100%;
     object-fit: contain;
   }
@@ -301,19 +304,16 @@ const farAfter = slugs.slice(nearEnd + 1);
       padding: var(--space-3) var(--space-4);
     }
 
-    .photo-frame.landscape :global(img) {
-      max-height: 70vh;
-    }
-
     /* Not enough width for the side-by-side portrait strip - stack like landscape instead */
     .photo-frame.portrait {
       flex-direction: column;
-      max-height: none;
     }
 
     .photo-frame.portrait :global(img) {
+      flex: 1 1 auto;
+      min-height: 0;
+      min-width: 0;
       height: auto;
-      max-height: 70vh;
       width: auto;
       max-width: 100%;
       object-fit: contain;
