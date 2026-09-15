@@ -1,6 +1,7 @@
 ---
 import { getCollection, render } from "astro:content";
 import ProjectLayout from "../../layouts/ProjectLayout.astro";
+import FtcGears from "../../components/animations/FtcGears.astro";
 
 export async function getStaticPaths() {
   const projects = await getCollection("projects");
@@ -12,8 +13,17 @@ export async function getStaticPaths() {
 
 const { project } = Astro.props;
 const { Content } = await render(project);
+
+const animationComponents: Record<string, any> = {
+  "ftc-gears": FtcGears,
+};
+
+const AnimationComponent = animationComponents[project.data.animation];
 ---
 
 <ProjectLayout project={project}>
+  <Fragment slot="animation">
+    {AnimationComponent && <AnimationComponent />}
+  </Fragment>
   <Content />
 </ProjectLayout>
