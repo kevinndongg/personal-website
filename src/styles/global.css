@@ -1,11 +1,11 @@
 :root {
-  --color-bg: #0b0d10;
-  --color-surface: #14171c;
-  --color-border: #242830;
-  --color-text: #e8eaed;
-  --color-text-muted: #9aa1ac;
-  --color-accent: #4fd1c5;
-  --color-accent-dim: #4fd1c522;
+  --color-bg: #f5f1ea;
+  --color-surface: #ece2d3;
+  --color-border: #d9cab3;
+  --color-text: #3b2a20;
+  --color-text-muted: #7a6552;
+  --color-accent: #8a5a35;
+  --color-accent-dim: #8a5a3522;
 
   --font-display: "Space Grotesk", system-ui, sans-serif;
   --font-body: "Inter", system-ui, sans-serif;
@@ -26,7 +26,7 @@
   --transition-fast: 150ms ease;
   --transition-medium: 300ms ease;
 
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 *,
