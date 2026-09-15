@@ -5,11 +5,17 @@ const path = Astro.url.pathname;
 const homeHref = withBase("");
 const photographyHref = withBase("photography");
 const isPhotography = path.startsWith(photographyHref);
+
+const contactLinks = [
+  { label: "Email", href: "mailto:kevin.dong.haonan@gmail.com" },
+  { label: "LinkedIn", href: "https://linkedin.com/in/kevindong30" },
+  { label: "GitHub", href: "https://github.com/kevinndongg" },
+];
 ---
 
-<nav class="section-nav" aria-label="Site sections">
+<nav class="section-nav" aria-label="Site navigation">
   <div class="container">
-    <ul>
+    <ul class="sections">
       <li>
         <a href={homeHref} aria-current={isPhotography ? undefined : "page"}>
           Robotics
@@ -21,12 +27,40 @@ const isPhotography = path.startsWith(photographyHref);
         </a>
       </li>
     </ul>
+
+    <ul class="contacts">
+      {
+        contactLinks.map((link) => (
+          <li>
+            <a
+              href={link.href}
+              target={link.href.startsWith("mailto:") ? undefined : "_blank"}
+              rel={link.href.startsWith("mailto:") ? undefined : "noopener noreferrer"}
+            >
+              {link.label}
+            </a>
+          </li>
+        ))
+      }
+    </ul>
   </div>
 </nav>
 
 <style>
   .section-nav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--color-bg);
     border-bottom: 1px solid var(--color-border);
+  }
+
+  .section-nav .container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    flex-wrap: wrap;
   }
 
   .section-nav ul {
@@ -49,7 +83,21 @@ const isPhotography = path.startsWith(photographyHref);
     text-decoration: none;
   }
 
-  .section-nav a[aria-current="page"] {
+  .sections a[aria-current="page"] {
     color: var(--color-accent);
+  }
+
+  .contacts a {
+    color: var(--color-text);
+  }
+
+  .contacts a:hover {
+    color: var(--color-accent);
+  }
+
+  @media (max-width: 480px) {
+    .section-nav ul {
+      gap: var(--space-4);
+    }
   }
 </style>

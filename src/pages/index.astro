@@ -1,7 +1,6 @@
 ---
 import { getCollection } from "astro:content";
 import BaseLayout from "../layouts/BaseLayout.astro";
-import ContactBar from "../components/ContactBar.astro";
 import ProjectCard from "../components/ProjectCard.astro";
 
 const projects = (await getCollection("projects")).sort(
@@ -11,8 +10,6 @@ const projects = (await getCollection("projects")).sort(
 
 <BaseLayout title="Kevin Dong">
   <main class="container">
-    <ContactBar />
-
     <header class="hero">
       <h1 class="name">Kevin Dong</h1>
       <p class="subtitle">Computer Science at CMU</p>

@@ -8,7 +8,7 @@
   --color-accent-dim: #8a5a3522;
 
   --font-display: "Fraunces Variable", "Fraunces", serif;
-  --font-body: "Arimo", system-ui, sans-serif;
+  --font-body: "Figtree", system-ui, sans-serif;
   --font-name: "Goudy Bookletter 1911", serif;
 
   --space-1: 4px;
@@ -45,6 +45,7 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-body);
+  font-weight: 500;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
