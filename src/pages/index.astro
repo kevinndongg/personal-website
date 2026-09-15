@@ -1,10 +1,51 @@
 ---
+import { getCollection } from "astro:content";
 import BaseLayout from "../layouts/BaseLayout.astro";
+import ContactBar from "../components/ContactBar.astro";
+import ProjectCard from "../components/ProjectCard.astro";
+
+const projects = (await getCollection("projects")).sort(
+  (a, b) => a.data.order - b.data.order
+);
 ---
 
 <BaseLayout title="Kevin Dong">
   <main class="container">
-    <h1>Kevin Dong</h1>
-    <p>Robotics engineer — projects coming soon.</p>
+    <ContactBar />
+
+    <header class="hero">
+      <h1>Kevin Dong</h1>
+      <p>
+        Robotics engineer building mechanical systems, autonomous flight, and
+        vision models.
+      </p>
+    </header>
+
+    <section class="grid" aria-label="Projects">
+      {
+        projects.map((project) => (
+          <ProjectCard
+            slug={project.id}
+            title={project.data.title}
+            summary={project.data.summary}
+            tags={project.data.tags}
+          />
+        ))
+      }
+    </section>
   </main>
 </BaseLayout>
+
+<style>
+  .hero {
+    padding: var(--space-8) 0 var(--space-12);
+    max-width: 640px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--space-6);
+    padding-bottom: var(--space-16);
+  }
+</style>

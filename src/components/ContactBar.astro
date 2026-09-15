@@ -1,0 +1,60 @@
+---
+const links = [
+  { label: "Email", href: "mailto:kevin.dong.haonan@gmail.com" },
+  { label: "LinkedIn", href: "https://linkedin.com/in/kevindong30" },
+  { label: "GitHub", href: "https://github.com/kevinndongg" },
+];
+---
+
+<nav class="contact-bar" aria-label="Contact links">
+  <ul>
+    {
+      links.map((link) => (
+        <li>
+          <a
+            href={link.href}
+            target={link.href.startsWith("mailto:") ? undefined : "_blank"}
+            rel={link.href.startsWith("mailto:") ? undefined : "noopener noreferrer"}
+          >
+            {link.label}
+          </a>
+        </li>
+      ))
+    }
+  </ul>
+</nav>
+
+<style>
+  .contact-bar {
+    padding: var(--space-4) 0;
+  }
+
+  .contact-bar ul {
+    list-style: none;
+    display: flex;
+    gap: var(--space-6);
+    margin: 0;
+    padding: 0;
+  }
+
+  .contact-bar a {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--color-text);
+    border-bottom: 1px solid transparent;
+    transition: border-color var(--transition-fast), color var(--transition-fast);
+  }
+
+  .contact-bar a:hover {
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  @media (max-width: 480px) {
+    .contact-bar ul {
+      gap: var(--space-4);
+      flex-wrap: wrap;
+    }
+  }
+</style>
