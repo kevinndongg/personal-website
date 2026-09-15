@@ -1,6 +1,6 @@
 ---
-title: "FIRST Tech Challenge"
-summary: "Designed and built a competitive robot for FTC, iterating on drivetrain, intake, and scoring mechanisms across a season."
+title: "FIRST Tech Challenge, team 6417"
+summary: "Full stack software development for autonomous & teleoperated robot. "
 tags: ["Robotics", "Mechanical Design", "CAD"]
 role: "Team Lead / Mechanical"
 dateRange: "High School"
