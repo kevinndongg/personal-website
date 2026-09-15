@@ -7,9 +7,8 @@
   --color-accent: #8a5a35;
   --color-accent-dim: #8a5a3522;
 
-  --font-display: "Urbanist Variable", "Urbanist", system-ui, sans-serif;
-  --font-body: "Urbanist Variable", "Urbanist", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-display: "Fraunces Variable", "Fraunces", serif;
+  --font-body: "Arimo", system-ui, sans-serif;
   --font-name: "Goudy Bookletter 1911", serif;
 
   --space-1: 4px;
@@ -88,7 +87,8 @@ button:focus-visible {
 
 .tag {
   display: inline-block;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-weight: 500;
   font-size: 0.75rem;
   color: var(--color-accent);
   background: var(--color-accent-dim);
