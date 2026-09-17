@@ -14,7 +14,6 @@ interface Props {
 
 const { photo, exif, slugs, currentIndex } = Astro.props;
 const { title, image, alt, caption, location } = photo.data;
-const isPortrait = image.height > image.width;
 const metaParts = [exif.iso, exif.aperture, exif.shutterSpeed].filter(
   (v): v is string => Boolean(v)
 );
@@ -34,35 +33,32 @@ const farAfter = slugs.slice(nearEnd + 1);
         ←
       </a>
 
-      <figure class={`photo-frame ${isPortrait ? "portrait" : "landscape"}`}>
-        <div class="photo-media" style={`aspect-ratio: ${image.width} / ${image.height};`}>
-          <Image
-            src={image}
-            alt={alt}
-            width={1200}
-            widths={[480, 768, 1200]}
-            sizes="(max-width: 900px) 100vw, 900px"
-            quality={70}
-            loading="eager"
-            fetchpriority="high"
-            transition:name={`photo-${photo.id}`}
-          />
-        </div>
-        <figcaption class="meta">
-          <span class="meta-inner">
-            <span class="meta-title">{title}</span>
-            {location && <span class="meta-location">{location}</span>}
-            {
-              metaParts.length > 0 && (
-                <span class="meta-exif">{metaParts.join(" · ")}</span>
-              )
-            }
-          </span>
-        </figcaption>
+      <figure class="photo-frame">
+        <Image
+          src={image}
+          alt={alt}
+          width={1200}
+          widths={[480, 768, 1200]}
+          sizes="(max-width: 900px) 100vw, 900px"
+          quality={70}
+          loading="eager"
+          fetchpriority="high"
+          transition:name={`photo-${photo.id}`}
+        />
       </figure>
     </div>
 
     <div class="container photo-footer">
+      <div class="meta">
+        <span class="meta-title">{title}</span>
+        {location && <span class="meta-location">{location}</span>}
+        {
+          metaParts.length > 0 && (
+            <span class="meta-exif">{metaParts.join(" · ")}</span>
+          )
+        }
+      </div>
+
       {caption && <p class="caption-text">{caption}</p>}
 
       <nav class="photo-dots" aria-label="Other photos">
@@ -138,55 +134,40 @@ const farAfter = slugs.slice(nearEnd + 1);
     text-decoration: none;
   }
 
+  /*
+    display: contents removes this wrapper from the box tree entirely, so the
+    <img> below becomes a direct flex item of .photo-stage instead of a flex
+    item of an intermediate box. That matters because a nested flex box here
+    would apply ITS OWN default align-items: stretch to the image, forcing it
+    to fill the wrapper's full height regardless of aspect ratio (independently
+    of whatever width the flex algorithm assigns) - which is what was
+    distorting portrait photos. As a direct child of .photo-stage (which sets
+    align-items: center, not stretch, and has a genuinely definite height),
+    the image sizes itself using the ordinary two-axis max-width/max-height
+    replaced-element algorithm, which shrinks it to fit while preserving its
+    aspect ratio on both axes at once - no manual aspect-ratio math needed.
+  */
   .photo-frame {
+    display: contents;
+  }
+
+  .photo-frame :global(img) {
+    display: block;
     margin: 0 auto;
-    display: flex;
-    width: fit-content;
+    min-width: 0;
+    min-height: 0;
     max-width: 100%;
     max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
-    overflow: hidden;
   }
 
-  .photo-frame.landscape {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .photo-frame.portrait {
-    flex-direction: row;
-    /* Needs a genuinely definite height (not just a max-height cap) for the
-       .photo-media child's aspect-ratio to correctly derive its width -
-       max-height alone doesn't count as "definite" for that computation. */
-    align-self: stretch;
-  }
-
-  .photo-media {
-    display: block;
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .photo-media :global(img) {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-  }
-
-  .photo-frame.landscape .photo-media {
-    flex: 0 1 auto;
-    max-width: 100%;
-    max-height: 100%;
-  }
-
-  .photo-frame.portrait .photo-media {
-    flex: 0 1 auto;
-    max-width: 100%;
-    max-height: 100%;
+  .photo-footer {
+    padding-bottom: var(--space-16);
   }
 
   .meta {
@@ -194,16 +175,10 @@ const farAfter = slugs.slice(nearEnd + 1);
     gap: var(--space-4);
     align-items: baseline;
     flex-wrap: wrap;
-    padding: var(--space-3) var(--space-4);
+    margin-bottom: var(--space-2);
     font-family: var(--font-body);
     font-size: 0.85rem;
     color: var(--color-text-muted);
-    background: var(--color-surface);
-    border-top: 1px solid var(--color-border);
-  }
-
-  .meta-inner {
-    display: contents;
   }
 
   .meta-title {
@@ -214,34 +189,6 @@ const farAfter = slugs.slice(nearEnd + 1);
   .meta-exif {
     margin-left: auto;
     font-variant-numeric: tabular-nums;
-  }
-
-  .photo-frame.portrait .meta {
-    flex: none;
-    width: 64px;
-    align-items: center;
-    justify-content: center;
-    border-top: none;
-    border-left: 1px solid var(--color-border);
-    padding: var(--space-3);
-    overflow: hidden;
-  }
-
-  .photo-frame.portrait .meta-inner {
-    display: flex;
-    flex-direction: row-reverse;
-    align-items: baseline;
-    gap: var(--space-4);
-    white-space: nowrap;
-    transform: rotate(-90deg);
-  }
-
-  .photo-frame.portrait .meta-exif {
-    margin-left: 0;
-  }
-
-  .photo-footer {
-    padding-bottom: var(--space-16);
   }
 
   .caption-text {
@@ -316,34 +263,12 @@ const farAfter = slugs.slice(nearEnd + 1);
       padding: var(--space-3) var(--space-4);
     }
 
-    /* Not enough width for the side-by-side portrait strip - stack like landscape instead */
-    .photo-frame.portrait {
-      flex-direction: column;
+    .meta {
+      gap: var(--space-2) var(--space-4);
     }
 
-    .photo-frame.portrait .photo-media {
-      flex: 0 1 auto;
-      max-width: 100%;
-      max-height: 100%;
-    }
-
-    .photo-frame.portrait .meta {
-      width: auto;
-      flex-direction: row;
-      align-items: baseline;
-      justify-content: flex-start;
-      writing-mode: horizontal-tb;
-      border-left: none;
-      border-top: 1px solid var(--color-border);
-      padding: var(--space-3) var(--space-4);
-    }
-
-    .photo-frame.portrait .meta-inner {
-      display: contents;
-    }
-
-    .photo-frame.portrait .meta-exif {
-      margin-left: auto;
+    .meta-exif {
+      margin-left: 0;
     }
   }
 </style>
