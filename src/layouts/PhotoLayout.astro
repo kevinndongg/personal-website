@@ -35,17 +35,19 @@ const farAfter = slugs.slice(nearEnd + 1);
       </a>
 
       <figure class={`photo-frame ${isPortrait ? "portrait" : "landscape"}`}>
-        <Image
-          src={image}
-          alt={alt}
-          width={1200}
-          widths={[480, 768, 1200]}
-          sizes="(max-width: 900px) 100vw, 900px"
-          quality={70}
-          loading="eager"
-          fetchpriority="high"
-          transition:name={`photo-${photo.id}`}
-        />
+        <div class="photo-media" style={`aspect-ratio: ${image.width} / ${image.height};`}>
+          <Image
+            src={image}
+            alt={alt}
+            width={1200}
+            widths={[480, 768, 1200]}
+            sizes="(max-width: 900px) 100vw, 900px"
+            quality={70}
+            loading="eager"
+            fetchpriority="high"
+            transition:name={`photo-${photo.id}`}
+          />
+        </div>
         <figcaption class="meta">
           <span class="meta-inner">
             <span class="meta-title">{title}</span>
@@ -155,26 +157,36 @@ const farAfter = slugs.slice(nearEnd + 1);
 
   .photo-frame.portrait {
     flex-direction: row;
+    /* Needs a genuinely definite height (not just a max-height cap) for the
+       .photo-media child's aspect-ratio to correctly derive its width -
+       max-height alone doesn't count as "definite" for that computation. */
+    align-self: stretch;
   }
 
-  .photo-frame :global(img) {
+  .photo-media {
     display: block;
-    max-width: 100%;
-    height: auto;
-  }
-
-  .photo-frame.landscape :global(img) {
-    flex: 1 1 auto;
-    min-height: 0;
-    object-fit: contain;
-  }
-
-  .photo-frame.portrait :global(img) {
-    flex: 1 1 auto;
     min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .photo-media :global(img) {
+    display: block;
+    width: 100%;
     height: 100%;
-    max-width: 100%;
     object-fit: contain;
+  }
+
+  .photo-frame.landscape .photo-media {
+    flex: 0 1 auto;
+    max-width: 100%;
+    max-height: 100%;
+  }
+
+  .photo-frame.portrait .photo-media {
+    flex: 0 1 auto;
+    max-width: 100%;
+    max-height: 100%;
   }
 
   .meta {
@@ -309,14 +321,10 @@ const farAfter = slugs.slice(nearEnd + 1);
       flex-direction: column;
     }
 
-    .photo-frame.portrait :global(img) {
-      flex: 1 1 auto;
-      min-height: 0;
-      min-width: 0;
-      height: auto;
-      width: auto;
+    .photo-frame.portrait .photo-media {
+      flex: 0 1 auto;
       max-width: 100%;
-      object-fit: contain;
+      max-height: 100%;
     }
 
     .photo-frame.portrait .meta {
