@@ -167,7 +167,7 @@ const farAfter = slugs.slice(nearEnd + 1);
   }
 
   .photo-footer {
-    padding-bottom: var(--space-16);
+    padding-bottom: var(--space-4);
   }
 
   .meta {
@@ -241,11 +241,13 @@ const farAfter = slugs.slice(nearEnd + 1);
     height: 6px;
     border-radius: 999px;
     background: var(--color-border);
-    transition: height var(--transition-fast), background-color var(--transition-fast);
+    transition: height var(--transition-fast), background-color var(--transition-fast),
+      transform var(--transition-fast);
   }
 
   .dot:hover .dot-visual {
     background: var(--color-text-muted);
+    transform: scale(1.4);
   }
 
   .dot.active .dot-visual {
@@ -255,6 +257,7 @@ const farAfter = slugs.slice(nearEnd + 1);
 
   .dot.active:hover .dot-visual {
     background: var(--color-accent);
+    transform: scale(1.25);
   }
 
   @media (max-width: 640px) {
