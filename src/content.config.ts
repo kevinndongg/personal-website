@@ -11,6 +11,10 @@ const projects = defineCollection({
       alt: z.string().optional(),
       role: z.string().optional(),
       dateRange: z.string().optional(),
+      organization: z.string().optional(),
+      location: z.string().optional(),
+      period: z.string().optional(),
+      techStack: z.array(z.string()).optional(),
       links: z
         .object({
           repo: z.string().url().optional(),

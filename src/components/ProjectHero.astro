@@ -6,9 +6,19 @@ interface Props {
   title: string;
   summary: string;
   animation: string;
+  role?: string;
+  organization?: string;
+  location?: string;
+  period?: string;
+  techStack?: string[];
 }
 
-const { slug, title, summary, animation } = Astro.props;
+const { slug, title, summary, animation, role, organization, location, period, techStack } =
+  Astro.props;
+
+const metaParts = [role, organization, location, period].filter(
+  (v): v is string => Boolean(v)
+);
 ---
 
 <header class="hero">
@@ -19,6 +29,16 @@ const { slug, title, summary, animation } = Astro.props;
     <a class="back" href={withBase("")}>← Back to all projects</a>
     <h1 transition:name={`project-title-${slug}`}>{title}</h1>
     <p>{summary}</p>
+    {metaParts.length > 0 && <p class="meta">{metaParts.join(" · ")}</p>}
+    {
+      techStack && techStack.length > 0 && (
+        <ul class="tech-stack">
+          {techStack.map((tech) => (
+            <li class="tag">{tech}</li>
+          ))}
+        </ul>
+      )
+    }
   </div>
 </header>
 
@@ -54,5 +74,21 @@ const { slug, title, summary, animation } = Astro.props;
     font-family: var(--font-body);
     font-weight: 500;
     font-size: 0.85rem;
+  }
+
+  .meta {
+    margin: var(--space-2) 0 0;
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+  }
+
+  .tech-stack {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: var(--space-4) 0 0;
+    padding: 0;
   }
 </style>

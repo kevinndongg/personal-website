@@ -20,6 +20,11 @@ const { project } = Astro.props;
     title={project.data.title}
     summary={project.data.summary}
     animation={project.data.animation}
+    role={project.data.role}
+    organization={project.data.organization}
+    location={project.data.location}
+    period={project.data.period}
+    techStack={project.data.techStack}
   >
     <slot name="animation" slot="animation" />
   </ProjectHero>

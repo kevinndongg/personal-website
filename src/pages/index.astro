@@ -6,6 +6,25 @@ import ProjectCard from "../components/ProjectCard.astro";
 const projects = (await getCollection("projects")).sort(
   (a, b) => a.data.order - b.data.order
 );
+
+const skillGroups = [
+  {
+    label: "Languages",
+    skills: ["Python", "C/C++", "Java", "JavaScript", "HTML/CSS"],
+  },
+  {
+    label: "Robotics & CV",
+    skills: ["ROS 2", "rqt", "Foxglove", "OpenCV", "Eigen", "Ultralytics"],
+  },
+  {
+    label: "ML & Data",
+    skills: ["PyTorch", "Hugging Face", "numpy", "scikit-learn", "matplotlib", "pyAgrum"],
+  },
+  {
+    label: "Developer Tools",
+    skills: ["Git", "CMake", "Docker", "tmux", "Linux/Ubuntu", "SLURM", "JUnit"],
+  },
+];
 ---
 
 <BaseLayout title="Kevin Dong">
@@ -30,6 +49,40 @@ const projects = (await getCollection("projects")).sort(
           />
         ))
       }
+    </section>
+
+    <section class="about" aria-label="Education">
+      <h2>Education</h2>
+      <div class="edu-header">
+        <span class="edu-school">Carnegie Mellon University</span>
+        <span class="edu-location">Pittsburgh, PA</span>
+      </div>
+      <p class="edu-degree">
+        B.S. in Computer Science, Concentration in Machine Learning · GPA
+        (QPA): 3.90/4.00 · May 2028
+      </p>
+      <p class="edu-courses">
+        Relevant Courses: Computer Vision, Probability, Data Structures &
+        Algorithms in C, Computer Systems
+      </p>
+    </section>
+
+    <section class="about" aria-label="Technical Skills">
+      <h2>Technical Skills</h2>
+      <div class="skill-groups">
+        {
+          skillGroups.map((group) => (
+            <div class="skill-group">
+              <h3>{group.label}</h3>
+              <ul class="tags">
+                {group.skills.map((skill) => (
+                  <li class="tag">{skill}</li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </div>
     </section>
   </main>
 </BaseLayout>
@@ -59,5 +112,61 @@ const projects = (await getCollection("projects")).sort(
     grid-template-columns: 1fr;
     gap: var(--space-8);
     padding-bottom: var(--space-16);
+  }
+
+  .about {
+    max-width: 720px;
+    padding-bottom: var(--space-12);
+  }
+
+  .about h2 {
+    font-size: 1.3rem;
+    margin-bottom: var(--space-4);
+  }
+
+  .edu-header {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
+    flex-wrap: wrap;
+  }
+
+  .edu-school {
+    font-weight: 600;
+  }
+
+  .edu-location {
+    color: var(--color-text-muted);
+  }
+
+  .edu-degree {
+    font-style: italic;
+    margin: var(--space-1) 0 var(--space-2);
+  }
+
+  .edu-courses {
+    margin: 0;
+  }
+
+  .skill-groups {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .skill-group h3 {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin: 0 0 var(--space-2);
+  }
+
+  .tags {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
   }
 </style>
