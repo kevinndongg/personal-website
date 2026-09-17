@@ -28,6 +28,10 @@ const contactLinks = [
       </li>
     </ul>
 
+    <a class="nav-name" data-nav-name href={homeHref} aria-label="Kevin Dong — home">
+      Kevin Dong
+    </a>
+
     <ul class="contacts">
       {
         contactLinks.map((link) => (
@@ -56,19 +60,27 @@ const contactLinks = [
   }
 
   .section-nav .container {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
-    justify-content: space-between;
     gap: var(--space-4);
-    flex-wrap: wrap;
   }
 
   .section-nav ul {
     list-style: none;
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-6);
     margin: 0;
     padding: var(--space-3) 0;
+  }
+
+  .sections {
+    justify-self: start;
+  }
+
+  .contacts {
+    justify-self: end;
   }
 
   .section-nav a {
@@ -95,9 +107,115 @@ const contactLinks = [
     color: var(--color-accent);
   }
 
+  .nav-name {
+    justify-self: center;
+    font-family: var(--font-name);
+    font-weight: 400;
+    font-size: 1.15rem;
+    color: var(--color-text);
+    padding: var(--space-3) 0;
+    opacity: 1;
+    transform: scale(1);
+    white-space: nowrap;
+  }
+
+  .nav-name:hover {
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  .nav-name:focus-visible {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .nav-name[data-nav-name-state="animated"] {
+      opacity: var(--scroll-progress, 0);
+      transform: scale(calc(0.85 + 0.15 * var(--scroll-progress, 0)));
+    }
+  }
+
   @media (max-width: 480px) {
     .section-nav ul {
       gap: var(--space-4);
     }
+
+    .nav-name {
+      font-size: 1rem;
+    }
   }
 </style>
+
+<script>
+  let cleanup: (() => void) | null = null;
+
+  function initHeaderMorph() {
+    cleanup?.();
+    cleanup = null;
+
+    const navName = document.querySelector<HTMLElement>("[data-nav-name]");
+    if (!navName) return;
+
+    navName.addEventListener("click", onNavNameClick);
+
+    const heroName = document.querySelector<HTMLElement>("[data-hero-name]");
+    const navEl = document.querySelector<HTMLElement>(".section-nav");
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    navName.removeAttribute("data-nav-name-state");
+    document.documentElement.style.removeProperty("--scroll-progress");
+
+    if (!heroName || !navEl || reduceMotion) {
+      cleanup = () => navName.removeEventListener("click", onNavNameClick);
+      return;
+    }
+
+    navName.setAttribute("data-nav-name-state", "animated");
+
+    let ticking = false;
+
+    function computeProgress(): number {
+      const navHeight = navEl!.getBoundingClientRect().height;
+      const rect = heroName!.getBoundingClientRect();
+      const morphDistance = Math.max(rect.height, 1);
+      const raw = (navHeight - rect.top) / morphDistance;
+      return Math.min(Math.max(raw, 0), 1);
+    }
+
+    function applyProgress() {
+      document.documentElement.style.setProperty(
+        "--scroll-progress",
+        String(computeProgress())
+      );
+      ticking = false;
+    }
+
+    function onScrollOrResize() {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(applyProgress);
+    }
+
+    window.addEventListener("scroll", onScrollOrResize, { passive: true });
+    window.addEventListener("resize", onScrollOrResize, { passive: true });
+    applyProgress();
+
+    cleanup = () => {
+      navName.removeEventListener("click", onNavNameClick);
+      window.removeEventListener("scroll", onScrollOrResize);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }
+
+  function onNavNameClick(e: MouseEvent) {
+    const heroName = document.querySelector("[data-hero-name]");
+    if (!heroName) return;
+    e.preventDefault();
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+  }
+
+  initHeaderMorph();
+  document.addEventListener("astro:page-load", initHeaderMorph);
+</script>

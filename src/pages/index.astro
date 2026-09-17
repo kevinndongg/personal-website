@@ -30,7 +30,7 @@ const skillGroups = [
 <BaseLayout title="Kevin Dong">
   <main class="container">
     <header class="hero">
-      <h1 class="name">Kevin Dong</h1>
+      <h1 class="name" data-hero-name>Kevin Dong</h1>
       <p class="subtitle">Computer Science at CMU</p>
       <p>
         Robotics and machine learning software engineer, building autonomous systems. 
@@ -91,12 +91,23 @@ const skillGroups = [
   .hero {
     padding: var(--space-8) 0 var(--space-12);
     max-width: 640px;
+    margin: 0 auto;
+    text-align: center;
   }
 
   .name {
     font-family: var(--font-name);
     font-weight: 400;
     font-size: clamp(3rem, 8vw, 5rem);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .name {
+      opacity: calc(1 - var(--scroll-progress, 0));
+      transform: scale(calc(1 - 0.08 * var(--scroll-progress, 0)))
+        translateY(calc(var(--scroll-progress, 0) * -12px));
+      transform-origin: center top;
+    }
   }
 
   .subtitle {
