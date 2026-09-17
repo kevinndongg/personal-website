@@ -1,7 +1,6 @@
 ---
 title: "FIRST Tech Challenge, team 6417"
 summary: "Full stack software development for autonomous & teleoperated robot. "
-tags: ["Robotics", "Mechanical Design", "CAD"]
 role: "Team Lead / Mechanical"
 dateRange: "High School"
 animation: "ftc-gears"

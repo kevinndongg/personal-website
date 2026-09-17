@@ -25,7 +25,8 @@ const projects = (await getCollection("projects")).sort(
             slug={project.id}
             title={project.data.title}
             summary={project.data.summary}
-            tags={project.data.tags}
+            image={project.data.image}
+            alt={project.data.alt}
           />
         ))
       }
@@ -55,8 +56,8 @@ const projects = (await getCollection("projects")).sort(
 
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: var(--space-6);
+    grid-template-columns: 1fr;
+    gap: var(--space-8);
     padding-bottom: var(--space-16);
   }
 </style>
