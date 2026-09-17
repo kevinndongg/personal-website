@@ -33,7 +33,7 @@ const { slug, title, summary, image, alt } = Astro.props;
       )
     }
   </div>
-  <div class="body">
+  <div class="info-bar">
     <h3 transition:name={`project-title-${slug}`}>{title}</h3>
     <p>{summary}</p>
   </div>
@@ -41,8 +41,8 @@ const { slug, title, summary, image, alt } = Astro.props;
 
 <style>
   .card {
-    display: flex;
-    flex-direction: column;
+    position: relative;
+    display: block;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
@@ -59,7 +59,7 @@ const { slug, title, summary, image, alt } = Astro.props;
   }
 
   .cover {
-    aspect-ratio: 21 / 9;
+    aspect-ratio: 16 / 9;
     background: var(--color-bg);
   }
 
@@ -76,17 +76,40 @@ const { slug, title, summary, image, alt } = Astro.props;
     background: linear-gradient(135deg, var(--color-surface), var(--color-border));
   }
 
-  .body {
-    padding: var(--space-6) var(--space-8);
+  /*
+    Anchored to the bottom of the card, not the cover, so as the summary's
+    max-height opens up on hover the bar grows upward over the photo instead
+    of pushing the card's overall height around.
+  */
+  .info-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    padding: var(--space-4) var(--space-6);
   }
 
-  .card h3 {
-    margin-bottom: var(--space-3);
-    font-size: 1.6rem;
-  }
-
-  .card p {
+  .info-bar h3 {
     margin: 0;
-    font-size: 1.05rem;
+    font-size: 1.3rem;
+  }
+
+  .info-bar p {
+    margin: 0;
+    max-height: 0;
+    opacity: 0;
+    font-size: 0.95rem;
+    color: var(--color-text-muted);
+    overflow: hidden;
+    transition: max-height var(--transition-medium), opacity var(--transition-fast),
+      margin-top var(--transition-medium);
+  }
+
+  .card:hover .info-bar p {
+    max-height: 3rem;
+    opacity: 1;
+    margin-top: var(--space-2);
   }
 </style>
