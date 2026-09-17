@@ -26,6 +26,7 @@ jobs:
         uses: actions/upload-pages-artifact@v5
         with:
           path: ./dist
+          name: pages-site-test
 
   deploy:
     needs: build
@@ -37,3 +38,5 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+        with:
+          artifact_name: pages-site-test
