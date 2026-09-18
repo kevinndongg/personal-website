@@ -218,6 +218,14 @@ const contactLinks = [
 </style>
 
 <script>
+  document.addEventListener("astro:before-preparation", (event) => {
+    const fromPhotography = event.from.pathname.includes("/photography");
+    const toPhotography = event.to.pathname.includes("/photography");
+    if (fromPhotography && !toPhotography) {
+      event.direction = "back";
+    }
+  });
+
   let cleanup: (() => void) | null = null;
 
   function initHeaderMorph() {
