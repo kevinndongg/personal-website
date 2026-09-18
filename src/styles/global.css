@@ -103,3 +103,27 @@ button:focus-visible {
     padding: 0 var(--space-4);
   }
 }
+
+@keyframes pageSlideOutLeft {
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes pageSlideInRight {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes pageSlideOutRight {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes pageSlideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+}

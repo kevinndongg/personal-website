@@ -1,8 +1,8 @@
 ---
 import { getCollection } from "astro:content";
-import { slide } from "astro:transitions";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import ProjectCard from "../components/ProjectCard.astro";
+import { pageSlide } from "../lib/pageTransition";
 
 const projects = (await getCollection("projects")).sort(
   (a, b) => a.data.order - b.data.order
@@ -29,7 +29,7 @@ const skillGroups = [
 ---
 
 <BaseLayout title="Kevin Dong">
-  <main class="container" transition:name="page" transition:animate={slide({ duration: "400ms" })}>
+  <main class="container" transition:name="page" transition:animate={pageSlide}>
     <header class="hero">
       <h1 class="name" data-hero-name>Kevin Dong</h1>
       <p class="subtitle">Computer Science at CMU</p>

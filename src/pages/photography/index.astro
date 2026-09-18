@@ -1,7 +1,7 @@
 ---
 import { getCollection } from "astro:content";
-import { slide } from "astro:transitions";
 import BaseLayout from "../../layouts/BaseLayout.astro";
+import { pageSlide } from "../../lib/pageTransition";
 import PhotoCard from "../../components/PhotoCard.astro";
 import { sortPhotos } from "../../lib/photos";
 
@@ -12,7 +12,7 @@ const photos = sortPhotos(await getCollection("photos"));
   title="Photography — Kevin Dong"
   description="A collection of personal photography."
 >
-  <main class="container" transition:name="page" transition:animate={slide({ duration: "400ms" })}>
+  <main class="container" transition:name="page" transition:animate={pageSlide}>
     <header class="hero">
       <h1>Photography</h1>
       <p>Photos I've taken, just for fun.</p>
