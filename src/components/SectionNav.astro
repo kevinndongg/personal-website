@@ -224,6 +224,33 @@ const contactLinks = [
     if (fromPhotography && !toPhotography) {
       event.direction = "back";
     }
+
+    // Robotics <-> Photography is a whole-page slide. Nested shared-element
+    // names (photo cards, project titles) would otherwise detach from the
+    // sliding <main> and fade on their own timeline; global.css disables them
+    // while this attribute is set. "data-astro-" prefix survives Astro's swap.
+    const normalize = (path: string) => path.replace(/\/$/, "");
+    const topLevel = Array.from(
+      document.querySelectorAll<HTMLAnchorElement>(".toggle-option")
+    ).map((a) => normalize(new URL(a.href).pathname));
+    const from = normalize(event.from.pathname);
+    const to = normalize(event.to.pathname);
+    document.documentElement.toggleAttribute(
+      "data-astro-page-slide",
+      from !== to && topLevel.includes(from) && topLevel.includes(to)
+    );
+  });
+
+  // Astro's swap replaces <html> attributes, so carry the flag onto the
+  // incoming document (its names are captured right after the swap) and drop
+  // it once the transition ends so shared-element morphs work again.
+  document.addEventListener("astro:before-swap", (event) => {
+    const root = document.documentElement;
+    if (!root.hasAttribute("data-astro-page-slide")) return;
+    event.newDocument.documentElement.setAttribute("data-astro-page-slide", "");
+    event.viewTransition?.finished.then(() =>
+      root.removeAttribute("data-astro-page-slide")
+    );
   });
 
   let cleanup: (() => void) | null = null;

@@ -104,6 +104,19 @@ button:focus-visible {
   }
 }
 
+/* During a Robotics <-> Photography slide, keep nested shared-element names
+   (photo cards, project titles) inside the sliding <main> instead of letting
+   them fade separately. Set by the listener in SectionNav.astro. */
+html[data-astro-page-slide] [data-astro-transition-scope]:not(main) {
+  view-transition-name: none;
+}
+
+/* Keep duration/easing in sync with src/lib/pageTransition.ts */
+::view-transition-group(page) {
+  animation-duration: 400ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 @keyframes pageSlideOutLeft {
   to {
     transform: translateX(-100%);
