@@ -119,24 +119,24 @@ html[data-astro-page-slide] [data-astro-transition-scope]:not(main) {
 
 @keyframes pageSlideOutLeft {
   to {
-    transform: translateX(-100%);
+    transform: translateX(-100vw);
   }
 }
 
 @keyframes pageSlideInRight {
   from {
-    transform: translateX(100%);
+    transform: translateX(100vw);
   }
 }
 
 @keyframes pageSlideOutRight {
   to {
-    transform: translateX(100%);
+    transform: translateX(100vw);
   }
 }
 
 @keyframes pageSlideInLeft {
   from {
-    transform: translateX(-100%);
+    transform: translateX(-100vw);
   }
 }

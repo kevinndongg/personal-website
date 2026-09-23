@@ -1,6 +1,6 @@
 ---
 title: "Carnegie Mellon Racing"
-image: "./cmu-racing.png"
+image: "./CMR_Logo.png"
 alt: "CMR logo"
 summary: "Localization and path planning for an autonomous racecar."
 role: "Team Member — Software Developer"
