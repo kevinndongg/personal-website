@@ -8,7 +8,7 @@ location: "Washington, DC"
 period: "June 2024 – Sept. 2024"
 techStack: ["OpenCV", "Python", "numpy", "PyTorch", "Ultralytics"]
 animation: "uav-radar-sweep"
-order: 3
+order: 5
 ---
 
 Researched obstacle detection and avoidance methods for autonomous UAV flight, working with onboard sensing to identify obstacles in real time and inform flight path decisions.

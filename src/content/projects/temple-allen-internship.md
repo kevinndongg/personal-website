@@ -1,5 +1,7 @@
 ---
 title: "Temple Allen Internship"
+image: "./temple-allen-internship.jpg"
+alt: "Temple Allen Industries logo"
 summary: "Internship at Temple, Allen Industries working on UAV and aerospace systems."
 role: "Intern — Software Engineering Intern"
 dateRange: "Internship"
@@ -8,7 +10,7 @@ location: "Rockville, MD"
 period: "May 2025 – Aug. 2025"
 techStack: ["C++", "Python", "OpenCV", "ROS 2", "rqt"]
 animation: "temple-allen-flight-path"
-order: 4
+order: 3
 ---
 
 Interned at Temple, Allen Industries, working on UAV and aerospace-related engineering projects in an industry setting.

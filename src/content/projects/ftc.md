@@ -7,7 +7,7 @@ organization: "FIRST Tech Challenge, team 6417 (Int'l Robotics Competition)"
 period: "Sept. 2022 – Aug. 2025"
 techStack: ["Java", "OpenCV", "Python"]
 animation: "ftc-gears"
-order: 1
+order: 4
 ---
 
 Competed in FIRST Tech Challenge, leading mechanical design and build for our team's robot. Iterated across multiple prototypes each season to improve drivetrain reliability, intake speed, and scoring accuracy under competition constraints.

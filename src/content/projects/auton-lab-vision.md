@@ -1,5 +1,7 @@
 ---
 title: "Computer Vision Research --- DARPA Triage Challenge"
+image: "./auton-lab-vision.png"
+alt: "Auton Lab Logo"
 summary: "Research on computer vision models for live medical triage."
 role: "Research Intern"
 dateRange: "CMU Auton Lab"
@@ -8,7 +10,7 @@ location: "Pittsburgh, PA"
 period: "Jan. 2026 – Present"
 techStack: ["Python", "PyTorch", "Hugging Face", "Docker"]
 animation: "auton-lab-bounding-boxes"
-order: 5
+order: 1
 ---
 
 Conducted research on vision models at Carnegie Mellon's Auton Lab, working on model development and evaluation for computer vision tasks.

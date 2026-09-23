@@ -1,5 +1,7 @@
 ---
 title: "Carnegie Mellon Racing"
+image: "./cmu-racing.png"
+alt: "CMR logo"
 summary: "Localization and path planning for an autonomous racecar."
 role: "Team Member — Software Developer"
 dateRange: "Carnegie Mellon University"
