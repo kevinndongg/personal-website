@@ -1,5 +1,7 @@
 ---
 title: "FIRST Tech Challenge, team 6417"
+image: "./blucrulogo.png"
+alt: "Blu Cru logo"
 summary: "Full stack software development for autonomous & teleoperated robot. "
 role: "Team Lead / Mechanical — Software Lead, Team Captain"
 dateRange: "High School"
