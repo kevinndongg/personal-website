@@ -1,6 +1,6 @@
 ---
-title: "UAV Obstacle Detection"
-summary: "Research on sensor-based obstacle detection and avoidance for autonomous drones."
+title: "UAV Obstacle Detection Research"
+summary: "Research on vision transformers for UAV obstacle detection. "
 role: "Researcher — Research Intern"
 dateRange: "Research Project"
 organization: "George Washington University"

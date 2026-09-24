@@ -2,7 +2,7 @@
 title: "Computer Vision Research --- DARPA Triage Challenge"
 image: "./auton-lab-vision.png"
 alt: "Auton Lab Logo"
-summary: "Research on computer vision models for live medical triage."
+summary: "Research on self-supervised vision transformers for medical triage."
 role: "Research Intern"
 dateRange: "CMU Auton Lab"
 organization: "Auton Lab, Carnegie Mellon University"

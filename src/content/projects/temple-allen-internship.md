@@ -1,8 +1,8 @@
 ---
-title: "Temple Allen Internship"
+title: "Temple Allen Industries"
 image: "./temple-allen-internship.jpg"
 alt: "Temple Allen Industries logo"
-summary: "Internship at Temple, Allen Industries working on UAV and aerospace systems."
+summary: "Robotics Software development and tooling."
 role: "Intern — Software Engineering Intern"
 dateRange: "Internship"
 organization: "Temple Allen Industries"
