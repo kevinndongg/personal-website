@@ -117,6 +117,21 @@ html[data-astro-page-slide] [data-astro-transition-scope]:not(main) {
   animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* The Photography <main> also carries the "page" view-transition-name used
+   for the Robotics <-> Photography slide, so it inherits the slide keyframes
+   on any navigation into/out of it - including a single photo page, which
+   isn't a top-level toggle. Fade it instead whenever data-astro-page-slide
+   (set by SectionNav.astro only for the actual Robotics <-> Photography
+   toggle) isn't present. This is unlayered, so it outweighs Astro's own
+   generated rules (in @layer astro) regardless of selector specificity. */
+html:not([data-astro-page-slide])::view-transition-old(page) {
+  animation-name: astroFadeOut;
+}
+
+html:not([data-astro-page-slide])::view-transition-new(page) {
+  animation-name: astroFadeIn;
+}
+
 @keyframes pageSlideOutLeft {
   to {
     transform: translateX(-100vw);

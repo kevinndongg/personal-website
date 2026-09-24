@@ -31,20 +31,24 @@ const { slug, title, image, alt } = Astro.props;
     display: block;
     break-inside: avoid;
     margin-bottom: var(--space-6);
-    border-radius: var(--radius);
-    overflow: hidden;
-    border: 1px solid var(--color-border);
-    transition: transform var(--transition-fast), border-color var(--transition-fast);
+    transition: transform var(--transition-fast);
   }
 
   .card:hover {
     transform: translateY(-4px);
-    border-color: var(--color-accent);
   }
 
   .card :global(img) {
     display: block;
     width: 100%;
     height: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    transition: border-color var(--transition-fast);
+  }
+
+  .card:hover :global(img) {
+    border-color: var(--color-accent);
   }
 </style>
