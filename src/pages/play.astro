@@ -1,0 +1,74 @@
+---
+import { getCollection } from "astro:content";
+import "@fontsource/pixelify-sans/400.css";
+import "@fontsource/pixelify-sans/600.css";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { withBase } from "../lib/url";
+import "../styles/game.css";
+
+const projects = (await getCollection("projects")).sort((a, b) => a.data.order - b.data.order);
+const photos = await getCollection("photos");
+
+const zones = [
+  ...projects.map((p) => ({
+    id: p.id,
+    kind: "project" as const,
+    label: p.data.title,
+    summary: p.data.summary,
+    href: withBase(`projects/${p.id}`),
+    accent: p.data.accentColor,
+  })),
+  {
+    id: "gallery",
+    kind: "gallery" as const,
+    label: "Photo Gallery",
+    summary: `${photos.length} photos I took just for fun.`,
+    href: withBase("photography"),
+    accent: "#8a4fd0",
+  },
+];
+---
+
+<BaseLayout title="Play — Kevin Dong" description="A tiny driving game that doubles as my portfolio." hideNav>
+  <div class="game" id="game" data-zones={JSON.stringify(zones)}>
+    <canvas data-canvas aria-label="Top-down airfield. Click to drive the car into a building to open a project."></canvas>
+    <div data-labels class="labels" aria-hidden="true"></div>
+
+    <div class="banner" data-banner aria-hidden="true">Kevin's Airfield</div>
+    <a class="skip" href={withBase("")}>Skip to regular site</a>
+    <p class="hint" data-hint>Click anywhere to drive</p>
+
+    <div class="dialog" data-dialog hidden tabindex="-1" role="dialog" aria-live="polite" aria-label="Project">
+      <div class="dlg-wrap">
+        <div class="dlg-menu" data-dlg-menu hidden></div>
+        <div class="dlg-box">
+          <p class="dlg-text" data-dlg-text></p>
+        </div>
+      </div>
+      <span data-dlg-more hidden></span>
+    </div>
+
+    <nav class="fallback" aria-label="Projects">
+      <h1>Kevin Dong</h1>
+      <ul>
+        {zones.map((z) => <li><a href={z.href}>{z.label}</a></li>)}
+      </ul>
+      <noscript><p>The interactive airfield needs JavaScript. These links go straight to each page.</p></noscript>
+    </nav>
+  </div>
+</BaseLayout>
+
+<script>
+  import { startGame } from "../game/main";
+
+  let stop: (() => void) | undefined;
+
+  document.addEventListener("astro:page-load", () => {
+    const root = document.getElementById("game");
+    if (root) stop = startGame(root);
+  });
+  document.addEventListener("astro:before-swap", () => {
+    stop?.();
+    stop = undefined;
+  });
+</script>
