@@ -40,8 +40,18 @@ export class Overlay {
   }
 
   show(zone: Zone) {
+    const actions = zone.actions ?? [
+      { label: zone.kind === "gallery" ? "Open gallery" : "Open project", href: zone.href! },
+    ];
     this.options = [
-      { label: zone.kind === "gallery" ? "Open gallery" : "Open project", run: () => navigate(zone.href) },
+      ...actions.map((a) => ({
+        label: a.label,
+        run: () => {
+          if (a.external) window.open(a.href, "_blank", "noopener,noreferrer");
+          else if (a.href.startsWith("mailto:")) location.href = a.href;
+          else navigate(a.href);
+        },
+      })),
       { label: "Not now", run: () => this.close() },
     ];
     this.full = `${zone.label}. ${zone.summary}`;

@@ -37,7 +37,8 @@ html:has(.game) body {
   position: absolute;
   top: 0;
   left: 0;
-  white-space: nowrap;
+  max-width: calc(var(--ws, 1) * 110px);
+  text-align: center;
   padding: 1px 6px;
   font-size: max(11px, calc(var(--ws, 1) * 5px));
   line-height: 1.2;

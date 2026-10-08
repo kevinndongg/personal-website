@@ -31,7 +31,7 @@ export function startGame(root: HTMLElement): () => void {
   const worldH = world.h * TILE;
   let scale = 1; // world px -> css px
   let marker: Marker | null = null;
-  let armed = true; // re-arms once the car leaves every pad, so closing a dialog doesn't instantly reopen it
+  let armed = true; // re-arms once the car leaves every stop, so closing a dialog doesn't instantly reopen it
 
   const labels = world.zones.map((zone) => {
     const el = document.createElement("div");
@@ -75,12 +75,14 @@ export function startGame(root: HTMLElement): () => void {
       const rect = canvas.getBoundingClientRect();
       const wx = (e.clientX - rect.left) / scale;
       const wy = (e.clientY - rect.top) / scale;
-      const goal = nearestReachable(world, Math.floor(wx / TILE), Math.floor(wy / TILE));
+      // clicking anywhere in a project area drives to that area's stop (the garage)
+      const target = world.zones.find((z) => rectContains(z.scene.area, wx, wy))?.scene.stop ?? { x: wx, y: wy };
+      const goal = nearestReachable(world, target.x, target.y);
       if (!goal) return;
       const path = planDrive(world, { x: car.x, y: car.y }, goal);
       if (!path) return;
       car.drive(path);
-      marker = { x: goal.x * TILE + TILE / 2, y: goal.y * TILE + TILE / 2 };
+      marker = { x: goal.x, y: goal.y };
       hint?.classList.add("gone");
     },
     { signal }
@@ -89,25 +91,36 @@ export function startGame(root: HTMLElement): () => void {
   function checkZones() {
     let inside: Zone | null = null;
     for (const zone of world.zones) {
-      if (rectContains(zone.pad, car.x, car.y, 4)) inside = zone;
+      if (rectContains(zone.scene.trigger, car.x, car.y)) inside = zone;
     }
     if (inside && armed) {
       armed = false;
       car.stop();
       marker = null;
       overlay.show(inside);
-    } else if (!inside && !world.zones.some((z) => rectContains(z.pad, car.x, car.y, -6))) {
+    } else if (!inside && !world.zones.some((z) => rectContains(z.scene.trigger, car.x, car.y, -20))) {
       armed = true;
     }
   }
 
   function updateLabels() {
     world.zones.forEach((zone, i) => {
-      const x = zone.labelPos.x * scale;
-      const y = zone.labelPos.y * scale;
+      const x = zone.scene.labelAt.x * scale;
+      const y = zone.scene.labelAt.y * scale;
       labels[i].style.transform = `translate(calc(${x}px - 50%), calc(${y}px - 100%))`;
     });
   }
+
+  // dev-only: advance the simulation without waiting for animation frames
+  if (import.meta.env.DEV)
+    Object.assign((window as any).__game, {
+      tick(n: number) {
+        for (let i = 0; i < n && !overlay.open; i++) {
+          car.update(STEP);
+          checkZones();
+        }
+      },
+    });
 
   let raf = 0;
   let last = performance.now();

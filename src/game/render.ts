@@ -4,12 +4,52 @@ import { GROUND } from "./palette";
 import type { Sprites } from "./sprites";
 import { shade } from "./sprites";
 import { TILE, Terrain } from "./world";
-import type { World } from "./world";
+import type { Decal, World } from "./world";
 
 function hash(x: number, y: number, n = 0) {
   let h = (x * 374761393 + y * 668265263 + n * 2147483647) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+function drawDecal(ctx: CanvasRenderingContext2D, d: Decal, accent: string) {
+  if (d.kind === "checker") {
+    const sq = 4;
+    for (let y = 0; y < d.h; y += sq)
+      for (let x = 0; x < d.w; x += sq) {
+        ctx.fillStyle = ((x + y) / sq) % 2 === 0 ? "#f4f4f4" : "#16161d";
+        ctx.fillRect(d.x + x, d.y + y, sq, sq);
+      }
+  } else if (d.kind === "cable") {
+    ctx.fillStyle = "#16161d";
+    for (let i = 1; i < d.points.length; i++) {
+      const a = d.points[i - 1];
+      const b = d.points[i];
+      const steps = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y), 1);
+      for (let k = 0; k <= steps; k++)
+        ctx.fillRect(Math.round(a.x + ((b.x - a.x) * k) / steps), Math.round(a.y + ((b.y - a.y) * k) / steps), 1, 1);
+    }
+  } else {
+    // parking pad: dark accent fill, hazard-striped edge, arrow
+    ctx.fillStyle = shade(d.color || accent, -0.5);
+    ctx.fillRect(d.x, d.y, d.w, d.h);
+    ctx.fillStyle = "#16161d";
+    ctx.fillRect(d.x, d.y, d.w, 2);
+    ctx.fillRect(d.x, d.y + d.h - 2, d.w, 2);
+    ctx.fillRect(d.x, d.y, 2, d.h);
+    ctx.fillRect(d.x + d.w - 2, d.y, 2, d.h);
+    ctx.fillStyle = GROUND.borderStripe;
+    for (let x = d.x + 4; x < d.x + d.w - 6; x += 8) {
+      ctx.fillRect(x, d.y + 2, 4, 2);
+      ctx.fillRect(x, d.y + d.h - 4, 4, 2);
+    }
+    ctx.fillStyle = "#f4f4f4";
+    const cx = d.x + d.w / 2;
+    const cy = d.y + d.h / 2;
+    ctx.fillRect(cx - 1, cy - 4, 2, 8);
+    ctx.fillRect(cx - 3, cy - 2, 6, 2);
+    ctx.fillRect(cx - 5, cy, 10, 2);
+  }
 }
 
 function buildGroundLayer(world: World, sprites: Sprites): HTMLCanvasElement {
@@ -61,31 +101,31 @@ function buildGroundLayer(world: World, sprites: Sprites): HTMLCanvasElement {
   for (let x = TILE * 2; x < world.w * TILE - TILE * 2; x += 24) ctx.fillRect(x, midY - 1, 12, 2);
   const midX = Math.round((world.w * TILE) / 2);
   for (let y = TILE * 2; y < world.h * TILE - TILE * 2; y += 24) {
-    const inZone = world.zones.some((z) => y > z.building.y - TILE && y < z.pad.y + z.pad.h + TILE && midX > z.building.x - TILE && midX < z.building.x + z.building.w + TILE);
+    const inZone = world.zones.some((z) => {
+      const a = z.scene.area;
+      return y > a.y - TILE && y < a.y + a.h + TILE && midX > a.x - TILE && midX < a.x + a.w + TILE;
+    });
     if (!inZone) ctx.fillRect(midX - 1, y, 2, 12);
   }
 
-  // parking pads in front of each building
+  // thin black border around each project area
+  ctx.fillStyle = "#16161d";
   for (const z of world.zones) {
-    const p = z.pad;
-    ctx.fillStyle = shade(z.accent, -0.5);
-    ctx.fillRect(p.x, p.y, p.w, p.h);
-    ctx.fillStyle = "#16161d";
-    ctx.fillRect(p.x, p.y, p.w, 2);
-    ctx.fillRect(p.x, p.y + p.h - 2, p.w, 2);
-    ctx.fillRect(p.x, p.y, 2, p.h);
-    ctx.fillRect(p.x + p.w - 2, p.y, 2, p.h);
-    ctx.fillStyle = GROUND.borderStripe;
-    for (let x = p.x + 4; x < p.x + p.w - 6; x += 8) {
-      ctx.fillRect(x, p.y + 2, 4, 2);
-      ctx.fillRect(x, p.y + p.h - 4, 4, 2);
+    const a = z.scene.area;
+    ctx.fillRect(a.x, a.y, a.w, 1);
+    ctx.fillRect(a.x, a.y + a.h - 1, a.w, 1);
+    ctx.fillRect(a.x, a.y, 1, a.h);
+    ctx.fillRect(a.x + a.w - 1, a.y, 1, a.h);
+  }
+
+  for (const z of world.zones) {
+    for (const d of z.scene.decals) drawDecal(ctx, d, z.accent);
+    // flat props (laptops on the floor, etc.)
+    for (const p of z.scene.props) {
+      if (!p.ground) continue;
+      const img = sprites.get(p.sprite);
+      ctx.drawImage(img, Math.round(p.x - img.width / 2), Math.round(p.y - img.height));
     }
-    ctx.fillStyle = "#f4f4f4";
-    const cx = p.x + p.w / 2;
-    const cy = p.y + p.h / 2;
-    ctx.fillRect(cx - 1, cy - 4, 2, 8);
-    ctx.fillRect(cx - 3, cy - 2, 6, 2);
-    ctx.fillRect(cx - 5, cy, 10, 2);
   }
 
   // ground-level clutter (drive-over items)
@@ -139,8 +179,23 @@ export class Renderer {
       });
     }
     for (const zone of world.zones) {
-      const b = zone.building;
-      drawables.push({ y: b.y + b.h, draw: () => ctx.drawImage(sprites.buildings.get(zone.id)!, b.x, b.y) });
+      for (const p of zone.scene.props) {
+        if (p.ground) continue;
+        const img = sprites.get(p.sprite);
+        const x = Math.round(p.x - img.width / 2);
+        const y = Math.round(p.y - img.height);
+        const small = img.width < 40;
+        drawables.push({
+          y: p.y,
+          draw: () => {
+            if (small) {
+              ctx.fillStyle = GROUND.shadow;
+              ctx.fillRect(x + 1, Math.round(p.y) - 1, img.width - 2, 2);
+            }
+            ctx.drawImage(img, x, y);
+          },
+        });
+      }
     }
     drawables.push({
       y: car.y + 6,

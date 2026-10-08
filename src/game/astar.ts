@@ -1,4 +1,4 @@
-import { TILE, isSolidAtPx } from "./world";
+import { NAV, isSolidAtPx } from "./world";
 import type { World } from "./world";
 
 export interface Vec {
@@ -58,9 +58,9 @@ class MinHeap {
   }
 }
 
-/** 8-neighbour A* over tiles, no corner cutting. Returns tile coordinates start..goal, or null. */
+/** 8-neighbour A* over nav cells, no corner cutting. Returns cell coordinates start..goal, or null. */
 export function findPath(world: World, sx: number, sy: number, gx: number, gy: number): Vec[] | null {
-  const { w, h, solid, nearSolid } = world;
+  const { nw: w, nh: h, plan: solid, nearSolid } = world;
   if (solid[gy * w + gx]) return null;
   const start = sy * w + sx;
   const goal = gy * w + gx;
@@ -146,13 +146,17 @@ export function smoothPath(world: World, points: Vec[]): Vec[] {
   return out;
 }
 
-/** Plan a drive from a pixel position to a goal tile; returns pixel waypoints (start not included). */
-export function planDrive(world: World, from: Vec, goalTile: Vec): Vec[] | null {
-  const sx = Math.floor(from.x / TILE);
-  const sy = Math.floor(from.y / TILE);
-  const tiles = findPath(world, sx, sy, goalTile.x, goalTile.y);
-  if (!tiles) return null;
-  const centers = tiles.slice(1).map((t) => ({ x: t.x * TILE + TILE / 2, y: t.y * TILE + TILE / 2 }));
+/** Plan a drive from a pixel position to a pixel goal; returns pixel waypoints (start not included). */
+export function planDrive(world: World, from: Vec, goal: Vec): Vec[] | null {
+  const cells = findPath(
+    world,
+    Math.floor(from.x / NAV),
+    Math.floor(from.y / NAV),
+    Math.floor(goal.x / NAV),
+    Math.floor(goal.y / NAV)
+  );
+  if (!cells) return null;
+  const centers = cells.slice(1).map((c) => ({ x: c.x * NAV + NAV / 2, y: c.y * NAV + NAV / 2 }));
   if (!centers.length) return [];
   return smoothPath(world, [from, ...centers]);
 }
