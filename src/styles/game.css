@@ -21,8 +21,9 @@ html:has(.game) body {
 
 .game canvas {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   image-rendering: pixelated;
   cursor: crosshair;
   touch-action: none;
@@ -30,6 +31,8 @@ html:has(.game) body {
 
 .labels {
   position: absolute;
+  inset: 0;
+  overflow: hidden;
   pointer-events: none;
 }
 
@@ -48,6 +51,16 @@ html:has(.game) body {
   border-radius: 4px;
   box-shadow: 0 2px 0 var(--accent, var(--frame));
   will-change: transform;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 140ms,
+    visibility 140ms;
+}
+
+.zone-label.visible {
+  opacity: 1;
+  visibility: visible;
 }
 
 .banner {

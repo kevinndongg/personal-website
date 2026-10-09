@@ -1,5 +1,5 @@
 import type { Vec } from "./astar";
-import type { CarDir } from "./sprites";
+export type CarDir = "r" | "l" | "u" | "d";
 
 const MAX_SPEED = 96; // px/s
 const ACCEL = 240;

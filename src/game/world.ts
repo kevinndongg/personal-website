@@ -1,10 +1,12 @@
 import { ZONE_FALLBACK_ACCENTS } from "./palette";
 import { buildScene, sceneSize } from "./scenes";
 import type { Decal, Footprint, Rect, Scene, ZoneVariant } from "./scenes";
-import { SOLID_KINDS } from "./sprites";
-import type { ItemColor, ItemKind } from "./sprites";
 
 export type { Decal, Rect, ZoneVariant };
+
+export type ItemKind = "tire";
+export type ItemColor = "o" | "b" | "r" | "y";
+const SOLID_KINDS = new Set<ItemKind>(["tire"]);
 
 export const TILE = 16;
 export const WORLD_W = 48;
@@ -175,10 +177,34 @@ function dilate(src: Uint8Array, w: number, h: number, r: number): Uint8Array {
   return out;
 }
 
-function stampFootprint(solid: Uint8Array, nw: number, nh: number, x: number, y: number, fp: Footprint) {
+function stampFootprint(
+  solid: Uint8Array,
+  nw: number,
+  nh: number,
+  x: number,
+  y: number,
+  fp: Footprint,
+  angle?: number
+) {
   let x0: number, x1: number, y0: number, y1: number;
   let inside = (_px: number, _py: number) => true;
-  if (fp.kind === "rect") {
+  if (fp.kind === "rect" && angle !== undefined) {
+    // rotated rect centered on (x, y): test each cell center in the footprint's local frame
+    const hw = fp.w / 2;
+    const hh = fp.h / 2;
+    const r = Math.hypot(hw, hh);
+    x0 = x - r;
+    x1 = x + r;
+    y0 = y - r;
+    y1 = y + r;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    inside = (px, py) => {
+      const dx = px - x;
+      const dy = py - y;
+      return Math.abs(dx * cos + dy * sin) <= hw + NAV / 2 && Math.abs(-dx * sin + dy * cos) <= hh + NAV / 2;
+    };
+  } else if (fp.kind === "rect") {
     x0 = x - fp.w / 2;
     x1 = x + fp.w / 2;
     y0 = y - fp.h;
@@ -275,7 +301,7 @@ function tryGenerate(inputs: ZoneInput[], seed: number): World | null {
         for (let dy = 0; dy < per; dy++)
           for (let dx = 0; dx < per; dx++) solid[(ty * per + dy) * nw + tx * per + dx] = 1;
   for (const zone of zones)
-    for (const prop of zone.scene.props) if (prop.solid) stampFootprint(solid, nw, nh, prop.x, prop.y, prop.solid);
+    for (const prop of zone.scene.props) if (prop.solid) stampFootprint(solid, nw, nh, prop.x, prop.y, prop.solid, prop.angle);
 
   const plan = dilate(solid, nw, nh, 1);
   const nearSolid = dilate(solid, nw, nh, 3);
