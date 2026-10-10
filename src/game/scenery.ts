@@ -88,7 +88,7 @@ function omCameraModel(): Group {
       else if (k < 0.65) a = 2.1;
       else if (k < 1.3) a = 2.1 * (1 - ease((k - 0.65) / 0.65));
     }
-    lever.rotation.y = a;
+    lever.rotation.y = -a; // swings toward the back of the camera
     // a soft sweep of light across the glass when the box is hovered
     (glint.material as MeshBasicMaterial).opacity = hover * (0.4 + 0.3 * Math.sin(t * 1.7));
     glint.position.z = -1.5 + Math.sin(t * 1.1) * 2.5;

@@ -22,8 +22,9 @@ export function photoDeskScene(ox: number, oy: number): Scene {
     speckle: ["#3a3735", "#262423"],
   });
 
-  // the camera stands on the left with its lens toward the viewer (south); angle PI/2 turns its +x front to face +y
-  props.push({ sprite: "omcamera", ...at(48, 74), angle: Math.PI / 2, solid: rect(32, 46) });
+  // the camera stands on the left with its lens toward the viewer (south), turned 20 degrees clockwise (toward the west):
+  // PI/2 turns its +x front to face +y, and a larger angle swings the front clockwise on screen
+  props.push({ sprite: "omcamera", ...at(48, 74), angle: Math.PI / 2 + (20 * Math.PI) / 180, solid: rect(32, 46) });
   // the light table on the right, two film strips on it
   props.push({ sprite: "lighttable", ...at(152, 124), solid: rect(120, 104) });
 
