@@ -429,6 +429,213 @@ export function laptopModel(): Group {
   return g;
 }
 
+// ---------------------------------------------------------------- team props (Racing area dressing)
+// Origin = center of the footprint on the ground, +x = front. Sizes follow the footprint passed to createModel.
+
+const STEEL = "#8b909a";
+const DKGREY = "#4a4d57";
+const NEAR_BLACK = "#1b1b22";
+
+/** Low counter along z with small timing screens facing +x. */
+export function pitWallModel(w: number, d: number): Group {
+  const g = new Group();
+  g.add(box(w, 5, d, "#d8dbe2", 0, 0, 0));
+  g.add(box(w + 0.6, 0.8, d + 0.6, STEEL, 0, 5, 0));
+  g.add(box(w + 0.2, 1.4, d + 0.2, "#d02a2c", 0, 1.2, 0)); // red stripe along the counter
+  const screens = Math.max(2, Math.floor(d / 14));
+  for (let i = 0; i < screens; i++) {
+    const z = -d / 2 + (d * (i + 0.5)) / screens;
+    g.add(box(0.8, 4.4, 6.4, NEAR_BLACK, 1, 5.8, z));
+    g.add(box(0.4, 3.4, 5.4, "#7fd6ff", 1.5, 6.2, z)); // lit screen
+    g.add(box(1.6, 0.8, 1.6, STEEL, 0.6, 5.8, z)); // stand
+  }
+  g.add(box(2, 1.2, 2.6, NEAR_BLACK, -1, 5.8, d / 2 - 4)); // headset
+  return g;
+}
+
+/** Tripod with a spinning-LiDAR puck on top. */
+export function lidarModel(): Group {
+  const g = new Group();
+  for (const a of [0, (Math.PI * 2) / 3, (Math.PI * 4) / 3]) {
+    const leg = box(0.8, 9, 0.8, STEEL, Math.cos(a) * 2.4, 0, Math.sin(a) * 2.4);
+    leg.rotation.set(Math.sin(a) * 0.28, 0, -Math.cos(a) * 0.28);
+    g.add(leg);
+  }
+  g.add(cyl(0.7, 0.7, 4, DKGREY, 0, 8, 0, 8)); // mast
+  g.add(cyl(3, 3, 3.6, NEAR_BLACK, 0, 11.6, 0, 12)); // sensor body
+  g.add(cyl(3.2, 3.2, 0.8, "#7fd6ff", 0, 13, 0, 12)); // window band
+  g.add(cyl(2.4, 2.4, 1, DKGREY, 0, 15.2, 0, 12));
+  return g;
+}
+
+/** Yellow emergency-stop box with a red mushroom button. */
+export function estopModel(): Group {
+  const g = new Group();
+  g.add(box(7, 5, 6, "#f6d02a", 0, 0, 0));
+  g.add(box(7.4, 0.8, 6.4, NEAR_BLACK, 0, 0, 0));
+  g.add(cyl(1.8, 1.8, 2, "#d02a2c", 0, 5, 0, 10));
+  g.add(cyl(2.4, 2.4, 0.5, NEAR_BLACK, 0, 5, 0, 10));
+  return g;
+}
+
+/** Small utility cart with a laptop on it. */
+export function cartModel(): Group {
+  const g = new Group();
+  for (const [x, z] of [
+    [-5, -3],
+    [5, -3],
+    [-5, 3],
+    [5, 3],
+  ])
+    g.add(box(0.9, 5, 0.9, STEEL, x, 0.8, z));
+  g.add(box(12, 1, 8, DKGREY, 0, 5.4, 0));
+  g.add(box(10, 0.8, 6, "#b8bcc4", 0, 4, 0)); // lower shelf
+  const lap = laptopModel();
+  lap.position.set(0, 6.4, 0);
+  g.add(lap);
+  for (const [x, z] of [
+    [-5, -3.6],
+    [5, -3.6],
+    [-5, 3.6],
+    [5, 3.6],
+  ])
+    g.add(cyl(0.9, 0.9, 0.8, NEAR_BLACK, x, 0, z, 6));
+  return g;
+}
+
+export function toolChestModel(w: number, d: number): Group {
+  const g = new Group();
+  g.add(box(w, 12, d, "#d02a2c", 0, 2, 0));
+  g.add(box(w + 0.4, 1, d + 0.4, NEAR_BLACK, 0, 14, 0));
+  for (let i = 0; i < 3; i++) g.add(box(0.5, 0.6, d - 2, NEAR_BLACK, w / 2 + 0.1, 4.5 + i * 3.2, 0)); // drawer lines
+  g.add(box(0.6, 0.6, 4, "#d8dbe2", w / 2 + 0.2, 11.6, 0));
+  for (const x of [-w / 2 + 1.4, w / 2 - 1.4])
+    for (const z of [-d / 2 + 1.2, d / 2 - 1.2]) g.add(cyl(1, 1, 2, NEAR_BLACK, x, 0, z, 6));
+  return g;
+}
+
+/** Team transport: a white box truck with a red band and a checkered cab, towing an open trailer with a car chassis.
+ *  +x = front (cab), length w, width d. */
+export function trailerModel(w: number, d: number): Group {
+  const g = new Group();
+  const RED = "#d02a2c";
+  const x0 = -w / 2;
+
+  // open car trailer at the back with a rolling chassis strapped on
+  const deckLen = 32;
+  const dc = x0 + deckLen / 2;
+  g.add(box(deckLen, 1.4, 16, "#5d6068", dc, 3.2, 0));
+  g.add(box(deckLen, 1.2, 0.8, "#8b909a", dc, 4.6, 7.6));
+  g.add(box(deckLen, 1.2, 0.8, "#8b909a", dc, 4.6, -7.6));
+  for (const x of [dc - 5, dc + 5]) for (const z of [-9.6, 9.6]) g.add(wheel(3.2, 2.2, x, 3.2, z));
+  g.add(box(8, 1, 1.4, "#5d6068", x0 + deckLen + 3, 3.4, 0)); // tow bar
+  g.add(box(13, 2.2, 4.2, RED, dc, 4.6, 0)); // chassis tub
+  g.add(box(5, 1.6, 2.2, RED, dc + 8, 4.6, 0)); // nose
+  g.add(box(2, 0.6, 9, "#f4f4f4", dc + 10.6, 4.8, 0)); // front wing
+  g.add(box(2, 0.6, 7, "#f4f4f4", dc - 7, 8, 0)); // rear wing
+  for (const x of [dc - 5, dc + 6]) for (const z of [-3.4, 3.4]) g.add(wheel(1.9, 1.8, x, 6.1, z));
+
+  // box truck
+  const cargoX = x0 + deckLen + 6;
+  const cargoLen = 32;
+  const cc = cargoX + cargoLen / 2;
+  g.add(box(cargoLen, 2, 16, "#2c2f38", cc, 2, 0)); // underframe
+  g.add(box(cargoLen, 22, d - 4, "#f4f4f4", cc, 4, 0)); // cargo box
+  g.add(box(cargoLen + 0.4, 6, d - 3.6, RED, cc, 11, 0)); // red band
+  g.add(box(cargoLen + 0.6, 1.2, d - 3.4, "#9a9ea8", cc, 26, 0)); // roof lip
+  g.add(box(0.5, 16, 0.5, "#8b909a", cargoX + 0.4, 6, 0)); // rear door seam
+
+  const cabX = cargoX + cargoLen;
+  g.add(box(14, 15, d - 6, "#f4f4f4", cabX + 7, 4, 0)); // cab
+  g.add(box(0.6, 6, d - 10, "#7fd6ff", cabX + 14.1, 10, 0)); // windshield
+  g.add(box(6, 8, d - 8, "#f4f4f4", cabX + 17, 3, 0)); // hood
+  g.add(box(6.2, 0.5, 4, RED, cabX + 17, 11, 4)); // hood stripes
+  g.add(box(6.2, 0.5, 4, RED, cabX + 17, 11, -4));
+  g.add(box(2, 3, d - 6, "#b8bcc4", cabX + 20.4, 2, 0)); // bumper
+  g.add(box(0.5, 1.4, 2, "#f6d02a", cabX + 20.3, 7, 6));
+  g.add(box(0.5, 1.4, 2, "#f6d02a", cabX + 20.3, 7, -6));
+  // checkered graphic on the cab doors (both sides)
+  const [c, ctx] = canvasOf(12, 8);
+  for (let y = 0; y < 8; y += 2)
+    for (let x = 0; x < 12; x += 2) fillRect(ctx, x, y, 2, 2, (x + y) % 4 === 0 ? RED : "#f4f4f4");
+  const check = nearestTexture(c);
+  for (const side of [1, -1]) {
+    const m = new Mesh(new PlaneGeometry(10, 7), new MeshBasicMaterial({ map: check }));
+    m.position.set(cabX + 7, 9, side * (d - 6) / 2 + side * 0.05);
+    m.rotation.y = side > 0 ? 0 : Math.PI;
+    g.add(m);
+  }
+  for (const z of [-1, 1]) {
+    g.add(wheel(4.4, 4, cc - 8, 4.4, z * (d / 2 - 1.4)));
+    g.add(wheel(4.4, 4, cc + 2, 4.4, z * (d / 2 - 1.4)));
+    g.add(wheel(4.2, 3.4, cabX + 12, 4.2, z * (d / 2 - 2.6)));
+  }
+  return g;
+}
+
+/** Pop-up canopy: tall legs, striped valance and a peaked striped roof so it reads as a tent. */
+export function tentModel(w: number, d: number): Group {
+  const g = new Group();
+  const [c, ctx] = canvasOf(16, 4);
+  for (let i = 0; i < 8; i++) fillRect(ctx, i * 2, 0, 2, 4, i % 2 ? "#f4f4f4" : "#d02a2c");
+  const tex = nearestTexture(c);
+  const stripe = new MeshToonMaterial({ map: tex, gradientMap: gradient });
+
+  const legH = 17;
+  for (const x of [-w / 2 + 1, w / 2 - 1])
+    for (const z of [-d / 2 + 1, d / 2 - 1]) g.add(box(1.2, legH, 1.2, STEEL, x, 0, z));
+  g.add(mesh(new BoxGeometry(w + 1, 4, d + 1), stripe, 0, legH + 2, 0)); // striped valance
+  const roof = new ConeGeometry((Math.max(w, d) / 2 + 0.5) * Math.SQRT2, 15, 4, 1, false);
+  roof.rotateY(Math.PI / 4);
+  g.add(mesh(roof, stripe, 0, legH + 4 + 7.5, 0));
+  g.add(cyl(0.6, 0.6, 2.4, STEEL, 0, legH + 4 + 15, 0, 6)); // finial
+  g.add(box(w - 6, 0.6, d - 6, "#2c2f38", 0, 0, 0)); // shade under the tent
+  return g;
+}
+
+/** Spare slicks stacked on a yellow pallet. */
+export function tireRackModel(w: number, d: number): Group {
+  const g = new Group();
+  g.add(box(w, 1.6, d, "#f6d02a", 0, 0, 0));
+  g.add(box(w + 0.4, 0.5, 1.2, NEAR_BLACK, 0, 0.6, d / 2 - 1.4));
+  g.add(box(w + 0.4, 0.5, 1.2, NEAR_BLACK, 0, 0.6, -d / 2 + 1.4));
+  const stacks = Math.max(2, Math.floor(w / 9));
+  for (let i = 0; i < stacks; i++) {
+    const x = -w / 2 + (w * (i + 0.5)) / stacks;
+    for (let k = 0; k < 3; k++) g.add(cyl(4.4, 4.5, 2.6, "#26262c", x, 1.6 + k * 2.7, 0, 12));
+    g.add(cyl(2, 2, 0.4, "#8b909a", x, 1.6 + 3 * 2.7, 0, 10)); // hub on the top tire
+  }
+  return g;
+}
+
+/** Someone sitting on the ground, facing +x. */
+export function sittingPersonModel(key: string): Group {
+  const looks: Record<string, [string, string]> = {
+    r: ["#d8322c", "#f4f4f4"],
+    w: ["#f4f4f4", "#d8322c"],
+    b: ["#2f74e0", "#16161d"],
+  };
+  const [shirt, cap] = looks[key] ?? looks.r;
+  const g = new Group();
+  g.add(box(4.4, 4.6, 2.8, shirt, -1, 0.8, 0)); // torso
+  g.add(box(3.2, 3, 3.2, "#e8b890", -1, 5.4, 0)); // head
+  g.add(box(3.6, 1.2, 3.6, cap, -1, 7.9, 0)); // cap
+  for (const z of [-1.2, 1.2]) g.add(box(5.6, 1.6, 1.6, "#2a3a6a", 3, 0, z)); // legs out front
+  for (const z of [-2.6, 2.6]) g.add(box(2.6, 1.2, 1, shirt, 1, 2.4, z)); // arms
+  return g;
+}
+
+/** Wall-mounted extinguisher (bracket on the -z side, which sits against the wall). */
+export function extinguisherModel(): Group {
+  const g = new Group();
+  g.add(cyl(1.3, 1.3, 6, "#d02a2c", 0, 0, 0, 8));
+  g.add(cyl(0.5, 0.5, 1.2, NEAR_BLACK, 0, 6, 0, 6));
+  g.add(box(2, 0.5, 0.6, NEAR_BLACK, 0.9, 7, 0));
+  g.add(box(2.4, 1, 0.6, STEEL, 0, 3.2, -1.5));
+  g.add(box(1.8, 1.4, 0.2, "#f4f4f4", 0, 4.8, 1.35)); // label
+  return g;
+}
+
 export function hazardWallTexture(): CanvasTexture {
   const [c, ctx] = canvasOf(16, 16);
   fillRect(ctx, 0, 0, 16, 16, "#24252b");
@@ -445,7 +652,26 @@ export function createModel(id: string, footprint: Footprint | undefined, zones:
   if (id.startsWith("bld:")) return buildingModel(w, d, zones.find((z) => z.id === id.slice(4))!);
   if (id.startsWith("cone-")) return coneModel(id.slice(5));
   if (id.startsWith("person-")) return personModel(id.slice(7));
+  if (id.startsWith("sit-")) return sittingPersonModel(id.slice(4));
   switch (id) {
+    case "pitwall":
+      return pitWallModel(w, d);
+    case "lidar":
+      return lidarModel();
+    case "estop":
+      return estopModel();
+    case "cart":
+      return cartModel();
+    case "trailer":
+      return trailerModel(w, d);
+    case "tent":
+      return tentModel(w, d);
+    case "tirerack":
+      return tireRackModel(w, d);
+    case "toolchest":
+      return toolChestModel(w, d);
+    case "extinguisher":
+      return extinguisherModel();
     case "formula":
       return formulaModel();
     case "battery":

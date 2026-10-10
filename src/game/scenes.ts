@@ -21,6 +21,8 @@ export interface Prop {
   x: number; // bottom-center, px
   y: number;
   solid?: Footprint;
+  /** Height (px) the model is raised off the floor, e.g. a car on a lift. */
+  elevation?: number;
   /** Rotation about the vertical axis: the direction (radians, world plane, y = south) the model's front (+x) faces.
    *  When set, x/y is the prop's center instead of its bottom-center, and a rect footprint rotates with it. */
   angle?: number;
@@ -42,21 +44,21 @@ export interface Scene {
 
 export type ZoneVariant = "garage" | "building" | "office";
 
-export const GARAGE_W = 120;
+export const GARAGE_W = 150; // roofed workshop + a 66 px open bay big enough for the formula car
 export const GARAGE_H = 56;
 
 const BUILDING = { building: { w: 128, h: 80 }, office: { w: 96, h: 80 } } as const;
 
 /** Area size (px, tile multiples) for a variant. */
 export function sceneSize(variant: ZoneVariant): { w: number; h: number } {
-  if (variant === "garage") return { w: 272, h: 384 };
+  if (variant === "garage") return { w: 224, h: 256 };
   return { w: BUILDING[variant].w + 32, h: 144 };
 }
 
 const circle = (r: number): Footprint => ({ kind: "circle", r });
 const rect = (w: number, h: number): Footprint => ({ kind: "rect", w, h });
 
-/** Carnegie Mellon Racing: garage angled 37 deg south of east, formula car on batteries in front of it, a curved cone track to a finish line. */
+/** Carnegie Mellon Racing: garage angled 37 deg south of east, the formula car parked in its open bay, a curved cone track to a finish line. */
 function racingScene(ox: number, oy: number): Scene {
   const { w, h } = sceneSize("garage");
   const at = (x: number, y: number) => ({ x: ox + x, y: oy + y });
@@ -69,55 +71,113 @@ function racingScene(ox: number, oy: number): Scene {
     y: p.y + f.y * a + s.y * b,
   });
 
-  const C = at(66, 62); // garage center; its left corner sits against the map edge
-  const F = along(C, 96, 0); // formula car, in front of the bay
-  const building = { x: C.x - 65, y: C.y - 59, w: 130, h: 117 }; // bounding box of the rotated garage
+  const C = at(78, 69); // garage center; its left corner sits against the map edge
+  const M = along(C, 75, 0); // mouth of the bay (its open east end)
+  const bay = along(C, 42, 0); // center of the bay: the car parks here
+  const building = { x: C.x - 77, y: C.y - 68, w: 154, h: 136 }; // bounding box of the rotated garage
 
   const props: Prop[] = [
     { sprite: "garage", ...C, angle: ANGLE, solid: rect(GARAGE_W, GARAGE_H) },
-    { sprite: "formula", ...F, angle: ANGLE, solid: rect(62, 33) },
-    { sprite: "battery", ...along(F, -8, -29), angle: ANGLE, solid: rect(8, 5) },
-    { sprite: "battery", ...along(F, 6, -29), angle: ANGLE, solid: rect(8, 5) },
-    { sprite: "tirestack", ...along(F, -8, 52), solid: circle(4.5) },
-    { sprite: "person-r", ...along(F, 2, 35), solid: circle(3) },
-    { sprite: "person-w", ...along(F, 44, -4), solid: circle(3) },
-    { sprite: "person-b", ...along(F, -12, -42), solid: circle(3) },
-    { sprite: "laptop", ...along(F, 14, 46), ground: true },
+    // parked inside the bay, nose toward the opening (the garage footprint already blocks the space)
+    { sprite: "formula", ...bay, angle: ANGLE, elevation: 1 }, // on the bay floor
+    // just outside the mouth: batteries plugged in, crew, a tire stack against the garage's south wall
+    { sprite: "battery", ...along(M, 6, -34), angle: ANGLE, solid: rect(8, 5) },
+    { sprite: "battery", ...along(M, 18, -34), angle: ANGLE, solid: rect(8, 5) },
+    { sprite: "tirestack", ...along(C, -10, 36), solid: circle(4.5) },
+    { sprite: "extinguisher", ...along(C, -26, 29.4), elevation: 3 }, // mounted on the wall next to the tires
+    { sprite: "person-r", ...along(M, 14, 42), solid: circle(3) },
+    { sprite: "person-w", ...along(M, 10, -50), solid: circle(3) },
+    { sprite: "person-b", ...along(M, -8, -46), solid: circle(3) },
+    { sprite: "laptop", ...along(M, 24, 36), ground: true },
   ];
 
-  // cone track: one clockwise bend of constant width. Inside boundary = blue cones, outside = yellow,
-  // each boundary evenly spaced along its own length; the finish line closes the track between the end cones.
-  const TURN_START = (60 * Math.PI) / 180; // heading at the start (down-right), radians, y = south
-  const TURN = (80 * Math.PI) / 180; // how far the track bends
-  const R = 65; // centerline radius
-  const half = 14; // half the track width: inner radius R - half, outer R + half
-  const GAP = 20; // target spacing between neighbouring cones on a boundary
-  const start = { x: F.x + 48, y: F.y + 52 }; // centerline start, just ahead of the formula car
-  const arcCenter = { x: start.x - R * Math.sin(TURN_START), y: start.y + R * Math.cos(TURN_START) };
-  const onArc = (radius: number, heading: number) => ({
-    x: arcCenter.x + radius * Math.sin(heading),
-    y: arcCenter.y - radius * Math.cos(heading),
-  });
-  for (const [radius, sprite] of [
-    [R - half, "cone-b"],
-    [R + half, "cone-y"],
-  ] as const) {
-    const n = Math.round((radius * TURN) / GAP) + 1; // cones including both ends
-    for (let i = 0; i < n; i++) {
-      const pos = onArc(radius, TURN_START + (TURN * i) / (n - 1));
-      props.push({ sprite, ...pos, solid: circle(3) });
+  // team dressing around the garage (all positions area-relative, bottom-center anchors)
+  props.push(
+    { sprite: "pitwall", ...at(114, 208), solid: rect(8, 44) },
+    { sprite: "lidar", ...at(204, 44), solid: circle(5) },
+    { sprite: "estop", ...at(184, 48), solid: rect(10, 8) },
+    { sprite: "cart", ...at(160, 44), solid: rect(18, 12) },
+    { sprite: "trailer", ...at(58, 246), solid: rect(92, 28) },
+    { sprite: "tent", ...at(58, 176), solid: rect(28, 28) },
+    { sprite: "sit-r", ...at(42, 190), angle: 0.5, solid: circle(3.5) },
+    { sprite: "sit-w", ...at(56, 193), angle: 0.9, solid: circle(3.5) },
+    { sprite: "sit-b", ...at(70, 190), angle: 0.3, solid: circle(3.5) },
+    { sprite: "tirerack", ...at(26, 160), solid: rect(32, 14) },
+    { sprite: "toolchest", ...at(22, 208), solid: rect(18, 12) },
+  );
+
+  // slalom: starts right at the bay mouth, straight ahead of the car, then curves south as it weaves.
+  // Constant width (28), cones evenly spaced along each boundary: left side blue, right side yellow.
+  const half = 14; // half the track width
+  const GAP = 18; // target spacing between neighbouring cones on a boundary
+  const WEAVE = 8; // sideways swing of the centerline (kept gentle so the inside boundary never folds over itself)
+  const PERIOD = 96; // length of one weave
+  const STEP = 0.5;
+  const base: { x: number; y: number; s: number }[] = [];
+  let pos = { x: M.x, y: M.y };
+  let heading = ANGLE;
+  let travelled = 0;
+  const advance = (length: number, turn: number) => {
+    // turn = total heading change (radians, clockwise on screen) spread evenly over `length`
+    for (let d = 0; d < length; d += STEP) {
+      base.push({ ...pos, s: travelled });
+      heading += (turn * STEP) / length;
+      pos = { x: pos.x + Math.cos(heading) * STEP, y: pos.y + Math.sin(heading) * STEP };
+      travelled += STEP;
     }
-  }
-  const finish = onArc(R, TURN_START + TURN);
-  const finishAngle = Math.atan2(-Math.cos(TURN_START + TURN), Math.sin(TURN_START + TURN)); // across the track
+  };
+  advance(24, 0); // straight out of the bay
+  advance(49, (40 * Math.PI) / 180); // swing toward the south
+  advance(52, 0);
+  base.push({ ...pos, s: travelled });
+  const center = base.map((p, i) => {
+    const q = base[Math.min(i + 1, base.length - 1)];
+    const o = base[Math.max(i - 1, 0)];
+    const len = Math.hypot(q.x - o.x, q.y - o.y) || 1;
+    const t = { x: (q.x - o.x) / len, y: (q.y - o.y) / len };
+    const ramp = Math.min(1, p.s / 30); // no sideways swing at the start so the first gate lines up with the car
+    const w = WEAVE * ramp * Math.sin((2 * Math.PI * p.s) / PERIOD);
+    return { x: p.x - t.y * w, y: p.y + t.x * w };
+  });
 
+  const offset = (side: number) =>
+    center.map((p, i) => {
+      const q = center[Math.min(i + 1, center.length - 1)];
+      const o = center[Math.max(i - 1, 0)];
+      const len = Math.hypot(q.x - o.x, q.y - o.y) || 1;
+      const t = { x: (q.x - o.x) / len, y: (q.y - o.y) / len };
+      return { x: p.x - t.y * side, y: p.y + t.x * side }; // normal = (-t.y, t.x)
+    });
+  const evenly = (pts: { x: number; y: number }[], gap: number) => {
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+    const total = cum[cum.length - 1];
+    const n = Math.max(2, Math.round(total / gap) + 1);
+    const out: { x: number; y: number }[] = [];
+    let j = 0;
+    for (let i = 0; i < n; i++) {
+      const target = (total * i) / (n - 1);
+      while (j < cum.length - 2 && cum[j + 1] < target) j++;
+      const span = cum[j + 1] - cum[j] || 1;
+      const t = (target - cum[j]) / span;
+      out.push({ x: pts[j].x + (pts[j + 1].x - pts[j].x) * t, y: pts[j].y + (pts[j + 1].y - pts[j].y) * t });
+    }
+    return out;
+  };
+  for (const p of evenly(offset(half), GAP)) props.push({ sprite: "cone-b", ...p, solid: circle(3) });
+  for (const p of evenly(offset(-half), GAP)) props.push({ sprite: "cone-y", ...p, solid: circle(3) });
+
+  const finish = center[center.length - 1];
+  const prev = center[center.length - 3];
+  const endT = { x: finish.x - prev.x, y: finish.y - prev.y };
+  const endLen = Math.hypot(endT.x, endT.y) || 1;
+  const finishAngle = Math.atan2(endT.x / endLen, -endT.y / endLen); // direction across the track
   const decals: Decal[] = [
-    { kind: "frame", ...F, w: 76, h: 44, angle: ANGLE, color: "#c9a526", fill: "#474853" },
     { kind: "checker", x: finish.x, y: finish.y, w: 2 * half - 6, h: 8, angle: finishAngle },
-    { kind: "cable", points: [along(F, -8, -26), along(F, -6, -22), along(F, -9, -18)] },
+    { kind: "cable", points: [along(M, 6, -32), along(M, 2, -26), along(M, -1, -21)] },
   ];
 
-  const stop = along(F, 6, -60);
+  const stop = along(M, 40, -42); // clear of the slalom, up and to the right of the bay
   return {
     area: { x: ox, y: oy, w, h },
     building,

@@ -82,11 +82,17 @@ const GLOW = 0.14; // how much brighter the ground gets (white overlay opacity)
 
 const VISUAL_SCALE: Record<string, number> = {
   cone: 1.3,
-  person: 1.4,
-  battery: 1.3,
-  laptop: 1.4,
-  tirestack: 1.3,
+  person: 1.5,
+  battery: 1.5,
+  laptop: 1.6,
+  tirestack: 1.4,
   formula: 1.42,
+  // team dressing: drawn oversized so each piece stays recognizable on the 2x pixel board
+  lidar: 2.0,
+  estop: 2.3,
+  extinguisher: 2.2,
+  sit: 1.5,
+  cart: 2.0,
 };
 
 export class Renderer3D {
@@ -245,8 +251,8 @@ export class Renderer3D {
         if (p.angle !== undefined) cz = p.y;
         else if (fp?.kind === "rect") cz = p.y - fp.h / 2;
         else if (fp?.kind === "circle") cz = p.y - fp.r;
-        model.position.set(cx, 0, cz);
-        model.userData.baseY = 0;
+        model.position.set(cx, p.elevation ?? 0, cz);
+        model.userData.baseY = p.elevation ?? 0;
         this.snapped.push({ obj: model, x: cx, z: cz });
         if (p.angle !== undefined) model.rotation.y = -p.angle;
         const k = VISUAL_SCALE[p.sprite.split("-")[0]] ?? 1; // small props are drawn a bit oversized so they read at this resolution
