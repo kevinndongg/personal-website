@@ -31,6 +31,7 @@ export interface ZoneInput {
   period?: string;
   organization?: string;
   techStack?: string[];
+  bullets?: string[];
   image?: string;
   thumbs?: string[];
 }

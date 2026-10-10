@@ -232,7 +232,7 @@ export class Renderer3D {
   private base = { wpp: 1, left: 0, top: 0 };
   private view = { wpp: 1, left: 0, top: 0 };
   private target = { wpp: 1, left: 0, top: 0 };
-  private focused: { zoneId: string; panel: "left" | "right" | "bottom" } | null = null;
+  private focused: { zoneId: string; panel: "left" | "right" | "bottom"; frac: number } | null = null;
   private focusAmt = 0; // 0..1, eased: how strongly the rest of the map is dimmed/blurred
   private lastTime = 0;
   private focusRect = new Vector4(0, 0, 0, 0);
@@ -504,9 +504,12 @@ export class Renderer3D {
     this.retarget(true);
   }
 
-  /** Zoom the camera onto a project box (or back out with null). `panel` is where the info panel sits. */
-  focus(zoneId: string | null, panel: "left" | "right" | "bottom" = "right") {
-    this.focused = zoneId ? { zoneId, panel } : null;
+  /**
+   * Zoom the camera onto a project box (or back out with null). `panel` is where the info panel sits and `frac` how much
+   * of the screen it covers (0..1 of the width for left/right; the sheet's height for bottom).
+   */
+  focus(zoneId: string | null, panel: "left" | "right" | "bottom" = "right", frac = 0.4) {
+    this.focused = zoneId ? { zoneId, panel, frac } : null;
     this.retarget(false);
   }
 
@@ -537,12 +540,13 @@ export class Renderer3D {
           }
         }
         // the part of the screen left over for the 3D view once the panel is open
+        const free = 1 - f.frac;
         const region =
           f.panel === "bottom"
-            ? { cx: 0.5, cy: 0.27, w: 1, h: 0.5 }
+            ? { cx: 0.5, cy: free / 2 + 0.02, w: 1, h: free }
             : f.panel === "right"
-              ? { cx: 0.3, cy: 0.5, w: 0.6, h: 1 }
-              : { cx: 0.7, cy: 0.5, w: 0.6, h: 1 };
+              ? { cx: free / 2, cy: 0.5, w: free, h: 1 }
+              : { cx: 1 - free / 2, cy: 0.5, w: free, h: 1 };
         const wpp = Math.min(
           this.base.wpp,
           Math.max((maxX - minX) / (this.width * region.w * 0.82), (maxY - minY) / (this.height * region.h * 0.82))

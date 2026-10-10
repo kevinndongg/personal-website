@@ -508,7 +508,7 @@ export function toolChestModel(w: number, d: number): Group {
 
 /** Team transport: a white box truck with a red band and a checkered cab, towing an open trailer with a car chassis.
  *  +x = front (cab), length w, width d. */
-/** Pop-up canopy: tall legs, striped valance and a peaked striped roof so it reads as a tent. */
+/** Pop-up canopy: tall legs, a striped valance and a peaked solid-red roof so it reads as a tent. */
 export function tentModel(w: number, d: number): Group {
   const g = new Group();
   const [c, ctx] = canvasOf(16, 4);
@@ -522,7 +522,7 @@ export function tentModel(w: number, d: number): Group {
   g.add(mesh(new BoxGeometry(w + 1, 4, d + 1), stripe, 0, legH + 2, 0)); // striped valance
   const roof = new ConeGeometry((Math.max(w, d) / 2 + 0.5) * Math.SQRT2, 15, 4, 1, false);
   roof.rotateY(Math.PI / 4);
-  g.add(mesh(roof, stripe, 0, legH + 4 + 7.5, 0));
+  g.add(mesh(roof, toon("#d02a2c"), 0, legH + 4 + 7.5, 0)); // solid red roof over the striped valance
   g.add(cyl(0.6, 0.6, 2.4, STEEL, 0, legH + 4 + 15, 0, 6)); // finial
   g.add(box(w - 6, 0.6, d - 6, "#2c2f38", 0, 0, 0)); // shade under the tent
   return g;

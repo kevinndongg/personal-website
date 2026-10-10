@@ -12,22 +12,46 @@ const featured = [...photos.filter((p) => p.data.featured), ...photos.filter((p)
 
 const thumbs = await Promise.all(featured.map(async (p) => (await getImage({ src: p.data.image, width: 360 })).src));
 
+/** The project's markdown body: the lead sentence(s), and the bullet list that carries the results. */
+function parseBody(body = "") {
+  const lines = body
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const isBullet = (l: string) => /^[-*]\s+/.test(l);
+  return {
+    lead: lines.filter((l) => !isBullet(l)).join(" "),
+    bullets: lines.filter(isBullet).map((l) => l.replace(/^[-*]\s+/, "")),
+  };
+}
+
 const zones = [
   ...(await Promise.all(
-    projects.map(async (p) => ({
-      id: p.id,
-      kind: "project" as const,
-      label: p.data.title,
-      summary: p.data.summary,
-      variant: p.id === "cmu-racing" ? ("garage" as const) : undefined,
-      href: withBase(`projects/${p.id}`),
-      accent: p.data.accentColor,
-      role: p.data.role,
-      period: p.data.period ?? p.data.dateRange,
-      organization: p.data.organization,
-      techStack: p.data.techStack?.slice(0, 6),
-      image: p.data.image ? (await getImage({ src: p.data.image, width: 900 })).src : undefined,
-    }))
+    projects.map(async (p) => {
+      const { lead, bullets } = parseBody(p.body);
+      const links = p.data.links ?? {};
+      return {
+        id: p.id,
+        kind: "project" as const,
+        label: p.data.title,
+        summary: lead || p.data.summary,
+        bullets,
+        variant: p.id === "cmu-racing" ? ("garage" as const) : undefined,
+        href: withBase(`projects/${p.id}`),
+        accent: p.data.accentColor,
+        role: p.data.role,
+        period: p.data.period ?? p.data.dateRange,
+        organization: p.data.organization,
+        techStack: p.data.techStack,
+        // a small logo chip beside the title
+        image: p.data.image ? (await getImage({ src: p.data.image, width: 160 })).src : undefined,
+        actions: [
+          links.paper && { label: "Read the paper", href: links.paper, external: true },
+          links.repo && { label: "Source code", href: links.repo, external: true },
+          links.demo && { label: "Live demo", href: links.demo, external: true },
+        ].filter(Boolean),
+      };
+    })
   )),
   {
     id: "gallery",
@@ -35,6 +59,7 @@ const zones = [
     label: "Photo Gallery",
     summary: `${photos.length} photos I took just for fun — quiet streets, soft light, small moments.`,
     href: withBase("photography"),
+    actions: [{ label: "Open the gallery", href: withBase("photography") }],
     accent: "#8a4fd0",
     thumbs,
   },
@@ -60,15 +85,22 @@ const zones = [
 
     <div class="backdrop" data-backdrop hidden></div>
     <aside class="panel" data-panel hidden role="dialog" aria-modal="true" aria-labelledby="panel-title">
+      <button class="grip" type="button" data-grip aria-label="Show more or less" aria-expanded="false"><span></span></button>
       <button class="close" type="button" data-close aria-label="Close">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"></path></svg>
       </button>
       <div class="media" data-media hidden></div>
       <div class="body">
-        <p class="kicker" data-kicker></p>
-        <h2 id="panel-title" data-title></h2>
-        <p class="role" data-role></p>
+        <header class="head">
+          <img class="logo" data-logo alt="" hidden />
+          <div class="head-text">
+            <p class="kicker" data-kicker></p>
+            <h2 id="panel-title" data-title></h2>
+            <p class="role" data-role></p>
+          </div>
+        </header>
         <p class="summary" data-summary></p>
+        <ul class="bullets" data-bullets></ul>
         <ul class="tags" data-tags></ul>
         <div class="actions" data-actions></div>
       </div>

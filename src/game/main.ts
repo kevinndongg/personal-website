@@ -47,20 +47,83 @@ export function startGame(root: HTMLElement): () => void {
     return world.zones.find((z) => rectContains(z.scene.area, x, y)) ?? null;
   }
 
-  function open(zone: Zone) {
+  // Deep links use the URL hash (/play#ftc). A hash change is not a page navigation, so the router leaves the scene
+  // alone, and the browser's Back button closes the panel again.
+  let ownEntry = false; // we pushed the "#id" history entry ourselves (so closing can pop it)
+  let syncing = false; // a close that came from the URL, which must not touch the URL again
+
+  function zoneById(id: string): Zone | undefined {
+    return id ? world.zones.find((z) => z.id === id) : undefined;
+  }
+
+  let openZone: Zone | null = null;
+  let openSide: PanelSide = "right";
+
+  /** The panel goes opposite the box (or becomes a bottom sheet on narrow screens). */
+  function sideFor(zone: Zone): PanelSide {
     const a = zone.scene.area;
     const narrow = innerWidth < 760 || innerWidth < innerHeight * 0.9;
-    const side: PanelSide = narrow ? "bottom" : a.x + a.w / 2 < mapSize / 2 ? "right" : "left";
-    renderer.focus(zone.id, side);
+    return narrow ? "bottom" : a.x + a.w / 2 < mapSize / 2 ? "right" : "left";
+  }
+
+  function open(zone: Zone, fromUrl = false) {
+    const side = sideFor(zone);
+    openZone = zone;
+    openSide = side;
+    renderer.focus(zone.id, side, panel.coverage(side));
     panel.open(zone, side);
     hoveredId = zone.id;
     hint?.classList.add("gone");
+    if (!fromUrl && location.hash.slice(1) !== zone.id) {
+      ownEntry = true;
+      location.hash = zone.id;
+    }
   }
 
   panel.onClose = () => {
     renderer.focus(null);
     hoveredId = null;
+    openZone = null;
+    if (syncing || !location.hash) return;
+    if (ownEntry) {
+      ownEntry = false;
+      history.back(); // pops the entry we pushed; the resulting hashchange finds the panel already closed
+    } else {
+      // opened straight from a shared link: just drop the hash, don't leave the site
+      history.replaceState(history.state, "", location.pathname + location.search);
+    }
   };
+
+  addEventListener(
+    "hashchange",
+    () => {
+      const zone = zoneById(location.hash.slice(1));
+      if (zone) {
+        if (!panel.isOpen || openZone !== zone) open(zone, true);
+      } else if (panel.isOpen) {
+        syncing = true;
+        ownEntry = false;
+        panel.close();
+        syncing = false;
+      }
+    },
+    { signal }
+  );
+
+  // keep the panel and the camera framing in step with the window (e.g. rotating a phone)
+  addEventListener(
+    "resize",
+    () => {
+      if (!openZone) return;
+      if (sideFor(openZone) !== openSide) open(openZone, true);
+      else renderer.focus(openZone.id, openSide, panel.coverage(openSide));
+    },
+    { signal }
+  );
+
+  // a shared link opens its panel right away (the camera eases in from the full map)
+  const linked = zoneById(location.hash.slice(1));
+  if (linked) open(linked, true);
 
   canvas.addEventListener(
     "pointermove",
