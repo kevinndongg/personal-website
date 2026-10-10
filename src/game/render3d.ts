@@ -1,21 +1,22 @@
 import {
   AmbientLight,
   BoxGeometry,
-  BasicShadowMap,
   CanvasTexture,
   Color,
   ColorManagement,
   DirectionalLight,
   Group,
+  HemisphereLight,
   InstancedMesh,
+  LinearFilter,
+  LinearMipmapLinearFilter,
   LinearSRGBColorSpace,
-  Material,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
-  NearestFilter,
   Object3D,
   OrthographicCamera,
+  PCFSoftShadowMap,
   PlaneGeometry,
   Plane,
   Raycaster,
@@ -41,44 +42,59 @@ export interface Marker {
   y: number;
 }
 
-// Colors are authored as plain sRGB hex values and used as-is (no color management),
-// so the palette in the code is exactly what ends up on screen.
+// Colors are authored as plain sRGB hex values; lighting is tuned by eye, so no color management.
 ColorManagement.enabled = false;
 
 const TILT = (58 * Math.PI) / 180; // camera elevation above the horizon
-const YAW = 0; // straight-on: map edges line up with the pixel grid
+const YAW = 0;
 const CAM_DIST = 2500; // orthographic: distance only has to clear the scene
-/** Each rendered pixel is shown as this many CSS pixels (a whole number, so every pixel is the same size). */
-const PIXEL_CSS = 2;
-/** The road car's visual heading snaps to this many directions (its steering stays continuous). */
-const CAR_STEPS = 24;
+/** Cap on the device pixel ratio we render at (keeps big/hi-dpi screens fast). */
+const MAX_RENDER_RATIO = 1.5;
 
-const EDGE_VS = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
-// Draws the scene color, plus a 1px dark outline on every object pixel that touches a different object id.
-const EDGE_FS = `
+// ------------------------------------------------------------------ "cinematic miniature" post pass
+// Tilt-shift blur toward the top/bottom edges, a muted green/warm grade, vignette and a touch of film grain.
+const POST_VS = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+const POST_FS = `
   uniform sampler2D tColor;
-  uniform sampler2D tId;
   uniform vec2 texel;
-  uniform vec3 outline;
+  uniform float time;
+  uniform vec2 res;
   varying vec2 vUv;
-  float differs(vec3 a, vec3 b) { return step(0.002, abs(a.r - b.r) + abs(a.g - b.g) + abs(a.b - b.b)); }
+
   void main() {
-    vec4 c = texture2D(tColor, vUv);
-    vec3 id = texture2D(tId, vUv).rgb;
-    float edge = 0.0;
-    if (dot(id, id) > 0.0001) {
-      edge = max(
-        max(differs(id, texture2D(tId, vUv + vec2(texel.x, 0.0)).rgb), differs(id, texture2D(tId, vUv - vec2(texel.x, 0.0)).rgb)),
-        max(differs(id, texture2D(tId, vUv + vec2(0.0, texel.y)).rgb), differs(id, texture2D(tId, vUv - vec2(0.0, texel.y)).rgb))
-      );
-    }
-    gl_FragColor = vec4(mix(c.rgb, outline, edge), 1.0);
+    // tilt-shift: sharp band across the middle, blur growing toward the top and bottom
+    float d = abs(vUv.y - 0.52) * 2.0;
+    float blur = smoothstep(0.55, 1.1, d) * 2.8; // radius in pixels
+    vec3 c = texture2D(tColor, vUv).rgb * 0.2270270270;
+    float w1 = 0.3162162162, w2 = 0.0702702703;
+    vec2 o1 = vec2(0.0, 1.3846153846) * texel.y * blur;
+    vec2 o2 = vec2(0.0, 3.2307692308) * texel.y * blur;
+    c += texture2D(tColor, vUv + o1).rgb * w1 + texture2D(tColor, vUv - o1).rgb * w1;
+    c += texture2D(tColor, vUv + o2).rgb * w2 + texture2D(tColor, vUv - o2).rgb * w2;
+
+    // grade: slightly muted, warm highlights, cool green-teal shadows, a little contrast
+    float l = dot(c, vec3(0.299, 0.587, 0.114));
+    c = mix(vec3(l), c, 0.86);
+    c += vec3(0.010, 0.030, 0.026) * (1.0 - l);        // shadows lean green/teal
+    c *= mix(vec3(1.0), vec3(1.07, 1.02, 0.90), l);     // highlights lean warm
+    c = (c - 0.5) * 1.05 + 0.5;
+    c *= 1.14; // a little exposure: the scene is lit low and warm, keep it from going muddy
+
+    // vignette
+    float v = smoothstep(1.05, 0.28, length((vUv - 0.5) * vec2(1.25, 1.0)));
+    c *= mix(0.78, 1.0, v);
+
+    // film grain
+    float n = fract(sin(dot(vUv * res + vec2(time * 37.0, time * 91.0), vec2(12.9898, 78.233))) * 43758.5453);
+    c += (n - 0.5) * 0.03;
+
+    gl_FragColor = vec4(c, 1.0);
   }
 `;
 
 /** Defaults for the hover effect on a project box (a scene can override via `scene.hover`). */
-const LIFT = 2; // rendered pixels the props rise (whole pixels only, so they never shimmer)
-const GLOW = 0.14; // how much brighter the ground gets (white overlay opacity)
+const LIFT = 4; // world px the props rise (scene.hover.lift is in these units now)
+const GLOW = 0.12; // how much brighter the ground gets (white overlay opacity)
 
 const VISUAL_SCALE: Record<string, number> = {
   cone: 1.3,
@@ -87,7 +103,6 @@ const VISUAL_SCALE: Record<string, number> = {
   laptop: 1.6,
   tirestack: 1.4,
   formula: 0.83, // about half the track width, so it sits comfortably inside the bay and the lane
-  // team dressing: drawn oversized so each piece stays recognizable on the 2x pixel board
   lidar: 2.0,
   estop: 2.3,
   extinguisher: 2.8,
@@ -97,12 +112,42 @@ const VISUAL_SCALE: Record<string, number> = {
   cart: 2.0,
 };
 
+function dappleTexture(): CanvasTexture {
+  // soft dark-green blobs, like light filtering through leaves; tiles seamlessly enough at low opacity
+  const size = 256;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d")!;
+  let seed = 7;
+  const rand = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  for (let i = 0; i < 46; i++) {
+    const x = rand() * size;
+    const y = rand() * size;
+    const r = 12 + rand() * 26;
+    for (const ox of [-size, 0, size]) {
+      for (const oy of [-size, 0, size]) {
+        const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+        g.addColorStop(0, "rgba(10,28,16,0.55)");
+        g.addColorStop(1, "rgba(10,28,16,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
+      }
+    }
+  }
+  const t = new CanvasTexture(c);
+  t.wrapS = t.wrapT = RepeatWrapping;
+  t.repeat.set(3, 3);
+  return t;
+}
+
 export class Renderer3D {
   readonly scene = new Scene();
   readonly camera = new OrthographicCamera(-1, 1, 1, -1, 1, 6000);
   private renderer: WebGLRenderer;
   private colorTarget: WebGLRenderTarget;
-  private idTarget: WebGLRenderTarget;
   private quadScene = new Scene();
   private quadCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private quad: ShaderMaterial;
@@ -118,11 +163,8 @@ export class Renderer3D {
   private hoverAmount = new Map<string, number>();
   private frozenT = new Map<string, number>();
   private reduceMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  /** Models that sit on the pixel board: re-snapped whenever the camera or resolution changes. */
-  private snapped: { obj: Object3D; x: number; z: number }[] = [];
   private wpp = 1; // world units per rendered pixel
-  private idMaterials = new Map<Mesh, Material | Material[]>();
-  private blackId = new MeshBasicMaterial({ color: "#000000" });
+  private dapple: CanvasTexture;
   private dots: InstancedMesh;
   private markerMesh: Group;
   private mapSize: number;
@@ -139,89 +181,93 @@ export class Renderer3D {
     this.renderer = new WebGLRenderer({ canvas, antialias: false, alpha: false });
     this.renderer.outputColorSpace = LinearSRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = BasicShadowMap;
-    this.renderer.setClearColor(new Color("#16161d"));
+    this.renderer.shadowMap.type = PCFSoftShadowMap;
+    this.renderer.setClearColor(new Color("#10131a"));
 
-    const makeTarget = () =>
-      new WebGLRenderTarget(1, 1, {
-        minFilter: NearestFilter,
-        magFilter: NearestFilter,
-        format: RGBAFormat,
-        type: UnsignedByteType,
-        depthBuffer: true,
-      });
-    this.colorTarget = makeTarget();
-    this.idTarget = makeTarget();
+    this.colorTarget = new WebGLRenderTarget(1, 1, {
+      minFilter: LinearFilter,
+      magFilter: LinearFilter,
+      format: RGBAFormat,
+      type: UnsignedByteType,
+      depthBuffer: true,
+      samples: 4, // multisampled, so edges are smooth rather than pixelated
+    });
 
     this.quad = new ShaderMaterial({
-      vertexShader: EDGE_VS,
-      fragmentShader: EDGE_FS,
+      vertexShader: POST_VS,
+      fragmentShader: POST_FS,
       uniforms: {
         tColor: { value: this.colorTarget.texture },
-        tId: { value: this.idTarget.texture },
         texel: { value: new Vector2(1, 1) },
-        outline: { value: new Color("#101018") },
+        res: { value: new Vector2(1, 1) },
+        time: { value: 0 },
       },
       depthTest: false,
       depthWrite: false,
     });
-    const tri = new Mesh(new PlaneGeometry(2, 2), this.quad);
-    this.quadScene.add(tri);
+    this.quadScene.add(new Mesh(new PlaneGeometry(2, 2), this.quad));
 
+    this.dapple = dappleTexture();
     this.buildScene();
 
     // marker + path dots (flat things on the ground)
-    this.dots = new InstancedMesh(new BoxGeometry(2, 0.4, 2), new MeshBasicMaterial({ color: "#f4f4f4" }), 160);
-    this.dots.userData.noOutline = true;
+    this.dots = new InstancedMesh(new BoxGeometry(2.2, 0.4, 2.2), new MeshBasicMaterial({ color: "#f4f1e6" }), 160);
     this.dots.count = 0;
     this.dots.frustumCulled = false;
     this.scene.add(this.dots);
     this.markerMesh = new Group();
     const mk = new MeshBasicMaterial({ color: "#f6d02a" });
-    const bar1 = new Mesh(new BoxGeometry(9, 0.6, 2), mk);
-    const bar2 = new Mesh(new BoxGeometry(2, 0.6, 9), mk);
-    this.markerMesh.add(bar1, bar2);
+    this.markerMesh.add(new Mesh(new BoxGeometry(9, 0.6, 2), mk), new Mesh(new BoxGeometry(2, 0.6, 9), mk));
     this.markerMesh.visible = false;
-    bar1.userData.noOutline = bar2.userData.noOutline = true;
     this.scene.add(this.markerMesh);
-
-    this.assignIds();
   }
 
   private buildScene() {
     const { scene, world, mapSize } = this;
 
-    scene.add(new AmbientLight("#ffffff", 1.15));
-    const sun = new DirectionalLight("#ffffff", 2.0);
-    sun.position.set(mapSize / 2 + 320, 420, mapSize / 2 + 380);
+    // low warm sun from the front-left (long soft shadows toward the back-right) plus a cool sky fill
+    scene.add(new HemisphereLight("#d8e4ff", "#8d826f", 0.95));
+    scene.add(new AmbientLight("#ffffff", 0.22));
+    const sun = new DirectionalLight("#ffd9a6", 2.4);
+    sun.position.set(mapSize / 2 - 420, 300, mapSize / 2 + 380);
     sun.target.position.copy(this.center);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(4096, 4096);
+    sun.shadow.radius = 4;
     const cam = sun.shadow.camera;
-    cam.left = -620;
-    cam.right = 620;
-    cam.top = 620;
-    cam.bottom = -620;
+    cam.left = -680;
+    cam.right = 680;
+    cam.top = 680;
+    cam.bottom = -680;
     cam.near = 50;
-    cam.far = 1600;
-    sun.shadow.bias = -0.0008;
+    cam.far = 1700;
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.6;
     scene.add(sun, sun.target);
 
-    // ground: the 2D floor drawing as a texture, plus a shadow-only overlay
+    // ground: the 2D floor drawing as a smooth texture, a shadow-catching overlay and drifting leaf-shade
     const tex = new CanvasTexture(buildGroundLayer(world));
-    tex.minFilter = NearestFilter;
-    tex.magFilter = NearestFilter;
-    tex.generateMipmaps = false;
+    tex.minFilter = LinearMipmapLinearFilter;
+    tex.magFilter = LinearFilter;
+    tex.generateMipmaps = true;
+    tex.anisotropy = 8;
     const ground = new Mesh(new PlaneGeometry(mapSize, mapSize), new MeshBasicMaterial({ map: tex }));
-    ground.userData.noOutline = true;
     ground.rotation.x = -Math.PI / 2;
     ground.position.copy(this.center);
     scene.add(ground);
-    const shadowCatcher = new Mesh(new PlaneGeometry(mapSize, mapSize), new ShadowMaterial({ opacity: 0.38 }));
+    const shadowCatcher = new Mesh(new PlaneGeometry(mapSize, mapSize), new ShadowMaterial({ color: "#0b1220", opacity: 0.4 }));
     shadowCatcher.rotation.x = -Math.PI / 2;
     shadowCatcher.position.set(this.center.x, 0.05, this.center.z);
     shadowCatcher.receiveShadow = true;
     scene.add(shadowCatcher);
+    const leaves = new Mesh(
+      new PlaneGeometry(mapSize, mapSize),
+      new MeshBasicMaterial({ map: this.dapple, transparent: true, opacity: 0.34, depthWrite: false })
+    );
+    leaves.rotation.x = -Math.PI / 2;
+    leaves.position.set(this.center.x, 0.08, this.center.z);
+    leaves.renderOrder = 0.5;
+    scene.add(leaves);
 
     // low hazard-striped wall around the yard
     const hz = hazardWallTexture();
@@ -249,7 +295,6 @@ export class Renderer3D {
     }
 
     // scene props
-    let garageModel: Object3D | null = null;
     for (const zone of world.zones) {
       for (const p of zone.scene.props) {
         const fp = p.solid;
@@ -261,13 +306,9 @@ export class Renderer3D {
         else if (fp?.kind === "circle") cz = p.y - fp.r;
         model.position.set(cx, p.elevation ?? 0, cz);
         model.userData.baseY = p.elevation ?? 0;
-        this.snapped.push({ obj: model, x: cx, z: cz });
         if (p.angle !== undefined) model.rotation.y = -p.angle;
-        const k = VISUAL_SCALE[p.sprite.split("-")[0]] ?? 1; // small props are drawn a bit oversized so they read at this resolution
-        model.scale.setScalar(k);
+        model.scale.setScalar(VISUAL_SCALE[p.sprite.split("-")[0]] ?? 1);
         model.userData.zoneId = zone.id;
-        if (p.sprite === "garage") garageModel = model;
-        else if (p.sprite === "extinguisher" && garageModel) model.userData.outlineRoot = garageModel;
         model.traverse((o) => {
           if (typeof o.userData.animate === "function") this.animators.push({ fn: o.userData.animate, zoneId: zone.id });
         });
@@ -284,13 +325,12 @@ export class Renderer3D {
       const a = zone.scene.area;
       const glow = new Mesh(
         new PlaneGeometry(a.w - 2, a.h - 2),
-        new MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0, depthWrite: false })
+        new MeshBasicMaterial({ color: "#fff3d6", transparent: true, opacity: 0, depthWrite: false })
       );
       glow.rotation.x = -Math.PI / 2;
       glow.position.set(a.x + a.w / 2, 0.12, a.y + a.h / 2);
       glow.renderOrder = 1;
       glow.visible = false;
-      glow.userData.noOutline = true;
       scene.add(glow);
       this.zoneGlow.set(zone.id, glow);
     }
@@ -298,10 +338,7 @@ export class Renderer3D {
     // yard tire piles
     for (const item of world.items) {
       const t = tireModel();
-      const tx = item.tx * TILE + TILE / 2;
-      const tz = item.ty * TILE + TILE / 2;
-      t.position.set(tx, 0, tz);
-      this.snapped.push({ obj: t, x: tx, z: tz });
+      t.position.set(item.tx * TILE + TILE / 2, 0, item.ty * TILE + TILE / 2);
       scene.add(t);
     }
 
@@ -309,47 +346,28 @@ export class Renderer3D {
     this.carModel.scale.setScalar(1.2);
     this.carModel.position.set(world.start.x, 0, world.start.y);
     scene.add(this.carModel);
-  }
 
-  /** Give every mesh a unique flat color for the outline pass. */
-  private assignIds() {
-    // one outline id per top-level model (a cone's base, body and band share an id), so small props
-    // are outlined around their silhouette only instead of turning black from internal edges
-    let next = 1;
-    const perRoot = new Map<Object3D, MeshBasicMaterial>();
-    this.scene.traverse((o) => {
+    // everything that is solid casts and receives soft shadows
+    scene.traverse((o) => {
       const m = o as Mesh;
-      if (!m.isMesh || !(m.material as Material)) return;
-      if (m.userData.noOutline || m.material instanceof ShadowMaterial) return;
-      let root: Object3D = m;
-      while (root.parent && root.parent !== this.scene) root = root.parent;
-      // tiny wall-mounted things share their host's outline id (otherwise their outline is the whole object)
-      if (root.userData.outlineRoot) root = root.userData.outlineRoot as Object3D;
-      let mat = perRoot.get(root);
-      if (!mat) {
-        const n = next++;
-        mat = new MeshBasicMaterial({ color: new Color(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255) });
-        perRoot.set(root, mat);
+      if (m.isMesh && !(m.material instanceof ShadowMaterial) && m !== ground && m !== leaves) {
+        if (m.castShadow === undefined) m.castShadow = true;
       }
-      this.idMaterials.set(m, mat);
     });
   }
 
   resize(innerW: number, innerH: number) {
-    // whole-number upscale: render at 1/k of the screen's device pixels, then show each pixel as k device pixels
-    const dpr = window.devicePixelRatio || 1;
-    const k = Math.max(PIXEL_CSS, Math.round(PIXEL_CSS * dpr));
-    this.width = Math.max(2, Math.ceil((innerW * dpr) / k));
-    this.height = Math.max(2, Math.ceil((innerH * dpr) / k));
+    const ratio = Math.min(window.devicePixelRatio || 1, MAX_RENDER_RATIO);
+    this.width = Math.max(2, Math.round(innerW * ratio));
+    this.height = Math.max(2, Math.round(innerH * ratio));
     this.renderer.setPixelRatio(1);
     this.renderer.setSize(this.width, this.height, false);
     this.canvas.style.width = "100%";
     this.canvas.style.height = "100%";
     this.colorTarget.setSize(this.width, this.height);
-    this.idTarget.setSize(this.width, this.height);
     this.quad.uniforms.texel.value.set(1 / this.width, 1 / this.height);
+    this.quad.uniforms.res.value.set(this.width, this.height);
     this.fitCamera();
-    this.applySnap();
   }
 
   /** Orthographic camera at a fixed tilt, scaled so the whole map fits and centered on it. */
@@ -390,49 +408,16 @@ export class Renderer3D {
     return { px: (v.x - this.camera.left) / this.wpp, py: (this.camera.top - v.y) / this.wpp };
   }
 
-  /** Move a world point (at height `y`) to the nearest whole render pixel; returns the new world x/z. */
-  snapXZ(x: number, y: number, z: number): { x: number; z: number } {
-    const cam = this.camera;
-    const v = new Vector3(x, y, z).applyMatrix4(cam.matrixWorldInverse);
-    const sx = cam.left + Math.round((v.x - cam.left) / this.wpp) * this.wpp;
-    const sy = cam.top - Math.round((cam.top - v.y) / this.wpp) * this.wpp;
-    // un-project: p = camPos + right*sx + up*sy + back*t, with t chosen so the world height stays `y`
-    const m = cam.matrixWorld.elements;
-    const right = new Vector3(m[0], m[1], m[2]);
-    const up = new Vector3(m[4], m[5], m[6]);
-    const back = new Vector3(m[8], m[9], m[10]);
-    const pos = new Vector3(m[12], m[13], m[14]);
-    const t = (y - pos.y - right.y * sx - up.y * sy) / back.y;
-    const p = pos.addScaledVector(right, sx).addScaledVector(up, sy).addScaledVector(back, t);
-    return { x: p.x, z: p.z };
-  }
-
-  /** Put every static model on the pixel board (identical props then rasterize identically). */
-  private applySnap() {
-    for (const s of this.snapped) {
-      const p = this.snapXZ(s.x, 0, s.z);
-      s.obj.position.x = p.x;
-      s.obj.position.z = p.z;
-    }
-  }
-
   /** Hover effect for one project box, `amount` 0..1: its props rise and its ground brightens. Works for any zone. */
   setHover(zoneId: string, amount: number) {
     this.hoverAmount.set(zoneId, amount);
     const cfg = this.world.zones.find((z) => z.id === zoneId)?.scene.hover;
-    // lift in whole rendered pixels: one pixel of screen height is wpp / up.y in world height
-    const upY = this.camera.matrixWorld.elements[5] || Math.cos(TILT);
-    const pixels = Math.round(amount * (cfg?.lift ?? LIFT));
-    const height = (pixels * this.wpp) / upY;
-    for (const m of this.zoneModels.get(zoneId) ?? []) m.position.y = (m.userData.baseY ?? 0) + height;
-    // the ground glow moves in the same whole steps as the lift: a smoothly fading overlay re-rounds every
-    // ground pixel on a different frame, which reads as individual pixels flickering
-    const liftPixels = cfg?.lift ?? LIFT;
-    const stepped = liftPixels > 0 ? pixels / liftPixels : amount;
+    const lift = (cfg?.lift ?? LIFT / 2) * 2; // scene overrides were written in "pixels" (~2 world px each)
+    for (const m of this.zoneModels.get(zoneId) ?? []) m.position.y = (m.userData.baseY ?? 0) + amount * lift;
     const glow = this.zoneGlow.get(zoneId);
     if (glow) {
-      glow.visible = stepped > 0.001;
-      (glow.material as MeshBasicMaterial).opacity = stepped * (cfg?.glow ?? GLOW);
+      glow.visible = amount > 0.001;
+      (glow.material as MeshBasicMaterial).opacity = amount * (cfg?.glow ?? GLOW);
     }
   }
 
@@ -463,10 +448,8 @@ export class Renderer3D {
 
   draw(car: Car, marker: Marker | null, time: number) {
     const { renderer } = this;
-    const carPos = this.snapXZ(car.x, 0, car.y);
-    this.carModel.position.set(carPos.x, 0, carPos.z);
-    const step = (Math.PI * 2) / CAR_STEPS;
-    this.carModel.rotation.y = -Math.round(car.heading / step) * step;
+    this.carModel.position.set(car.x, 0, car.y);
+    this.carModel.rotation.y = -car.heading;
 
     // path dots marching toward the goal
     const pts = [{ x: car.x, y: car.y }, ...car.path];
@@ -482,8 +465,7 @@ export class Renderer3D {
         const first = (10 - ((acc - phase + 10) % 10)) % 10;
         for (let d = first; d < len && n < 160; d += 10) {
           const t = d / len;
-          const dp = this.snapXZ(a.x + (b.x - a.x) * t, 0.3, a.y + (b.y - a.y) * t);
-          m4.makeTranslation(dp.x, 0.3, dp.z);
+          m4.makeTranslation(a.x + (b.x - a.x) * t, 0.3, a.y + (b.y - a.y) * t);
           this.dots.setMatrixAt(n++, m4);
         }
         acc += len;
@@ -492,14 +474,16 @@ export class Renderer3D {
     this.dots.count = n;
     this.dots.instanceMatrix.needsUpdate = true;
 
-    this.markerMesh.visible = !!marker && Math.floor(time * 4) % 2 === 0;
-    if (marker) {
-      const mp = this.snapXZ(marker.x, 0.4, marker.y);
-      this.markerMesh.position.set(mp.x, 0.4, mp.z);
+    this.markerMesh.visible = !!marker && Math.floor(time * 3) % 2 === 0;
+    if (marker) this.markerMesh.position.set(marker.x, 0.4, marker.y);
+
+    // drifting leaf-shade (a slow breeze across the yard)
+    if (!this.reduceMotion) {
+      this.dapple.offset.set((time * 0.004) % 1, (time * 0.0022) % 1);
     }
 
-    // animations: time steps are handed in as plain seconds; models quantize their own motion
-    const pixel = this.wpp / (this.camera.matrixWorld.elements[5] || Math.cos(TILT));
+    // animations
+    const pixel = 0.7; // motion in the models is continuous now; this is just a small unit
     for (const a of this.animators) {
       const hover = this.hoverAmount.get(a.zoneId) ?? 0;
       const pause = this.world.zones.find((z) => z.id === a.zoneId)?.scene.animation?.pauseOnHover && hover > 0.5;
@@ -507,35 +491,10 @@ export class Renderer3D {
       a.fn({ t: this.reduceMotion ? 0 : (this.frozenT.get(a.zoneId) ?? time), hover, pixel });
     }
 
-    // 1) color
+    // scene -> multisampled target, then the grade / tilt-shift / grain pass to the screen
+    this.quad.uniforms.time.value = this.reduceMotion ? 0 : time % 100;
     renderer.setRenderTarget(this.colorTarget);
     renderer.render(this.scene, this.camera);
-
-    // 2) object ids (swap in flat id materials)
-    const original = new Map<Mesh, Material | Material[]>();
-    const hidden: Object3D[] = [];
-    this.scene.traverse((o) => {
-      const m = o as Mesh;
-      if (!m.isMesh) return;
-      if (m.material instanceof ShadowMaterial) {
-        m.visible = false;
-        hidden.push(m);
-        return;
-      }
-      original.set(m, m.material);
-      m.material = this.idMaterials.get(m) ?? this.blackId;
-    });
-    renderer.shadowMap.autoUpdate = false;
-    renderer.setRenderTarget(this.idTarget);
-    renderer.setClearColor(new Color("#000000"));
-    renderer.clear();
-    renderer.render(this.scene, this.camera);
-    renderer.setClearColor(new Color("#16161d"));
-    renderer.shadowMap.autoUpdate = true;
-    for (const [m, mat] of original) m.material = mat;
-    for (const o of hidden) o.visible = true;
-
-    // 3) composite with outlines
     renderer.setRenderTarget(null);
     renderer.render(this.quadScene, this.quadCamera);
   }
@@ -543,6 +502,5 @@ export class Renderer3D {
   dispose() {
     this.renderer.dispose();
     this.colorTarget.dispose();
-    this.idTarget.dispose();
   }
 }

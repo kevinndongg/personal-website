@@ -8,6 +8,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshToonMaterial,
+  LinearFilter,
   NearestFilter,
   PlaneGeometry,
   RedFormat,
@@ -21,9 +22,15 @@ import type { Zone } from "./world";
 
 // All models: 1 unit = 1 world px, origin at the footprint center on the ground, +X = forward/east.
 
-const gradient = new DataTexture(new Uint8Array([85, 135, 185, 225, 255]), 5, 1, RedFormat);
-gradient.minFilter = NearestFilter;
-gradient.magFilter = NearestFilter;
+const RAMP = 48;
+const gradient = new DataTexture(
+  new Uint8Array(Array.from({ length: RAMP }, (_, i) => Math.round(70 + (185 * i) / (RAMP - 1)))),
+  RAMP,
+  1,
+  RedFormat
+);
+gradient.minFilter = LinearFilter;
+gradient.magFilter = LinearFilter;
 gradient.needsUpdate = true;
 
 const toonCache = new Map<string, MeshToonMaterial>();
@@ -669,22 +676,17 @@ export function grillModel(): Group {
   g.userData.animate = ({ t, pixel }: AnimCtx) => {
     const steps = 5;
     puffs.forEach((puff, i) => {
-      const k = (Math.floor(t * 2) + i * 2) % steps; // one pixel-step every half second
+      const k = (t * 2 + i * 2) % steps; // drifts up continuously, restarts every 2.5 s
       // starts above and slightly behind the patty so it never covers it from the camera's side
-      puff.position.set(-1 + Math.sin(i * 1.9 + k * 0.5) * 1.2, 15 + k * pixel * 0.8, -2.6 + Math.cos(i * 1.9) * 1.2);
+      puff.position.set(-1 + Math.sin(i * 1.9 + k * 0.5) * 1.2, 15 + k * 3, -2.6 + Math.cos(i * 1.9) * 1.2);
       puff.scale.setScalar(Math.max(0.2, 1 - k / (steps + 1)));
     });
+    // once every 3 seconds the patty hops (an arc) and turns over, then lands on its other side
     const p = t % 3;
     const cycle = Math.floor(t / 3);
-    let lift = 0;
-    let turn = 0;
-    if (p >= 2.2 && p < 2.8) {
-      const k = Math.min(hop.length - 1, Math.floor((p - 2.2) / 0.1));
-      lift = hop[k] * pixel * 0.9;
-      turn = (Math.PI * (k + 1)) / hop.length;
-    } else if (p >= 2.8) turn = Math.PI;
-    flip.position.y = 9.6 + lift;
-    flip.rotation.x = (cycle % 2) * Math.PI + turn;
+    const u = Math.min(1, Math.max(0, (p - 2.2) / 0.6));
+    flip.position.y = 9.6 + Math.sin(Math.PI * u) * 6;
+    flip.rotation.x = (cycle % 2) * Math.PI + Math.PI * u;
   };
   return g;
 }
@@ -707,7 +709,8 @@ export function cookModel(): Group {
   g.add(arm);
   g.userData.animate = ({ t }: AnimCtx) => {
     const p = t % 3;
-    arm.rotation.z = p >= 2.1 && p < 2.8 ? 0.5 : -0.12; // spatula goes under the patty, lifts, drops
+    const u = Math.min(1, Math.max(0, (p - 2.1) / 0.7));
+    arm.rotation.z = -0.12 + Math.sin(Math.PI * u) * 0.62; // spatula goes under the patty, lifts, drops
   };
   return g;
 }
