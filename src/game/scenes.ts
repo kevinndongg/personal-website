@@ -1,4 +1,5 @@
 // Free-form project areas. Everything here is positioned in world pixels, not tiles.
+import { photoDeskScene } from "./photodesk";
 
 export interface Rect {
   x: number;
@@ -11,7 +12,9 @@ export type Decal =
   | { kind: "checker"; x: number; y: number; w: number; h: number; angle: number } // x,y = center; angle = direction of the width axis
   | { kind: "cable"; points: { x: number; y: number }[] }
   | { kind: "frame"; x: number; y: number; w: number; h: number; angle: number; color: string; fill: string } // painted pit box, x,y = center
-  | { kind: "pad"; x: number; y: number; w: number; h: number; color: string };
+  | { kind: "pad"; x: number; y: number; w: number; h: number; color: string }
+  /** A filled polygon on the ground (a desk mat, water, a gravel patch) with an optional border and speckle. */
+  | { kind: "pool"; points: { x: number; y: number }[]; fill: string; border?: string; speckle?: string[] };
 
 /** Collision shape, anchored at the prop's bottom-center (x, y). */
 export type Footprint = { kind: "rect"; w: number; h: number } | { kind: "circle"; r: number };
@@ -34,6 +37,8 @@ export interface Scene {
   building: Rect;
   labelAt: { x: number; y: number };
   labelHeight: number; // how high above the ground the HTML label hovers (3D px)
+  /** Tallest prop (world units), used when the camera frames the whole box. Defaults to 26. */
+  height?: number;
   /** Optional per-scene tuning of the hover effect (defaults live in render3d.ts). */
   hover?: { lift?: number; glow?: number }; // lift is in rendered pixels
   /** Animations default to running all the time; a scene can freeze them while its box is hovered. */
@@ -42,7 +47,7 @@ export interface Scene {
   decals: Decal[];
 }
 
-export type ZoneVariant = "garage" | "building" | "office";
+export type ZoneVariant = "garage" | "building" | "office" | "photodesk";
 
 export const GARAGE_W = 150; // roofed workshop + a 66 px open bay big enough for the formula car
 export const GARAGE_H = 56;
@@ -52,6 +57,7 @@ const BUILDING = { building: { w: 128, h: 80 }, office: { w: 96, h: 80 } } as co
 /** Area size (px, tile multiples) for a variant. */
 export function sceneSize(variant: ZoneVariant): { w: number; h: number } {
   if (variant === "garage") return { w: 224, h: 256 };
+  if (variant === "photodesk") return { w: 224, h: 144 };
   return { w: BUILDING[variant].w + 32, h: 144 };
 }
 
@@ -210,5 +216,7 @@ function defaultScene(ox: number, oy: number, id: string, variant: "building" | 
 }
 
 export function buildScene(id: string, variant: ZoneVariant, ox: number, oy: number): Scene {
-  return variant === "garage" ? racingScene(ox, oy) : defaultScene(ox, oy, id, variant);
+  if (variant === "garage") return racingScene(ox, oy);
+  if (variant === "photodesk") return photoDeskScene(ox, oy);
+  return defaultScene(ox, oy, id, variant);
 }

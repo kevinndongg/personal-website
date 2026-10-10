@@ -34,7 +34,7 @@ gradient.magFilter = LinearFilter;
 gradient.needsUpdate = true;
 
 const toonCache = new Map<string, MeshToonMaterial>();
-function toon(color: string): MeshToonMaterial {
+export function toon(color: string): MeshToonMaterial {
   let m = toonCache.get(color);
   if (!m) {
     m = new MeshToonMaterial({ color, gradientMap: gradient });
@@ -43,7 +43,7 @@ function toon(color: string): MeshToonMaterial {
   return m;
 }
 
-function mesh(geo: BufferGeometry, mat: Material, x = 0, y = 0, z = 0): Mesh {
+export function mesh(geo: BufferGeometry, mat: Material, x = 0, y = 0, z = 0): Mesh {
   const m = new Mesh(geo, mat);
   m.position.set(x, y, z);
   m.castShadow = true;
@@ -52,12 +52,12 @@ function mesh(geo: BufferGeometry, mat: Material, x = 0, y = 0, z = 0): Mesh {
 }
 
 /** Box sitting on `y` (its bottom face), centered on x/z. */
-function box(w: number, h: number, d: number, color: string | Material, x: number, y: number, z: number): Mesh {
+export function box(w: number, h: number, d: number, color: string | Material, x: number, y: number, z: number): Mesh {
   const mat = typeof color === "string" ? toon(color) : color;
   return mesh(new BoxGeometry(w, h, d), mat, x, y + h / 2, z);
 }
 
-function cyl(rTop: number, rBottom: number, h: number, color: string, x: number, y: number, z: number, seg = 10): Mesh {
+export function cyl(rTop: number, rBottom: number, h: number, color: string, x: number, y: number, z: number, seg = 10): Mesh {
   return mesh(new CylinderGeometry(rTop, rBottom, h, seg), toon(color), x, y + h / 2, z);
 }
 

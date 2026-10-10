@@ -12,6 +12,10 @@ const featured = [...photos.filter((p) => p.data.featured), ...photos.filter((p)
 
 const thumbs = await Promise.all(featured.map(async (p) => (await getImage({ src: p.data.image, width: 360 })).src));
 
+// the photos laid out on the light table: 8 of them (featured first), bigger than the card thumbnails
+const ordered = [...photos.filter((p) => p.data.featured), ...photos.filter((p) => !p.data.featured)];
+const strip = await Promise.all(ordered.slice(0, 8).map(async (p) => (await getImage({ src: p.data.image, width: 480 })).src));
+
 /** The project's markdown body: the lead sentence(s), and the bullet list that carries the results. */
 function parseBody(body = "") {
   const lines = body
@@ -56,12 +60,14 @@ const zones = [
   {
     id: "gallery",
     kind: "gallery" as const,
+    variant: "photodesk" as const,
     label: "Photo Gallery",
     summary: `${photos.length} photos I took just for fun — quiet streets, soft light, small moments.`,
     href: withBase("photography"),
     actions: [{ label: "Open the gallery", href: withBase("photography") }],
     accent: "#8a4fd0",
     thumbs,
+    strip,
   },
   {
     id: "contact",

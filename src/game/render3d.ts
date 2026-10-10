@@ -33,6 +33,7 @@ import {
 } from "three";
 import { GROUND_MARGIN, buildGroundLayer } from "./ground";
 import { createModel, tireModel, woodTexture } from "./models";
+import { sceneryModel } from "./scenery";
 import { TILE } from "./world";
 import type { World } from "./world";
 
@@ -351,7 +352,7 @@ export class Renderer3D {
     for (const zone of world.zones) {
       for (const p of zone.scene.props) {
         const fp = p.solid;
-        const model = createModel(p.sprite, fp, world.zones);
+        const model = sceneryModel(p.sprite, fp, p, world.zones) ?? createModel(p.sprite, fp, world.zones);
         const cx = p.x;
         let cz = p.y - 2;
         if (p.angle !== undefined) cz = p.y;
@@ -525,7 +526,7 @@ export class Renderer3D {
           maxX = -Infinity,
           minY = Infinity,
           maxY = -Infinity;
-        for (const y of [0, 26]) {
+        for (const y of [0, zone.scene.height ?? 26]) {
           for (const [x, z] of [
             [a.x, a.y],
             [a.x + a.w, a.y],
@@ -651,7 +652,7 @@ export class Renderer3D {
           v0 = 1,
           u1 = 0,
           v1 = 0;
-        for (const y of [0, 26]) {
+        for (const y of [0, zone.scene.height ?? 26]) {
           for (const [x, z] of [
             [a.x, a.y],
             [a.x + a.w, a.y],

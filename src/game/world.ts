@@ -34,6 +34,8 @@ export interface ZoneInput {
   bullets?: string[];
   image?: string;
   thumbs?: string[];
+  /** Photo urls laid out on the light table (4 per row), photodesk variant only. */
+  strip?: string[];
 }
 
 export interface Zone extends ZoneInput {

@@ -61,6 +61,32 @@ function drawDecal(ctx: CanvasRenderingContext2D, d: Decal, accent: string) {
       for (let k = 0; k <= steps; k++)
         ctx.fillRect(Math.round(a.x + ((b.x - a.x) * k) / steps), Math.round(a.y + ((b.y - a.y) * k) / steps), 2, 2);
     }
+  } else if (d.kind === "pool") {
+    ctx.beginPath();
+    d.points.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+    ctx.closePath();
+    ctx.fillStyle = d.fill;
+    ctx.fill();
+    if (d.border) {
+      ctx.strokeStyle = d.border;
+      ctx.lineWidth = 3;
+      ctx.lineJoin = "round";
+      ctx.stroke();
+    }
+    if (d.speckle) {
+      const xs = d.points.map((q) => q.x);
+      const ys = d.points.map((q) => q.y);
+      const x0 = Math.min(...xs);
+      const x1 = Math.max(...xs);
+      const y0 = Math.min(...ys);
+      const y1 = Math.max(...ys);
+      for (let i = 0; i < (x1 - x0) * (y1 - y0) * 0.05; i++) {
+        const px = x0 + hash(i, 3, 91) * (x1 - x0);
+        const py = y0 + hash(i, 5, 17) * (y1 - y0);
+        ctx.fillStyle = d.speckle[i % d.speckle.length];
+        ctx.fillRect(Math.floor(px), Math.floor(py), 1, 1);
+      }
+    }
   } else {
     // parking pad: dark accent fill, accent-coloured edge dashes, arrow
     ctx.fillStyle = shade(d.color || accent, -0.5);
