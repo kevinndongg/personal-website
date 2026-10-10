@@ -12,6 +12,7 @@ import {
   LinearSRGBColorSpace,
   Mesh,
   MeshBasicMaterial,
+  MeshLambertMaterial,
   Object3D,
   OrthographicCamera,
   PCFSoftShadowMap,
@@ -30,8 +31,8 @@ import {
   WebGLRenderTarget,
   WebGLRenderer,
 } from "three";
-import { buildGroundLayer } from "./ground";
-import { createModel, hazardWallTexture, tireModel } from "./models";
+import { GROUND_MARGIN, buildGroundLayer } from "./ground";
+import { createModel, tireModel, woodTexture } from "./models";
 import { TILE } from "./world";
 import type { World } from "./world";
 
@@ -93,6 +94,15 @@ const POST_FS = `
   }
 `;
 
+/**
+ * How the map ends. "cut": a crisp straight edge with a soft shadow on the dark surface; "slab": the map is a raised
+ * wooden board whose front side you can see; "fade": the ground dissolves into the grainy dark.
+ */
+export type EdgeMode = "cut" | "slab" | "fade";
+const SLAB_H = 28; // thickness of the board in "slab" mode
+const VOID = "#1b1c22"; // the dark surface the map sits on
+const SHADOW_PAD = 3 * TILE; // how far the drop shadow's texture reaches past the map
+
 /** Defaults for the hover effect on a project box (a scene can override via `scene.hover`). */
 const LIFT = 4; // world px the props rise (scene.hover.lift is in these units now)
 const GLOW = 0.12; // how much brighter the ground gets (white overlay opacity)
@@ -144,6 +154,48 @@ function dappleTexture(): CanvasTexture {
   return t;
 }
 
+/** A soft dark blob (for a drop shadow): a blurred rectangle `inner` units wide inside a `total`-unit square. */
+function blurredRectTexture(total: number, inner: number, blur: number): CanvasTexture {
+  const size = 512;
+  const k = size / total;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d")!;
+  // shadowBlur only blurs the shadow, so draw the rectangle far off-canvas and cast its shadow back in
+  const far = size * 4;
+  ctx.shadowColor = "rgba(0,0,0,0.85)";
+  ctx.shadowBlur = blur * k;
+  ctx.shadowOffsetX = far;
+  const o = ((total - inner) / 2) * k;
+  ctx.fillRect(o - far, o, inner * k, inner * k);
+  return new CanvasTexture(c);
+}
+
+/** Alpha mask for the "fade" mode: opaque over the map, falling to transparent across the margin around it. */
+function fadeMaskTexture(total: number, inner: number): CanvasTexture {
+  const size = 512;
+  const k = size / total;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d")!;
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, size, size);
+  const far = size * 4;
+  const margin = (total - inner) / 2;
+  // a white rectangle reaching halfway into the margin, blurred so it is fully opaque over the map and gone at the end
+  const grow = margin * 0.5;
+  ctx.shadowColor = "#fff";
+  ctx.shadowBlur = margin * 0.6 * k;
+  ctx.shadowOffsetX = far;
+  const o = (margin - grow) * k;
+  const s = (inner + grow * 2) * k;
+  ctx.fillRect(o - far, o, s, s);
+  const t = new CanvasTexture(c);
+  t.minFilter = LinearFilter;
+  t.generateMipmaps = false;
+  return t;
+}
+
 export class Renderer3D {
   readonly scene = new Scene();
   readonly camera = new OrthographicCamera(-1, 1, 1, -1, 1, 6000);
@@ -174,6 +226,14 @@ export class Renderer3D {
   private focusRect = new Vector4(0, 0, 0, 0);
   private dapple: CanvasTexture;
   private mapSize: number;
+  private edge: EdgeMode = "cut";
+  private groundMesh!: Mesh;
+  private catcherMesh!: Mesh;
+  private leavesMesh!: Mesh;
+  private groundTex!: CanvasTexture;
+  private edgeMask!: CanvasTexture;
+  private edgeShadow!: Mesh;
+  private slab!: Mesh;
   private width = 1;
   private height = 1;
 
@@ -188,7 +248,7 @@ export class Renderer3D {
     this.renderer.outputColorSpace = LinearSRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = PCFSoftShadowMap;
-    this.renderer.setClearColor(new Color("#10131a"));
+    this.renderer.setClearColor(new Color(VOID));
 
     this.colorTarget = new WebGLRenderTarget(1, 1, {
       minFilter: LinearFilter,
@@ -217,6 +277,8 @@ export class Renderer3D {
 
     this.dapple = dappleTexture();
     this.buildScene();
+    const q = typeof location !== "undefined" ? new URLSearchParams(location.search).get("edge") : null;
+    this.setEdge(q === "slab" || q === "fade" ? q : "cut");
   }
 
   private buildScene() {
@@ -243,20 +305,25 @@ export class Renderer3D {
     scene.add(sun, sun.target);
 
     // ground: the 2D floor drawing as a smooth texture, a shadow-catching overlay and drifting leaf-shade
+    // (the texture also holds a margin of plain asphalt past the map, which only "fade" mode reveals)
     const tex = new CanvasTexture(buildGroundLayer(world));
     tex.minFilter = LinearMipmapLinearFilter;
     tex.magFilter = LinearFilter;
     tex.generateMipmaps = true;
     tex.anisotropy = 8;
+    this.groundTex = tex;
     const ground = new Mesh(new PlaneGeometry(mapSize, mapSize), new MeshBasicMaterial({ map: tex }));
     ground.rotation.x = -Math.PI / 2;
     ground.position.copy(this.center);
+    ground.renderOrder = -1;
     scene.add(ground);
+    this.groundMesh = ground;
     const shadowCatcher = new Mesh(new PlaneGeometry(mapSize, mapSize), new ShadowMaterial({ color: "#0b1220", opacity: 0.4 }));
     shadowCatcher.rotation.x = -Math.PI / 2;
     shadowCatcher.position.set(this.center.x, 0.05, this.center.z);
     shadowCatcher.receiveShadow = true;
     scene.add(shadowCatcher);
+    this.catcherMesh = shadowCatcher;
     const leaves = new Mesh(
       new PlaneGeometry(mapSize, mapSize),
       new MeshBasicMaterial({ map: this.dapple, transparent: true, opacity: 0.34, depthWrite: false })
@@ -265,31 +332,7 @@ export class Renderer3D {
     leaves.position.set(this.center.x, 0.08, this.center.z);
     leaves.renderOrder = 0.5;
     scene.add(leaves);
-
-    // low hazard-striped wall around the yard
-    const hz = hazardWallTexture();
-    hz.wrapS = hz.wrapT = RepeatWrapping;
-    const wallMat = (repX: number) => {
-      const t = hz.clone();
-      t.repeat.set(repX, 1);
-      t.needsUpdate = true;
-      return new MeshBasicMaterial({ map: t });
-    };
-    const wallH = 6;
-    const ring = TILE;
-    const long = mapSize / TILE;
-    const walls: [number, number, number, number, number][] = [
-      [mapSize, ring, mapSize / 2, ring / 2, long],
-      [mapSize, ring, mapSize / 2, mapSize - ring / 2, long],
-      [ring, mapSize - 2 * ring, ring / 2, mapSize / 2, 1],
-      [ring, mapSize - 2 * ring, mapSize - ring / 2, mapSize / 2, 1],
-    ];
-    for (const [w, d, x, z, rep] of walls) {
-      const m = new Mesh(new BoxGeometry(w, wallH, d), wallMat(rep));
-      m.position.set(x, wallH / 2, z);
-      m.castShadow = true;
-      scene.add(m);
-    }
+    this.leavesMesh = leaves;
 
     // scene props
     for (const zone of world.zones) {
@@ -346,6 +389,56 @@ export class Renderer3D {
         if (m.castShadow === undefined) m.castShadow = true;
       }
     });
+
+    // ---- the edge of the board: drop shadow, wooden slab, fade mask (setEdge picks which are used)
+    const total = mapSize + 2 * SHADOW_PAD;
+    const shadow = new Mesh(
+      new PlaneGeometry(total, total),
+      new MeshBasicMaterial({ map: blurredRectTexture(total, mapSize, 26), transparent: true, depthWrite: false })
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.renderOrder = -2;
+    shadow.castShadow = false;
+    scene.add(shadow);
+    this.edgeShadow = shadow;
+
+    const wood = woodTexture();
+    wood.wrapS = RepeatWrapping;
+    wood.repeat.set(3, 1);
+    const side = new MeshLambertMaterial({ map: wood });
+    const slab = new Mesh(new BoxGeometry(mapSize, SLAB_H, mapSize), side);
+    slab.position.set(this.center.x, -SLAB_H / 2 - 0.05, this.center.z);
+    slab.castShadow = false;
+    scene.add(slab);
+    this.slab = slab;
+
+    this.edgeMask = fadeMaskTexture(mapSize + 2 * GROUND_MARGIN, mapSize);
+  }
+
+  /** Switch how the map ends (see EdgeMode). Safe to call at any time. */
+  setEdge(mode: EdgeMode) {
+    this.edge = mode;
+    const { mapSize } = this;
+    const fade = mode === "fade";
+    const total = mapSize + 2 * GROUND_MARGIN;
+
+    // ground, shadow catcher and leaf shade: exactly the map, or the map plus its fade margin
+    const k = fade ? total / mapSize : 1;
+    for (const m of [this.groundMesh, this.catcherMesh, this.leavesMesh]) m.scale.set(k, k, 1);
+    this.groundTex.repeat.setScalar(fade ? 1 : mapSize / total);
+    this.groundTex.offset.setScalar(fade ? 0 : GROUND_MARGIN / total);
+    for (const m of [this.groundMesh, this.leavesMesh]) {
+      const mat = m.material as MeshBasicMaterial;
+      mat.alphaMap = fade ? this.edgeMask : null;
+      mat.transparent = fade || m === this.leavesMesh;
+      mat.needsUpdate = true;
+    }
+
+    this.edgeShadow.visible = !fade;
+    // the light is front-left, so the shadow falls a little toward the back-right
+    this.edgeShadow.position.set(this.center.x + 7, mode === "slab" ? -SLAB_H - 0.1 : -0.2, this.center.z - 7);
+    this.slab.visible = mode === "slab";
+    this.fitCamera();
   }
 
   resize(innerW: number, innerH: number) {
@@ -373,9 +466,11 @@ export class Renderer3D {
       maxX = -Infinity,
       minY = Infinity,
       maxY = -Infinity;
-    for (const y of [0, 45]) {
-      for (const x of [0, mapSize]) {
-        for (const z of [0, mapSize]) {
+    // room around the map for whatever the edge adds: the fade margin, the board's side, the drop shadow
+    const pad = this.edge === "fade" ? GROUND_MARGIN : TILE * 1.25;
+    for (const y of [this.edge === "slab" ? -SLAB_H : 0, 45]) {
+      for (const x of [-pad, mapSize + pad]) {
+        for (const z of [-pad, mapSize + pad]) {
           const v = new Vector3(x, y, z).applyMatrix4(camera.matrixWorldInverse);
           minX = Math.min(minX, v.x);
           maxX = Math.max(maxX, v.x);

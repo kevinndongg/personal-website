@@ -701,12 +701,36 @@ export function cookModel(): Group {
   return g;
 }
 
-export function hazardWallTexture(): CanvasTexture {
-  const [c, ctx] = canvasOf(16, 16);
-  fillRect(ctx, 0, 0, 16, 16, "#24252b");
-  ctx.fillStyle = "#d9b21f";
-  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (((x + y) >> 2) % 2 === 0) ctx.fillRect(x, y, 1, 1);
-  return nearestTexture(c);
+/** Warm wood grain for the side of the slab the map sits on (tiles horizontally). */
+export function woodTexture(): CanvasTexture {
+  const w = 512;
+  const h = 64;
+  const [c, ctx] = canvasOf(w, h);
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, "#b07a49");
+  grad.addColorStop(1, "#7d522f");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+  let seed = 11;
+  const rand = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  // long grain streaks, lighter and darker
+  for (let i = 0; i < 90; i++) {
+    const y = rand() * h;
+    const x = rand() * w;
+    const len = 40 + rand() * 220;
+    ctx.fillStyle = rand() < 0.55 ? "rgba(60,32,14,0.20)" : "rgba(235,190,130,0.16)";
+    ctx.fillRect(x, y, len, 1 + (rand() < 0.2 ? 1 : 0));
+    if (x + len > w) ctx.fillRect(x - w, y, len, 1);
+  }
+  // a lit top edge and a shaded bottom edge, so it reads as a rounded board rather than a flat band
+  ctx.fillStyle = "rgba(255,226,170,0.35)";
+  ctx.fillRect(0, 0, w, 3);
+  ctx.fillStyle = "rgba(30,14,4,0.35)";
+  ctx.fillRect(0, h - 4, w, 4);
+  return new CanvasTexture(c);
 }
 
 /** Build the model for a scene prop id, sized to its collision footprint. */

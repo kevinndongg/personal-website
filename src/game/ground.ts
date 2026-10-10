@@ -2,6 +2,9 @@ import { GROUND } from "./palette";
 import { TILE, Terrain } from "./world";
 import type { Decal, World } from "./world";
 
+/** Extra asphalt painted past the map on every side; only visible in the "fade" edge mode. */
+export const GROUND_MARGIN = 3 * TILE;
+
 function hash(x: number, y: number, n = 0) {
   let h = (x * 374761393 + y * 668265263 + n * 2147483647) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -59,7 +62,7 @@ function drawDecal(ctx: CanvasRenderingContext2D, d: Decal, accent: string) {
         ctx.fillRect(Math.round(a.x + ((b.x - a.x) * k) / steps), Math.round(a.y + ((b.y - a.y) * k) / steps), 2, 2);
     }
   } else {
-    // parking pad: dark accent fill, hazard-striped edge, arrow
+    // parking pad: dark accent fill, accent-coloured edge dashes, arrow
     ctx.fillStyle = shade(d.color || accent, -0.5);
     ctx.fillRect(d.x, d.y, d.w, d.h);
     ctx.fillStyle = "#16161d";
@@ -67,7 +70,7 @@ function drawDecal(ctx: CanvasRenderingContext2D, d: Decal, accent: string) {
     ctx.fillRect(d.x, d.y + d.h - 2, d.w, 2);
     ctx.fillRect(d.x, d.y, 2, d.h);
     ctx.fillRect(d.x + d.w - 2, d.y, 2, d.h);
-    ctx.fillStyle = GROUND.borderStripe;
+    ctx.fillStyle = shade(d.color || accent, 0.35);
     for (let x = d.x + 4; x < d.x + d.w - 6; x += 8) {
       ctx.fillRect(x, d.y + 2, 4, 2);
       ctx.fillRect(x, d.y + d.h - 4, 4, 2);
@@ -84,26 +87,21 @@ function drawDecal(ctx: CanvasRenderingContext2D, d: Decal, accent: string) {
 /** The flat floor of the whole map as one texture: asphalt tiles, lane lines, area outlines, decals. */
 export function buildGroundLayer(world: World): HTMLCanvasElement {
   const c = document.createElement("canvas");
-  c.width = world.w * TILE;
-  c.height = world.h * TILE;
+  c.width = world.w * TILE + 2 * GROUND_MARGIN;
+  c.height = world.h * TILE + 2 * GROUND_MARGIN;
   const ctx = c.getContext("2d")!;
   ctx.imageSmoothingEnabled = false;
+  // from here on, coordinates are map coordinates; the margin sits at negative values
+  ctx.translate(GROUND_MARGIN, GROUND_MARGIN);
 
-  for (let ty = 0; ty < world.h; ty++) {
-    for (let tx = 0; tx < world.w; tx++) {
-      const t = world.terrain[ty * world.w + tx];
+  const mt = GROUND_MARGIN / TILE;
+  for (let ty = -mt; ty < world.h + mt; ty++) {
+    for (let tx = -mt; tx < world.w + mt; tx++) {
+      const inside = tx >= 0 && ty >= 0 && tx < world.w && ty < world.h;
+      const t = inside ? world.terrain[ty * world.w + tx] : Terrain.Asphalt;
       const x = tx * TILE;
       const y = ty * TILE;
       const alt = (tx + ty) & 1;
-      if (t === Terrain.Border) {
-        ctx.fillStyle = GROUND.border[alt];
-        ctx.fillRect(x, y, TILE, TILE);
-        ctx.fillStyle = GROUND.borderStripe;
-        for (let py = 0; py < TILE; py++)
-          for (let px = 0; px < TILE; px++)
-            if ((((x + px + y + py) >> 2) & 1) === 0 && py > 3 && py < TILE - 3) ctx.fillRect(x + px, y + py, 1, 1);
-        continue;
-      }
       const concrete = t === Terrain.Concrete;
       ctx.fillStyle = (concrete ? GROUND.concrete : GROUND.asphalt)[alt];
       ctx.fillRect(x, y, TILE, TILE);

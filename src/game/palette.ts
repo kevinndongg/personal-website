@@ -25,8 +25,6 @@ export const GROUND = {
   concrete: ["#70737d", "#74777f"],
   concreteJoint: "#5a5d66",
   concreteSpeck: ["#62656e", "#8a8d97"],
-  border: ["#24252b", "#2d2e35"],
-  borderStripe: "#d9b21f",
   oil: "#25262c",
   laneLine: "#c9a921",
   shadow: "rgba(10, 10, 16, 0.35)",

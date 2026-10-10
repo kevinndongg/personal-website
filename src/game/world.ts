@@ -46,7 +46,7 @@ export interface Item {
   ty: number;
 }
 
-export const Terrain = { Asphalt: 0, Concrete: 1, Border: 2 } as const;
+export const Terrain = { Asphalt: 0, Concrete: 1 } as const;
 
 export interface World {
   w: number; // terrain tiles
@@ -138,17 +138,12 @@ export function generateWorld(inputs: ZoneInput[], seed = 7): World {
   const blocked = new Uint8Array(w * h);
   const idx = (x: number, y: number) => y * w + x;
 
+  // keep loose tires off the outermost ring so nothing sits right on the edge of the board
   for (let x = 0; x < w; x++) {
-    for (const y of [0, h - 1]) {
-      terrain[idx(x, y)] = Terrain.Border;
-      blocked[idx(x, y)] = 1;
-    }
+    for (const y of [0, h - 1]) blocked[idx(x, y)] = 1;
   }
   for (let y = 0; y < h; y++) {
-    for (const x of [0, w - 1]) {
-      terrain[idx(x, y)] = Terrain.Border;
-      blocked[idx(x, y)] = 1;
-    }
+    for (const x of [0, w - 1]) blocked[idx(x, y)] = 1;
   }
 
   // keep loose yard tires out of every project box (plus a one-tile margin)
