@@ -86,11 +86,13 @@ const VISUAL_SCALE: Record<string, number> = {
   battery: 1.5,
   laptop: 1.6,
   tirestack: 1.4,
-  formula: 1.42,
+  formula: 0.83, // about half the track width, so it sits comfortably inside the bay and the lane
   // team dressing: drawn oversized so each piece stays recognizable on the 2x pixel board
   lidar: 2.0,
   estop: 2.3,
-  extinguisher: 2.2,
+  extinguisher: 2.8,
+  grill: 1.2,
+  cook: 1.5,
   sit: 1.5,
   cart: 2.0,
 };
@@ -111,6 +113,11 @@ export class Renderer3D {
   private pickables: Object3D[] = [];
   private zoneModels = new Map<string, Object3D[]>();
   private zoneGlow = new Map<string, Mesh>();
+  /** Per-model animation callbacks (see `userData.animate` in models.ts) grouped by zone. */
+  private animators: { fn: (c: { t: number; hover: number; pixel: number }) => void; zoneId: string }[] = [];
+  private hoverAmount = new Map<string, number>();
+  private frozenT = new Map<string, number>();
+  private reduceMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   /** Models that sit on the pixel board: re-snapped whenever the camera or resolution changes. */
   private snapped: { obj: Object3D; x: number; z: number }[] = [];
   private wpp = 1; // world units per rendered pixel
@@ -242,6 +249,7 @@ export class Renderer3D {
     }
 
     // scene props
+    let garageModel: Object3D | null = null;
     for (const zone of world.zones) {
       for (const p of zone.scene.props) {
         const fp = p.solid;
@@ -258,6 +266,11 @@ export class Renderer3D {
         const k = VISUAL_SCALE[p.sprite.split("-")[0]] ?? 1; // small props are drawn a bit oversized so they read at this resolution
         model.scale.setScalar(k);
         model.userData.zoneId = zone.id;
+        if (p.sprite === "garage") garageModel = model;
+        else if (p.sprite === "extinguisher" && garageModel) model.userData.outlineRoot = garageModel;
+        model.traverse((o) => {
+          if (typeof o.userData.animate === "function") this.animators.push({ fn: o.userData.animate, zoneId: zone.id });
+        });
         scene.add(model);
         this.pickables.push(model);
         let list = this.zoneModels.get(zone.id);
@@ -310,6 +323,8 @@ export class Renderer3D {
       if (m.userData.noOutline || m.material instanceof ShadowMaterial) return;
       let root: Object3D = m;
       while (root.parent && root.parent !== this.scene) root = root.parent;
+      // tiny wall-mounted things share their host's outline id (otherwise their outline is the whole object)
+      if (root.userData.outlineRoot) root = root.userData.outlineRoot as Object3D;
       let mat = perRoot.get(root);
       if (!mat) {
         const n = next++;
@@ -403,6 +418,7 @@ export class Renderer3D {
 
   /** Hover effect for one project box, `amount` 0..1: its props rise and its ground brightens. Works for any zone. */
   setHover(zoneId: string, amount: number) {
+    this.hoverAmount.set(zoneId, amount);
     const cfg = this.world.zones.find((z) => z.id === zoneId)?.scene.hover;
     // lift in whole rendered pixels: one pixel of screen height is wpp / up.y in world height
     const upY = this.camera.matrixWorld.elements[5] || Math.cos(TILT);
@@ -480,6 +496,15 @@ export class Renderer3D {
     if (marker) {
       const mp = this.snapXZ(marker.x, 0.4, marker.y);
       this.markerMesh.position.set(mp.x, 0.4, mp.z);
+    }
+
+    // animations: time steps are handed in as plain seconds; models quantize their own motion
+    const pixel = this.wpp / (this.camera.matrixWorld.elements[5] || Math.cos(TILT));
+    for (const a of this.animators) {
+      const hover = this.hoverAmount.get(a.zoneId) ?? 0;
+      const pause = this.world.zones.find((z) => z.id === a.zoneId)?.scene.animation?.pauseOnHover && hover > 0.5;
+      if (!pause) this.frozenT.set(a.zoneId, time);
+      a.fn({ t: this.reduceMotion ? 0 : (this.frozenT.get(a.zoneId) ?? time), hover, pixel });
     }
 
     // 1) color

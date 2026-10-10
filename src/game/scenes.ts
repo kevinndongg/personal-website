@@ -38,6 +38,8 @@ export interface Scene {
   labelHeight: number; // how high above the ground the HTML label hovers (3D px)
   /** Optional per-scene tuning of the hover effect (defaults live in render3d.ts). */
   hover?: { lift?: number; glow?: number }; // lift is in rendered pixels
+  /** Animations default to running all the time; a scene can freeze them while its box is hovered. */
+  animation?: { pauseOnHover?: boolean };
   props: Prop[];
   decals: Decal[];
 }
@@ -84,7 +86,7 @@ function racingScene(ox: number, oy: number): Scene {
     { sprite: "battery", ...along(M, 6, -34), angle: ANGLE, solid: rect(8, 5) },
     { sprite: "battery", ...along(M, 18, -34), angle: ANGLE, solid: rect(8, 5) },
     { sprite: "tirestack", ...along(C, -10, 36), solid: circle(4.5) },
-    { sprite: "extinguisher", ...along(C, -26, 29.4), elevation: 3 }, // mounted on the wall next to the tires
+    { sprite: "extinguisher", ...along(C, 0, 29.4), elevation: 3 }, // mounted on the wall, on the bay side of the tire stack
     { sprite: "person-r", ...along(M, 14, 42), solid: circle(3) },
     { sprite: "person-w", ...along(M, 10, -50), solid: circle(3) },
     { sprite: "person-b", ...along(M, -8, -46), solid: circle(3) },
@@ -97,21 +99,23 @@ function racingScene(ox: number, oy: number): Scene {
     { sprite: "lidar", ...at(204, 44), solid: circle(5) },
     { sprite: "estop", ...at(184, 48), solid: rect(10, 8) },
     { sprite: "cart", ...at(160, 44), solid: rect(18, 12) },
-    { sprite: "trailer", ...at(58, 246), solid: rect(92, 28) },
+    { sprite: "trailer", ...at(39, 246), solid: rect(58, 28) }, // box truck, no trailer
     { sprite: "tent", ...at(58, 176), solid: rect(28, 28) },
+    { sprite: "grill", ...at(26, 176), solid: rect(22, 12) }, // left of the tent
+    { sprite: "cook", ...at(14, 176), angle: 0, solid: circle(3.5) },
     { sprite: "sit-r", ...at(42, 190), angle: 0.5, solid: circle(3.5) },
     { sprite: "sit-w", ...at(56, 193), angle: 0.9, solid: circle(3.5) },
     { sprite: "sit-b", ...at(70, 190), angle: 0.3, solid: circle(3.5) },
-    { sprite: "tirerack", ...at(26, 160), solid: rect(32, 14) },
+    { sprite: "tirerack", ...at(92, 176), solid: rect(32, 14) },
     { sprite: "toolchest", ...at(22, 208), solid: rect(18, 12) },
   );
 
   // slalom: starts right at the bay mouth, straight ahead of the car, then curves south as it weaves.
   // Constant width (28), cones evenly spaced along each boundary: left side blue, right side yellow.
-  const half = 14; // half the track width
+  const half = 18; // half the track width (the formula car is half this wide)
   const GAP = 18; // target spacing between neighbouring cones on a boundary
-  const WEAVE = 8; // sideways swing of the centerline (kept gentle so the inside boundary never folds over itself)
-  const PERIOD = 96; // length of one weave
+  const WEAVE = 6; // sideways swing of the centerline (kept gentle so the inside boundary never folds over itself)
+  const PERIOD = 110; // length of one weave
   const STEP = 0.5;
   const base: { x: number; y: number; s: number }[] = [];
   let pos = { x: M.x, y: M.y };
@@ -128,7 +132,7 @@ function racingScene(ox: number, oy: number): Scene {
   };
   advance(24, 0); // straight out of the bay
   advance(49, (40 * Math.PI) / 180); // swing toward the south
-  advance(52, 0);
+  advance(48, 0);
   base.push({ ...pos, s: travelled });
   const center = base.map((p, i) => {
     const q = base[Math.min(i + 1, base.length - 1)];

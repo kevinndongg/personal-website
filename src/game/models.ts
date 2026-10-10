@@ -199,9 +199,8 @@ export function garageModel(w: number, d: number): Group {
   roll.position.y = doorH - 0.5;
   g.add(roll);
 
-  // open bay: floor, back wall, low front curb, gear against the back wall
+  // open bay: floor and a low front curb; no back wall, so the crew can reach the car from either side
   g.add(box(bayW, 1, d, "#30333c", bayX, 0, 0));
-  g.add(box(bayW, H, t, WALL, bayX, 1, -hz + t / 2));
   g.add(box(bayW, 4, t, "#d9b21f", bayX, 1, hz - t / 2));
   g.add(box(7, 8, 5, "#d8322c", bayX - 7, 1, -hz + t + 3)); // toolbox
   g.add(box(2, 14, 12, "#4a4d57", bayX + 6, 1, -hz + t + 7)); // shelf
@@ -516,63 +515,6 @@ export function toolChestModel(w: number, d: number): Group {
 
 /** Team transport: a white box truck with a red band and a checkered cab, towing an open trailer with a car chassis.
  *  +x = front (cab), length w, width d. */
-export function trailerModel(w: number, d: number): Group {
-  const g = new Group();
-  const RED = "#d02a2c";
-  const x0 = -w / 2;
-
-  // open car trailer at the back with a rolling chassis strapped on
-  const deckLen = 32;
-  const dc = x0 + deckLen / 2;
-  g.add(box(deckLen, 1.4, 16, "#5d6068", dc, 3.2, 0));
-  g.add(box(deckLen, 1.2, 0.8, "#8b909a", dc, 4.6, 7.6));
-  g.add(box(deckLen, 1.2, 0.8, "#8b909a", dc, 4.6, -7.6));
-  for (const x of [dc - 5, dc + 5]) for (const z of [-9.6, 9.6]) g.add(wheel(3.2, 2.2, x, 3.2, z));
-  g.add(box(8, 1, 1.4, "#5d6068", x0 + deckLen + 3, 3.4, 0)); // tow bar
-  g.add(box(13, 2.2, 4.2, RED, dc, 4.6, 0)); // chassis tub
-  g.add(box(5, 1.6, 2.2, RED, dc + 8, 4.6, 0)); // nose
-  g.add(box(2, 0.6, 9, "#f4f4f4", dc + 10.6, 4.8, 0)); // front wing
-  g.add(box(2, 0.6, 7, "#f4f4f4", dc - 7, 8, 0)); // rear wing
-  for (const x of [dc - 5, dc + 6]) for (const z of [-3.4, 3.4]) g.add(wheel(1.9, 1.8, x, 6.1, z));
-
-  // box truck
-  const cargoX = x0 + deckLen + 6;
-  const cargoLen = 32;
-  const cc = cargoX + cargoLen / 2;
-  g.add(box(cargoLen, 2, 16, "#2c2f38", cc, 2, 0)); // underframe
-  g.add(box(cargoLen, 22, d - 4, "#f4f4f4", cc, 4, 0)); // cargo box
-  g.add(box(cargoLen + 0.4, 6, d - 3.6, RED, cc, 11, 0)); // red band
-  g.add(box(cargoLen + 0.6, 1.2, d - 3.4, "#9a9ea8", cc, 26, 0)); // roof lip
-  g.add(box(0.5, 16, 0.5, "#8b909a", cargoX + 0.4, 6, 0)); // rear door seam
-
-  const cabX = cargoX + cargoLen;
-  g.add(box(14, 15, d - 6, "#f4f4f4", cabX + 7, 4, 0)); // cab
-  g.add(box(0.6, 6, d - 10, "#7fd6ff", cabX + 14.1, 10, 0)); // windshield
-  g.add(box(6, 8, d - 8, "#f4f4f4", cabX + 17, 3, 0)); // hood
-  g.add(box(6.2, 0.5, 4, RED, cabX + 17, 11, 4)); // hood stripes
-  g.add(box(6.2, 0.5, 4, RED, cabX + 17, 11, -4));
-  g.add(box(2, 3, d - 6, "#b8bcc4", cabX + 20.4, 2, 0)); // bumper
-  g.add(box(0.5, 1.4, 2, "#f6d02a", cabX + 20.3, 7, 6));
-  g.add(box(0.5, 1.4, 2, "#f6d02a", cabX + 20.3, 7, -6));
-  // checkered graphic on the cab doors (both sides)
-  const [c, ctx] = canvasOf(12, 8);
-  for (let y = 0; y < 8; y += 2)
-    for (let x = 0; x < 12; x += 2) fillRect(ctx, x, y, 2, 2, (x + y) % 4 === 0 ? RED : "#f4f4f4");
-  const check = nearestTexture(c);
-  for (const side of [1, -1]) {
-    const m = new Mesh(new PlaneGeometry(10, 7), new MeshBasicMaterial({ map: check }));
-    m.position.set(cabX + 7, 9, side * (d - 6) / 2 + side * 0.05);
-    m.rotation.y = side > 0 ? 0 : Math.PI;
-    g.add(m);
-  }
-  for (const z of [-1, 1]) {
-    g.add(wheel(4.4, 4, cc - 8, 4.4, z * (d / 2 - 1.4)));
-    g.add(wheel(4.4, 4, cc + 2, 4.4, z * (d / 2 - 1.4)));
-    g.add(wheel(4.2, 3.4, cabX + 12, 4.2, z * (d / 2 - 2.6)));
-  }
-  return g;
-}
-
 /** Pop-up canopy: tall legs, striped valance and a peaked striped roof so it reads as a tent. */
 export function tentModel(w: number, d: number): Group {
   const g = new Group();
@@ -636,6 +578,140 @@ export function extinguisherModel(): Group {
   return g;
 }
 
+/** Animation context handed to `userData.animate` callbacks each frame. */
+export interface AnimCtx {
+  t: number; // seconds (0 when reduced motion is on)
+  hover: number; // 0..1, how hovered this model's project box is
+  pixel: number; // world height of one rendered pixel, for stepping motion in whole pixels
+}
+
+/** Team box truck (no trailer): white box, red band, checkered cab. +x = front (cab), length w, width d. */
+export function trailerModel(w: number, d: number): Group {
+  const g = new Group();
+  const RED = "#d02a2c";
+  const x0 = -w / 2;
+  const cargoLen = w - 22;
+  const cargoX = x0 + 1;
+  const cc = cargoX + cargoLen / 2;
+
+  g.add(box(cargoLen, 2, 16, "#2c2f38", cc, 2, 0)); // underframe
+  g.add(box(cargoLen, 22, d - 4, "#f4f4f4", cc, 4, 0)); // cargo box
+  g.add(box(cargoLen + 0.4, 6, d - 3.6, RED, cc, 11, 0)); // red band
+  g.add(box(cargoLen + 0.6, 1.2, d - 3.4, "#9a9ea8", cc, 26, 0)); // roof lip
+  g.add(box(0.5, 16, 0.5, "#8b909a", cargoX + 0.4, 6, 0)); // rear door seam
+
+  const cabX = cargoX + cargoLen;
+  g.add(box(14, 15, d - 6, "#f4f4f4", cabX + 7, 4, 0)); // cab
+  g.add(box(0.6, 6, d - 10, "#7fd6ff", cabX + 14.1, 10, 0)); // windshield
+  g.add(box(6, 8, d - 8, "#f4f4f4", cabX + 17, 3, 0)); // hood
+  g.add(box(6.2, 0.5, 4, RED, cabX + 17, 11, 4)); // hood stripes
+  g.add(box(6.2, 0.5, 4, RED, cabX + 17, 11, -4));
+  g.add(box(2, 3, d - 6, "#b8bcc4", cabX + 20.4, 2, 0)); // bumper
+  g.add(box(0.5, 1.4, 2, "#f6d02a", cabX + 20.3, 7, 6));
+  g.add(box(0.5, 1.4, 2, "#f6d02a", cabX + 20.3, 7, -6));
+  // checkered graphic on the cab doors (both sides)
+  const [c, ctx] = canvasOf(12, 8);
+  for (let y = 0; y < 8; y += 2)
+    for (let x = 0; x < 12; x += 2) fillRect(ctx, x, y, 2, 2, (x + y) % 4 === 0 ? RED : "#f4f4f4");
+  const check = nearestTexture(c);
+  for (const side of [1, -1]) {
+    const m = new Mesh(new PlaneGeometry(10, 7), new MeshBasicMaterial({ map: check }));
+    m.position.set(cabX + 7, 9, (side * (d - 6)) / 2 + side * 0.05);
+    m.rotation.y = side > 0 ? 0 : Math.PI;
+    g.add(m);
+  }
+  for (const z of [-1, 1]) {
+    g.add(wheel(4.4, 4, cc - 8, 4.4, z * (d / 2 - 1.4)));
+    g.add(wheel(4.4, 4, cc + 2, 4.4, z * (d / 2 - 1.4)));
+    g.add(wheel(4.2, 3.4, cabX + 12, 4.2, z * (d / 2 - 2.6)));
+  }
+  return g;
+}
+
+/** Barrel grill with one patty cooking over glowing embers, smoke above it and a side table with buns. */
+export function grillModel(): Group {
+  const g = new Group();
+  for (const a of [0.6, 2.7, 4.8]) g.add(box(0.9, 5, 0.9, STEEL, Math.cos(a) * 3.4, 0, Math.sin(a) * 3.4)); // legs
+  g.add(cyl(5.2, 4, 4, NEAR_BLACK, 0, 5, 0, 12)); // bowl
+  g.add(cyl(4.2, 4.2, 0.4, "#f08a1c", 0, 8.4, 0, 12)); // embers
+  g.add(cyl(5, 5, 0.5, "#8b909a", 0, 8.9, 0, 12)); // grate
+  const lid = box(10, 0.8, 6, NEAR_BLACK, 0, 0, 0);
+  lid.position.set(0, 12, -6);
+  lid.rotation.x = -0.9;
+  g.add(lid); // lid propped open behind the grate
+  // side table with buns
+  g.add(box(9, 0.8, 7, "#b08a5a", 11, 5, 0));
+  for (const [x, z] of [
+    [7.5, -2.8],
+    [14.5, -2.8],
+    [7.5, 2.8],
+    [14.5, 2.8],
+  ])
+    g.add(box(0.8, 5, 0.8, STEEL, x, 0, z));
+  for (const z of [-1.8, 1.8]) g.add(box(3.4, 1.6, 3, "#e0b060", 11, 5.8, z));
+
+  // the patty under the spatula: hops and flips in time with the cook, once every 3 seconds
+  const flip = new Group();
+  flip.position.set(-1, 9.7, 0);
+  flip.add(box(3.8, 1.1, 3.8, "#8a5530", 0, -0.55, 0)); // browned side
+  flip.add(box(3.8, 0.5, 3.8, "#3e2412", 0, -0.85, 0)); // other side, darker
+  g.add(flip);
+
+  // smoke rising from the patty: slow, small and well above the grate so it reads as smoke, not food
+  const puffs: Mesh[] = [];
+  for (let i = 0; i < 4; i++) {
+    const puff = mesh(new BoxGeometry(2.2, 2.2, 2.2), toon("#d6dae2"), 0, 14, 0);
+    puff.castShadow = false;
+    g.add(puff);
+    puffs.push(puff);
+  }
+  const hop = [1, 2, 3, 3, 2, 1]; // whole-pixel heights through the flip
+  g.userData.animate = ({ t, pixel }: AnimCtx) => {
+    const steps = 5;
+    puffs.forEach((puff, i) => {
+      const k = (Math.floor(t * 2) + i * 2) % steps; // one pixel-step every half second
+      // starts above and slightly behind the patty so it never covers it from the camera's side
+      puff.position.set(-1 + Math.sin(i * 1.9 + k * 0.5) * 1.2, 15 + k * pixel * 0.8, -2.6 + Math.cos(i * 1.9) * 1.2);
+      puff.scale.setScalar(Math.max(0.2, 1 - k / (steps + 1)));
+    });
+    const p = t % 3;
+    const cycle = Math.floor(t / 3);
+    let lift = 0;
+    let turn = 0;
+    if (p >= 2.2 && p < 2.8) {
+      const k = Math.min(hop.length - 1, Math.floor((p - 2.2) / 0.1));
+      lift = hop[k] * pixel * 0.9;
+      turn = (Math.PI * (k + 1)) / hop.length;
+    } else if (p >= 2.8) turn = Math.PI;
+    flip.position.y = 9.6 + lift;
+    flip.rotation.x = (cycle % 2) * Math.PI + turn;
+  };
+  return g;
+}
+
+/** Cook in a white apron and chef hat; faces +x (toward the grill) and flips the patty in front of them. */
+export function cookModel(): Group {
+  const g = new Group();
+  g.add(box(1.5, 4.5, 1.5, "#2a3a6a", -1.1, 0, 0));
+  g.add(box(1.5, 4.5, 1.5, "#2a3a6a", 1.1, 0, 0)); // legs
+  g.add(box(4.4, 5, 2.8, "#d8322c", 0, 4.5, 0)); // shirt
+  g.add(box(0.5, 4.6, 2.4, "#f4f4f4", 2.3, 4.2, 0)); // apron
+  g.add(box(3.2, 3, 3.2, "#e8b890", 0, 9.5, 0)); // head
+  g.add(box(3.8, 1.2, 3.8, "#f4f4f4", 0, 12.4, 0)); // hat band
+  g.add(box(3.4, 2.8, 3.4, "#f4f4f4", 0, 13.6, 0)); // hat top
+  g.add(box(1, 4, 1.2, "#d8322c", 0, 4.8, -2.7)); // idle arm
+  const arm = new Group();
+  arm.position.set(2.2, 8.4, 0); // shoulder, reaching straight ahead
+  arm.add(box(4.6, 1.1, 1.3, "#d8322c", 2.3, -0.55, 0)); // forearm
+  arm.add(box(3, 0.4, 2.2, "#b8bcc4", 6.1, -0.2, 0)); // spatula
+  g.add(arm);
+  g.userData.animate = ({ t }: AnimCtx) => {
+    const p = t % 3;
+    arm.rotation.z = p >= 2.1 && p < 2.8 ? 0.5 : -0.12; // spatula goes under the patty, lifts, drops
+  };
+  return g;
+}
+
 export function hazardWallTexture(): CanvasTexture {
   const [c, ctx] = canvasOf(16, 16);
   fillRect(ctx, 0, 0, 16, 16, "#24252b");
@@ -672,6 +748,10 @@ export function createModel(id: string, footprint: Footprint | undefined, zones:
       return toolChestModel(w, d);
     case "extinguisher":
       return extinguisherModel();
+    case "grill":
+      return grillModel();
+    case "cook":
+      return cookModel();
     case "formula":
       return formulaModel();
     case "battery":
