@@ -46,29 +46,39 @@ const CAM_DIST = 2500; // orthographic: distance only has to clear the scene
 const MAX_RENDER_RATIO = 1.5;
 
 // ------------------------------------------------------------------ "cinematic miniature" post pass
-// Tilt-shift blur toward the top/bottom edges, a muted green/warm grade, vignette and a touch of film grain.
+// A muted green/warm grade, vignette and film grain (heavier on the dark surface around the map), plus the focus blur.
 const POST_VS = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 const POST_FS = `
   uniform sampler2D tColor;
   uniform vec2 texel;
-  uniform float time;
   uniform vec2 res;
   uniform vec4 focusRect; // focused project box in screen uv (minX, minY, maxX, maxY)
   uniform float focusAmt;
+  uniform vec3 voidCol;
   varying vec2 vUv;
 
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+  }
+
+  // the scene target is cleared to alpha 0 (premultiplied, so black); lay whatever is not covered over the dark surface
+  vec3 scene(vec2 uv) {
+    vec4 t = texture2D(tColor, uv);
+    return t.rgb + (1.0 - t.a) * voidCol;
+  }
+
   void main() {
-    // tilt-shift: sharp band across the middle, blur growing toward the top and bottom
-    float d = abs(vUv.y - 0.52) * 2.0;
+    // focus: blur everything outside the chosen project box (nothing is blurred otherwise)
     float outside = max(max(focusRect.x - vUv.x, vUv.x - focusRect.z), max(focusRect.y - vUv.y, vUv.y - focusRect.w));
     float away = smoothstep(0.0, 0.16, outside) * focusAmt; // 0 inside the focused box, 1 well outside
-    float blur = smoothstep(0.55, 1.1, d) * 2.8 + away * 3.2; // radius in pixels
-    vec3 c = texture2D(tColor, vUv).rgb * 0.2270270270;
+    float blur = away * 3.2; // radius in pixels
+    float bg = 1.0 - texture2D(tColor, vUv).a; // the scene clears to alpha 0, so this is how much of this pixel is the dark surface
+    vec3 c = scene(vUv) * 0.2270270270;
     float w1 = 0.3162162162, w2 = 0.0702702703;
     vec2 o1 = vec2(0.0, 1.3846153846) * texel.y * blur;
     vec2 o2 = vec2(0.0, 3.2307692308) * texel.y * blur;
-    c += texture2D(tColor, vUv + o1).rgb * w1 + texture2D(tColor, vUv - o1).rgb * w1;
-    c += texture2D(tColor, vUv + o2).rgb * w2 + texture2D(tColor, vUv - o2).rgb * w2;
+    c += scene(vUv + o1) * w1 + scene(vUv - o1) * w1;
+    c += scene(vUv + o2) * w2 + scene(vUv - o2) * w2;
 
     // grade: slightly muted, warm highlights, cool green-teal shadows, a little contrast
     float l = dot(c, vec3(0.299, 0.587, 0.114));
@@ -86,9 +96,11 @@ const POST_FS = `
     float v = smoothstep(1.05, 0.28, length((vUv - 0.5) * vec2(1.25, 1.0)));
     c *= mix(0.78, 1.0, v);
 
-    // film grain
-    float n = fract(sin(dot(vUv * res + vec2(time * 37.0, time * 91.0), vec2(12.9898, 78.233))) * 43758.5453);
-    c += (n - 0.5) * 0.03;
+    // photo grain: fixed to the frame (it never moves). One render pixel, bell-shaped (-1..1); a touch stronger on the
+    // dark surface around the map (bg = 1) than over the map itself (bg = 0). Subtle from afar, visible up close.
+    vec2 px = floor(vUv * res);
+    float grain = hash(px) + hash(px + 17.0) - 1.0;
+    c += grain * 0.025 * bg;
 
     gl_FragColor = vec4(c, 1.0);
   }
@@ -100,7 +112,7 @@ const POST_FS = `
  */
 export type EdgeMode = "cut" | "slab" | "fade";
 const SLAB_H = 28; // thickness of the board in "slab" mode
-const VOID = "#1b1c22"; // the dark surface the map sits on
+const VOID = "#1d1e24"; // the dark surface the map sits on
 const SHADOW_PAD = 3 * TILE; // how far the drop shadow's texture reaches past the map
 
 /** Defaults for the hover effect on a project box (a scene can override via `scene.hover`). */
@@ -248,7 +260,8 @@ export class Renderer3D {
     this.renderer.outputColorSpace = LinearSRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = PCFSoftShadowMap;
-    this.renderer.setClearColor(new Color(VOID));
+    // alpha 0 marks "nothing drawn here" in the scene target; the post pass uses it to grain the surface around the map
+    this.renderer.setClearColor(new Color(VOID), 0);
 
     this.colorTarget = new WebGLRenderTarget(1, 1, {
       minFilter: LinearFilter,
@@ -266,9 +279,9 @@ export class Renderer3D {
         tColor: { value: this.colorTarget.texture },
         texel: { value: new Vector2(1, 1) },
         res: { value: new Vector2(1, 1) },
-        time: { value: 0 },
         focusRect: { value: new Vector4(0, 0, 0, 0) },
         focusAmt: { value: 0 },
+        voidCol: { value: new Color(VOID) },
       },
       depthTest: false,
       depthWrite: false,
@@ -656,8 +669,7 @@ export class Renderer3D {
     this.quad.uniforms.focusRect.value.copy(this.focusRect);
     this.quad.uniforms.focusAmt.value = this.focusAmt;
 
-    // scene -> multisampled target, then the grade / tilt-shift / grain pass to the screen
-    this.quad.uniforms.time.value = this.reduceMotion ? 0 : time % 100;
+    // scene -> multisampled target, then the grade / grain pass to the screen
     renderer.setRenderTarget(this.colorTarget);
     renderer.render(this.scene, this.camera);
     renderer.setRenderTarget(null);
