@@ -30,10 +30,8 @@ export interface Prop {
 }
 
 export interface Scene {
-  area: Rect; // clicking anywhere in here drives the car to `stop`
+  area: Rect; // the project box: hovering it lifts the props; clicking it opens the project
   building: Rect;
-  stop: { x: number; y: number }; // where the car parks; the dialogue opens when it gets here
-  trigger: Rect;
   labelAt: { x: number; y: number };
   labelHeight: number; // how high above the ground the HTML label hovers (3D px)
   /** Optional per-scene tuning of the hover effect (defaults live in render3d.ts). */
@@ -181,12 +179,9 @@ function racingScene(ox: number, oy: number): Scene {
     { kind: "cable", points: [along(M, 6, -32), along(M, 2, -26), along(M, -1, -21)] },
   ];
 
-  const stop = along(M, 40, -42); // clear of the slalom, up and to the right of the bay
   return {
     area: { x: ox, y: oy, w, h },
     building,
-    stop,
-    trigger: { x: stop.x - 14, y: stop.y - 8, w: 28, h: 16 },
     labelAt: { x: C.x - 6, y: C.y - 30 }, // just above the garage roof
     labelHeight: 26,
     props,
@@ -199,20 +194,18 @@ function defaultScene(ox: number, oy: number, id: string, variant: "building" | 
   const { w, h } = sceneSize(variant);
   const b = BUILDING[variant];
   const building = { x: ox + 16, y: oy + 8, w: b.w, h: b.h };
-  const stop = { x: building.x + b.w / 2, y: building.y + b.h + 16 };
+  const pad = { x: building.x + b.w / 2, y: building.y + b.h + 16 }; // painted pad in front of the door
   return {
     area: { x: ox, y: oy, w, h },
     building,
-    stop,
-    trigger: { x: stop.x - 28, y: stop.y - 12, w: 56, h: 24 },
     labelAt: { x: building.x + b.w / 2, y: building.y + 6 },
     labelHeight: 40,
     props: [
       { sprite: `bld:${id}`, x: building.x + b.w / 2, y: building.y + b.h, solid: rect(b.w, b.h) },
-      { sprite: "cone-o", x: stop.x - 44, y: stop.y + 10, solid: circle(3) },
-      { sprite: "cone-o", x: stop.x + 44, y: stop.y + 10, solid: circle(3) },
+      { sprite: "cone-o", x: pad.x - 44, y: pad.y + 10, solid: circle(3) },
+      { sprite: "cone-o", x: pad.x + 44, y: pad.y + 10, solid: circle(3) },
     ],
-    decals: [{ kind: "pad", x: stop.x - 32, y: stop.y - 16, w: 64, h: 32, color: "" }],
+    decals: [{ kind: "pad", x: pad.x - 32, y: pad.y - 16, w: 64, h: 32, color: "" }],
   };
 }
 

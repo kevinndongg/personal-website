@@ -250,20 +250,6 @@ export function buildingModel(w: number, d: number, zone: Zone): Group {
 
 // ---------------------------------------------------------------- vehicles
 
-export function roadCarModel(): Group {
-  const g = new Group();
-  g.add(box(16, 3.2, 8, "#d8322c", 0, 1.8, 0)); // body
-  g.add(box(7, 3, 6.4, "#8fdcff", -1.5, 5, 0)); // cabin glass
-  g.add(box(7.4, 0.8, 6.8, "#d8322c", -1.5, 8, 0)); // roof
-  g.add(box(15.5, 0.4, 1.6, "#f4f4f4", 0, 5, 0)); // stripe
-  g.add(box(0.6, 1.4, 1.6, "#f6d02a", 8, 3, -2.6));
-  g.add(box(0.6, 1.4, 1.6, "#f6d02a", 8, 3, 2.6));
-  g.add(box(0.6, 1.2, 1.6, "#ff5a4a", -8, 3, -2.6));
-  g.add(box(0.6, 1.2, 1.6, "#ff5a4a", -8, 3, 2.6));
-  for (const x of [-5, 5]) for (const z of [-4.4, 4.4]) g.add(wheel(2.2, 2, x, 2.2, z));
-  return g;
-}
-
 /** Number roundel on the nose: white disc, black ring, "46". */
 function roundelTexture(): CanvasTexture {
   const [c, ctx] = canvasOf(14, 14);

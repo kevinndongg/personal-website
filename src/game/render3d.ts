@@ -7,11 +7,9 @@ import {
   DirectionalLight,
   Group,
   HemisphereLight,
-  InstancedMesh,
   LinearFilter,
   LinearMipmapLinearFilter,
   LinearSRGBColorSpace,
-  Matrix4,
   Mesh,
   MeshBasicMaterial,
   Object3D,
@@ -28,19 +26,14 @@ import {
   RGBAFormat,
   Vector2,
   Vector3,
+  Vector4,
   WebGLRenderTarget,
   WebGLRenderer,
 } from "three";
-import type { Car } from "./car";
 import { buildGroundLayer } from "./ground";
-import { createModel, hazardWallTexture, roadCarModel, tireModel } from "./models";
+import { createModel, hazardWallTexture, tireModel } from "./models";
 import { TILE } from "./world";
 import type { World } from "./world";
-
-export interface Marker {
-  x: number;
-  y: number;
-}
 
 // Colors are authored as plain sRGB hex values; lighting is tuned by eye, so no color management.
 ColorManagement.enabled = false;
@@ -59,12 +52,16 @@ const POST_FS = `
   uniform vec2 texel;
   uniform float time;
   uniform vec2 res;
+  uniform vec4 focusRect; // focused project box in screen uv (minX, minY, maxX, maxY)
+  uniform float focusAmt;
   varying vec2 vUv;
 
   void main() {
     // tilt-shift: sharp band across the middle, blur growing toward the top and bottom
     float d = abs(vUv.y - 0.52) * 2.0;
-    float blur = smoothstep(0.55, 1.1, d) * 2.8; // radius in pixels
+    float outside = max(max(focusRect.x - vUv.x, vUv.x - focusRect.z), max(focusRect.y - vUv.y, vUv.y - focusRect.w));
+    float away = smoothstep(0.0, 0.16, outside) * focusAmt; // 0 inside the focused box, 1 well outside
+    float blur = smoothstep(0.55, 1.1, d) * 2.8 + away * 3.2; // radius in pixels
     vec3 c = texture2D(tColor, vUv).rgb * 0.2270270270;
     float w1 = 0.3162162162, w2 = 0.0702702703;
     vec2 o1 = vec2(0.0, 1.3846153846) * texel.y * blur;
@@ -79,6 +76,10 @@ const POST_FS = `
     c *= mix(vec3(1.0), vec3(1.07, 1.02, 0.90), l);     // highlights lean warm
     c = (c - 0.5) * 1.05 + 0.5;
     c *= 1.14; // a little exposure: the scene is lit low and warm, keep it from going muddy
+
+    // focus: everything outside the chosen project quietly drops back
+    c = mix(c, vec3(dot(c, vec3(0.299, 0.587, 0.114))), 0.4 * away);
+    c *= 1.0 - 0.42 * away;
 
     // vignette
     float v = smoothstep(1.05, 0.28, length((vUv - 0.5) * vec2(1.25, 1.0)));
@@ -154,7 +155,6 @@ export class Renderer3D {
   private raycaster = new Raycaster();
   private groundPlane = new Plane(new Vector3(0, 1, 0), 0);
   private center: Vector3;
-  private carModel: Group;
   private pickables: Object3D[] = [];
   private zoneModels = new Map<string, Object3D[]>();
   private zoneGlow = new Map<string, Mesh>();
@@ -163,10 +163,16 @@ export class Renderer3D {
   private hoverAmount = new Map<string, number>();
   private frozenT = new Map<string, number>();
   private reduceMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  private wpp = 1; // world units per rendered pixel
+  private wpp = 1; // world units per rendered pixel (changes while the camera zooms)
+  // camera framing: `base` fits the whole map, `view` is what is on screen, `target` is where it is easing to
+  private base = { wpp: 1, left: 0, top: 0 };
+  private view = { wpp: 1, left: 0, top: 0 };
+  private target = { wpp: 1, left: 0, top: 0 };
+  private focused: { zoneId: string; panel: "left" | "right" | "bottom" } | null = null;
+  private focusAmt = 0; // 0..1, eased: how strongly the rest of the map is dimmed/blurred
+  private lastTime = 0;
+  private focusRect = new Vector4(0, 0, 0, 0);
   private dapple: CanvasTexture;
-  private dots: InstancedMesh;
-  private markerMesh: Group;
   private mapSize: number;
   private width = 1;
   private height = 1;
@@ -201,6 +207,8 @@ export class Renderer3D {
         texel: { value: new Vector2(1, 1) },
         res: { value: new Vector2(1, 1) },
         time: { value: 0 },
+        focusRect: { value: new Vector4(0, 0, 0, 0) },
+        focusAmt: { value: 0 },
       },
       depthTest: false,
       depthWrite: false,
@@ -209,17 +217,6 @@ export class Renderer3D {
 
     this.dapple = dappleTexture();
     this.buildScene();
-
-    // marker + path dots (flat things on the ground)
-    this.dots = new InstancedMesh(new BoxGeometry(2.2, 0.4, 2.2), new MeshBasicMaterial({ color: "#f4f1e6" }), 160);
-    this.dots.count = 0;
-    this.dots.frustumCulled = false;
-    this.scene.add(this.dots);
-    this.markerMesh = new Group();
-    const mk = new MeshBasicMaterial({ color: "#f6d02a" });
-    this.markerMesh.add(new Mesh(new BoxGeometry(9, 0.6, 2), mk), new Mesh(new BoxGeometry(2, 0.6, 9), mk));
-    this.markerMesh.visible = false;
-    this.scene.add(this.markerMesh);
   }
 
   private buildScene() {
@@ -342,11 +339,6 @@ export class Renderer3D {
       scene.add(t);
     }
 
-    this.carModel = roadCarModel();
-    this.carModel.scale.setScalar(1.2);
-    this.carModel.position.set(world.start.x, 0, world.start.y);
-    scene.add(this.carModel);
-
     // everything that is solid casts and receives soft shadows
     scene.traverse((o) => {
       const m = o as Mesh;
@@ -400,6 +392,70 @@ export class Renderer3D {
     camera.top = cy + (this.height * this.wpp) / 2;
     camera.bottom = cy - (this.height * this.wpp) / 2;
     camera.updateProjectionMatrix();
+    this.base = { wpp: this.wpp, left: camera.left, top: camera.top };
+    this.retarget(true);
+  }
+
+  /** Zoom the camera onto a project box (or back out with null). `panel` is where the info panel sits. */
+  focus(zoneId: string | null, panel: "left" | "right" | "bottom" = "right") {
+    this.focused = zoneId ? { zoneId, panel } : null;
+    this.retarget(false);
+  }
+
+  private retarget(snapNow: boolean) {
+    const f = this.focused;
+    if (!f) {
+      this.target = { ...this.base };
+    } else {
+      const zone = this.world.zones.find((z) => z.id === f.zoneId);
+      if (zone) {
+        const a = zone.scene.area;
+        let minX = Infinity,
+          maxX = -Infinity,
+          minY = Infinity,
+          maxY = -Infinity;
+        for (const y of [0, 26]) {
+          for (const [x, z] of [
+            [a.x, a.y],
+            [a.x + a.w, a.y],
+            [a.x, a.y + a.h],
+            [a.x + a.w, a.y + a.h],
+          ]) {
+            const v = new Vector3(x, y, z).applyMatrix4(this.camera.matrixWorldInverse);
+            minX = Math.min(minX, v.x);
+            maxX = Math.max(maxX, v.x);
+            minY = Math.min(minY, v.y);
+            maxY = Math.max(maxY, v.y);
+          }
+        }
+        // the part of the screen left over for the 3D view once the panel is open
+        const region =
+          f.panel === "bottom"
+            ? { cx: 0.5, cy: 0.27, w: 1, h: 0.5 }
+            : f.panel === "right"
+              ? { cx: 0.3, cy: 0.5, w: 0.6, h: 1 }
+              : { cx: 0.7, cy: 0.5, w: 0.6, h: 1 };
+        const wpp = Math.min(
+          this.base.wpp,
+          Math.max((maxX - minX) / (this.width * region.w * 0.82), (maxY - minY) / (this.height * region.h * 0.82))
+        );
+        const vx = (minX + maxX) / 2;
+        const vy = (minY + maxY) / 2;
+        this.target = { wpp, left: vx - region.cx * this.width * wpp, top: vy + region.cy * this.height * wpp };
+      }
+    }
+    if (snapNow) this.view = { ...this.target };
+    this.applyView();
+  }
+
+  private applyView() {
+    const c = this.camera;
+    this.wpp = this.view.wpp;
+    c.left = this.view.left;
+    c.right = this.view.left + this.width * this.view.wpp;
+    c.top = this.view.top;
+    c.bottom = this.view.top - this.height * this.view.wpp;
+    c.updateProjectionMatrix();
   }
 
   /** Render-pixel coordinates (float) of a world point. */
@@ -446,36 +502,19 @@ export class Renderer3D {
     return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
   }
 
-  draw(car: Car, marker: Marker | null, time: number) {
+  draw(time: number) {
     const { renderer } = this;
-    this.carModel.position.set(car.x, 0, car.y);
-    this.carModel.rotation.y = -car.heading;
 
-    // path dots marching toward the goal
-    const pts = [{ x: car.x, y: car.y }, ...car.path];
-    const m4 = new Matrix4();
-    let n = 0;
-    if (car.path.length) {
-      const phase = (time * 24) % 10;
-      let acc = 0;
-      for (let i = 1; i < pts.length && n < 160; i++) {
-        const a = pts[i - 1];
-        const b = pts[i];
-        const len = Math.hypot(b.x - a.x, b.y - a.y);
-        const first = (10 - ((acc - phase + 10) % 10)) % 10;
-        for (let d = first; d < len && n < 160; d += 10) {
-          const t = d / len;
-          m4.makeTranslation(a.x + (b.x - a.x) * t, 0.3, a.y + (b.y - a.y) * t);
-          this.dots.setMatrixAt(n++, m4);
-        }
-        acc += len;
-      }
-    }
-    this.dots.count = n;
-    this.dots.instanceMatrix.needsUpdate = true;
-
-    this.markerMesh.visible = !!marker && Math.floor(time * 3) % 2 === 0;
-    if (marker) this.markerMesh.position.set(marker.x, 0.4, marker.y);
+    // ease the camera toward its target (a gentle exponential approach: quick start, soft landing)
+    const dt = Math.min(0.1, Math.max(0, time - this.lastTime));
+    this.lastTime = time;
+    const k = 1 - Math.exp(-dt * 6.5);
+    const t = this.target;
+    this.view.wpp += (t.wpp - this.view.wpp) * k;
+    this.view.left += (t.left - this.view.left) * k;
+    this.view.top += (t.top - this.view.top) * k;
+    this.focusAmt += ((this.focused ? 1 : 0) - this.focusAmt) * k;
+    this.applyView();
 
     // drifting leaf-shade (a slow breeze across the yard)
     if (!this.reduceMotion) {
@@ -490,6 +529,37 @@ export class Renderer3D {
       if (!pause) this.frozenT.set(a.zoneId, time);
       a.fn({ t: this.reduceMotion ? 0 : (this.frozenT.get(a.zoneId) ?? time), hover, pixel });
     }
+
+    // where the focused project box sits on screen (uv), for the dim/blur outside it
+    if (this.focused) {
+      const zone = this.world.zones.find((z) => z.id === this.focused!.zoneId);
+      if (zone) {
+        const a = zone.scene.area;
+        let u0 = 1,
+          v0 = 1,
+          u1 = 0,
+          v1 = 0;
+        for (const y of [0, 26]) {
+          for (const [x, z] of [
+            [a.x, a.y],
+            [a.x + a.w, a.y],
+            [a.x, a.y + a.h],
+            [a.x + a.w, a.y + a.h],
+          ]) {
+            const p = new Vector3(x, y, z).project(this.camera);
+            const u = (p.x + 1) / 2;
+            const v = (p.y + 1) / 2;
+            u0 = Math.min(u0, u);
+            v0 = Math.min(v0, v);
+            u1 = Math.max(u1, u);
+            v1 = Math.max(v1, v);
+          }
+        }
+        this.focusRect.set(u0 - 0.01, v0 - 0.01, u1 + 0.01, v1 + 0.01);
+      }
+    }
+    this.quad.uniforms.focusRect.value.copy(this.focusRect);
+    this.quad.uniforms.focusAmt.value = this.focusAmt;
 
     // scene -> multisampled target, then the grade / tilt-shift / grain pass to the screen
     this.quad.uniforms.time.value = this.reduceMotion ? 0 : time % 100;

@@ -2,19 +2,20 @@ html:has(.game),
 html:has(.game) body {
   height: 100%;
   overflow: hidden;
-  background: #16161d;
+  background: #1c1713;
 }
 
 .game {
-  --px: 4;
-  --ink: #16161d;
-  --frame: #5a6a8a;
-  --text: #2038a0;
+  --paper: var(--color-bg, #f5f1ea);
+  --paper-2: var(--color-surface, #ece2d3);
+  --line: var(--color-border, #d9cab3);
+  --ink: var(--color-text, #3b2a20);
+  --ink-soft: var(--color-text-muted, #7a6552);
+  --ease: cubic-bezier(0.22, 0.8, 0.24, 1);
   position: fixed;
   inset: 0;
   overflow: hidden;
-  font-family: "Pixelify Sans", "Courier New", monospace;
-  font-weight: 400;
+  font-family: var(--font-body, system-ui, sans-serif);
   -webkit-user-select: none;
   user-select: none;
 }
@@ -24,8 +25,6 @@ html:has(.game) body {
   inset: 0;
   width: 100%;
   height: 100%;
-  image-rendering: auto;
-  cursor: crosshair;
   touch-action: none;
 }
 
@@ -36,26 +35,45 @@ html:has(.game) body {
   pointer-events: none;
 }
 
+/* name tag that rises over a hovered building: a little paper label with a dot in the project's colour */
 .zone-label {
   position: absolute;
   top: 0;
   left: 0;
-  max-width: calc(var(--ws, 1) * 110px);
-  text-align: center;
-  padding: 1px 6px;
-  font-size: max(11px, calc(var(--ws, 1) * 5px));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  padding: 7px 14px 7px 11px;
+  font-family: var(--font-display, serif);
+  font-size: 15px;
+  font-weight: 500;
   line-height: 1.2;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
   color: var(--ink);
-  background: #fff;
-  border: 2px solid var(--ink);
-  border-radius: 4px;
-  box-shadow: 0 2px 0 var(--accent, var(--frame));
+  background: var(--paper);
+  border-radius: 999px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 6px 18px rgba(40, 24, 10, 0.28),
+    0 0 0 1px rgba(59, 42, 32, 0.12);
   will-change: transform;
   opacity: 0;
   visibility: hidden;
   transition:
-    opacity 140ms,
-    visibility 140ms;
+    opacity 180ms var(--ease),
+    visibility 180ms;
+}
+
+.zone-label::before {
+  content: "";
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent, var(--color-accent, #8a5a35));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #8a5a35) 22%, transparent);
 }
 
 .zone-label.visible {
@@ -65,19 +83,21 @@ html:has(.game) body {
 
 .banner {
   position: absolute;
-  top: calc(var(--px) * 3px);
-  left: calc(var(--px) * 3px);
-  padding: calc(var(--px) * 2px) calc(var(--px) * 5px);
-  font-size: calc(var(--px) * 6px);
+  top: 16px;
+  left: 16px;
+  padding: 8px 16px;
+  font-family: var(--font-display, serif);
+  font-size: 17px;
+  font-weight: 500;
   color: var(--ink);
-  background: #fff;
-  border: calc(var(--px) * 1px) solid var(--ink);
-  border-radius: calc(var(--px) * 2px);
-  outline: calc(var(--px) * 1px) solid var(--frame);
-  outline-offset: calc(var(--px) * -2px);
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(40, 24, 10, 0.22);
   opacity: 0;
-  transform: translateY(-120%);
-  transition: opacity 400ms, transform 400ms;
+  transform: translateY(-10px);
+  transition:
+    opacity 500ms var(--ease),
+    transform 500ms var(--ease);
   pointer-events: none;
 }
 
@@ -88,140 +108,301 @@ html:has(.game) body {
 
 .skip {
   position: absolute;
-  top: calc(var(--px) * 3px);
-  right: calc(var(--px) * 3px);
-  padding: calc(var(--px) * 1px) calc(var(--px) * 3px);
-  font-size: calc(var(--px) * 4px);
-  color: #fff;
-  background: rgba(22, 22, 29, 0.75);
-  border: calc(var(--px) * 1px) solid #fff;
-  border-radius: calc(var(--px) * 2px);
+  top: 16px;
+  right: 16px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(40, 24, 10, 0.22);
   text-decoration: none;
+  transition: background 150ms;
 }
 
 .skip:hover,
 .skip:focus-visible {
-  background: #fff;
-  color: var(--ink);
+  background: var(--paper);
 }
 
 .hint {
   position: absolute;
-  bottom: calc(var(--px) * 6px);
+  bottom: 22px;
   left: 50%;
   margin: 0;
-  padding: calc(var(--px) * 1px) calc(var(--px) * 4px);
+  padding: 8px 16px;
   transform: translateX(-50%);
-  font-size: calc(var(--px) * 5px);
-  color: #fff;
-  background: rgba(22, 22, 29, 0.75);
-  border-radius: calc(var(--px) * 2px);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--paper);
+  background: rgba(36, 26, 18, 0.62);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border-radius: 999px;
+  white-space: nowrap;
   transition: opacity 400ms;
   pointer-events: none;
-  animation: hint-bob 1.2s steps(2) infinite;
 }
 
 .hint.gone {
   opacity: 0;
 }
 
-@keyframes hint-bob {
-  50% {
-    transform: translateX(-50%) translateY(calc(var(--px) * -1px));
-  }
-}
+/* ---- the card that opens beside the zoomed-in building ---- */
 
-/* Pokemon-style dialogue box */
-.dialog {
+.backdrop {
   position: absolute;
-  inset: auto 0 0 0;
-  padding: 0 calc(var(--px) * 4px) calc(var(--px) * 4px);
-  outline: none;
+  inset: 0;
+  background: transparent;
+  cursor: zoom-out;
 }
 
-.dialog[hidden] {
-  display: none;
-}
-
-.dlg-wrap {
-  position: relative;
-  max-width: calc(var(--px) * 220px);
-  margin: 0 auto;
-}
-
-.dlg-box {
-  position: relative;
-  min-height: calc(var(--px) * 34px);
-  padding: calc(var(--px) * 5px) calc(var(--px) * 7px);
-  background: #fff;
-  border: calc(var(--px) * 1px) solid var(--ink);
-  border-radius: calc(var(--px) * 4px);
-  box-shadow:
-    inset 0 0 0 calc(var(--px) * 2px) #fff,
-    inset 0 0 0 calc(var(--px) * 4px) var(--accent, var(--frame)),
-    inset 0 0 0 calc(var(--px) * 5px) var(--ink);
-}
-
-.dlg-text {
-  margin: 0;
-  padding: calc(var(--px) * 2px) calc(var(--px) * 2px);
-  font-size: calc(var(--px) * 7px);
-  line-height: 1.35;
-  color: var(--text);
-  min-height: calc(var(--px) * 20px);
-}
-
-.dlg-menu {
+.panel {
+  --accent: var(--color-accent, #8a5a35);
   position: absolute;
-  right: calc(var(--px) * 2px);
-  bottom: calc(100% + var(--px) * 1px);
+  z-index: 2;
   display: flex;
   flex-direction: column;
-  min-width: calc(var(--px) * 48px);
-  padding: calc(var(--px) * 3px) calc(var(--px) * 4px);
-  background: #fff;
-  border: calc(var(--px) * 1px) solid var(--ink);
-  border-radius: calc(var(--px) * 3px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  color: var(--ink);
+  background: var(--paper);
   box-shadow:
-    inset 0 0 0 calc(var(--px) * 1px) #fff,
-    inset 0 0 0 calc(var(--px) * 2px) var(--frame);
+    0 24px 60px rgba(30, 16, 6, 0.38),
+    0 0 0 1px rgba(59, 42, 32, 0.1);
+  -webkit-user-select: text;
+  user-select: text;
+  opacity: 0;
+  transition:
+    transform 460ms var(--ease),
+    opacity 260ms ease;
 }
 
-.dlg-menu[hidden] {
+.panel[hidden] {
   display: none;
 }
 
-.dlg-opt {
-  appearance: none;
-  display: block;
-  padding: calc(var(--px) * 1px) calc(var(--px) * 3px) calc(var(--px) * 1px) calc(var(--px) * 7px);
-  position: relative;
-  font: inherit;
-  font-size: calc(var(--px) * 7px);
-  line-height: 1.3;
-  text-align: left;
-  color: var(--ink);
-  background: none;
-  border: 0;
-  cursor: pointer;
+.panel.open {
+  opacity: 1;
+  transform: none;
 }
 
-.dlg-opt[aria-selected="true"]::before {
-  content: "";
-  position: absolute;
-  left: calc(var(--px) * 1px);
+/* desktop: a floating card on the side opposite the box */
+.panel[data-side="right"],
+.panel[data-side="left"] {
   top: 50%;
-  margin-top: calc(var(--px) * -2.5px);
-  border: calc(var(--px) * 2.5px) solid transparent;
-  border-left: calc(var(--px) * 4px) solid var(--ink);
-  border-right: 0;
+  width: min(400px, 36vw);
+  max-height: calc(100% - 48px);
+  border-radius: 18px;
 }
 
-.dlg-opt:focus-visible {
-  outline: calc(var(--px) * 0.5px) dashed var(--frame);
+.panel[data-side="right"] {
+  right: max(24px, 3vw);
+  transform: translate(36px, -50%);
 }
 
-/* Plain-HTML fallback: visible without JS, screen-reader-only once the game boots */
+.panel[data-side="left"] {
+  left: max(24px, 3vw);
+  transform: translate(-36px, -50%);
+}
+
+.panel[data-side="right"].open,
+.panel[data-side="left"].open {
+  transform: translateY(-50%);
+}
+
+/* narrow screens: a sheet that rises from the bottom, leaving the box visible above it */
+.panel[data-side="bottom"] {
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  max-height: 52%;
+  border-radius: 18px;
+  transform: translateY(40px);
+}
+
+.panel::before {
+  content: "";
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  flex: none;
+  height: 4px;
+  background: var(--accent);
+}
+
+.close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 86%, transparent);
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(59, 42, 32, 0.14);
+  cursor: pointer;
+  transition: background 150ms;
+}
+
+.close:hover {
+  background: var(--paper-2);
+}
+
+.close:focus-visible,
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.media {
+  flex: none;
+  background: var(--paper-2);
+}
+
+.media[data-kind="image"] img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 200px;
+  object-fit: cover;
+}
+
+.media[data-kind="thumbs"] {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2px;
+}
+
+.media[data-kind="thumbs"] img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+/* on the bottom sheet the text matters more than the picture */
+.panel[data-side="bottom"] .media[data-kind="image"] img {
+  max-height: 110px;
+}
+
+.panel[data-side="bottom"] .media[data-kind="thumbs"] {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.panel[data-side="bottom"] .media[data-kind="thumbs"] img {
+  aspect-ratio: 1;
+}
+
+.body {
+  display: grid;
+  gap: 10px;
+  padding: 20px 22px 22px;
+}
+
+.kicker {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.panel h2 {
+  margin: 0;
+  font-family: var(--font-display, serif);
+  font-size: clamp(24px, 2.2vw, 30px);
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.role {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.summary {
+  margin: 2px 0 0;
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tags[hidden] {
+  display: none;
+}
+
+.tag {
+  padding: 3px 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  background: var(--paper-2);
+  border-radius: 999px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.btn {
+  appearance: none;
+  padding: 10px 16px;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px var(--line);
+  cursor: pointer;
+  transition:
+    background 150ms,
+    box-shadow 150ms,
+    transform 150ms;
+}
+
+.btn:hover {
+  background: var(--paper-2);
+}
+
+.btn.primary {
+  color: #fff;
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.btn.primary:hover {
+  background: color-mix(in srgb, var(--accent) 86%, #000);
+  transform: translateY(-1px);
+}
+
+/* Plain-HTML fallback: visible without JS, screen-reader-only once the scene boots */
 .fallback {
   position: absolute;
   inset: 0;
@@ -229,14 +410,14 @@ html:has(.game) body {
   align-content: center;
   justify-items: center;
   gap: 12px;
-  background: #16161d;
-  color: #fff;
+  background: var(--paper);
+  color: var(--ink);
   font-size: 18px;
   z-index: -1;
 }
 
 .fallback a {
-  color: #8fdcff;
+  color: var(--color-accent, #8a5a35);
 }
 
 .game.ready .fallback {
@@ -249,10 +430,16 @@ html:has(.game) body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hint {
-    animation: none;
+  .banner,
+  .panel,
+  .zone-label {
+    transition: opacity 120ms;
   }
-  .banner {
-    transition: none;
+  .panel[data-side] {
+    transform: none;
+  }
+  .panel[data-side="right"],
+  .panel[data-side="left"] {
+    transform: translateY(-50%);
   }
 }

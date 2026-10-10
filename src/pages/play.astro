@@ -1,7 +1,6 @@
 ---
 import { getCollection } from "astro:content";
-import "@fontsource/pixelify-sans/400.css";
-import "@fontsource/pixelify-sans/600.css";
+import { getImage } from "astro:assets";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { withBase } from "../lib/url";
 import { contactLinks } from "../lib/contact";
@@ -9,24 +8,35 @@ import "../styles/game.css";
 
 const projects = (await getCollection("projects")).sort((a, b) => a.data.order - b.data.order);
 const photos = await getCollection("photos");
+const featured = [...photos.filter((p) => p.data.featured), ...photos.filter((p) => !p.data.featured)].slice(0, 4);
+
+const thumbs = await Promise.all(featured.map(async (p) => (await getImage({ src: p.data.image, width: 360 })).src));
 
 const zones = [
-  ...projects.map((p) => ({
-    id: p.id,
-    kind: "project" as const,
-    label: p.data.title,
-    summary: p.data.summary,
-    variant: p.id === "cmu-racing" ? ("garage" as const) : undefined,
-    href: withBase(`projects/${p.id}`),
-    accent: p.data.accentColor,
-  })),
+  ...(await Promise.all(
+    projects.map(async (p) => ({
+      id: p.id,
+      kind: "project" as const,
+      label: p.data.title,
+      summary: p.data.summary,
+      variant: p.id === "cmu-racing" ? ("garage" as const) : undefined,
+      href: withBase(`projects/${p.id}`),
+      accent: p.data.accentColor,
+      role: p.data.role,
+      period: p.data.period ?? p.data.dateRange,
+      organization: p.data.organization,
+      techStack: p.data.techStack?.slice(0, 6),
+      image: p.data.image ? (await getImage({ src: p.data.image, width: 900 })).src : undefined,
+    }))
+  )),
   {
     id: "gallery",
     kind: "gallery" as const,
     label: "Photo Gallery",
-    summary: `${photos.length} photos I took just for fun.`,
+    summary: `${photos.length} photos I took just for fun — quiet streets, soft light, small moments.`,
     href: withBase("photography"),
     accent: "#8a4fd0",
+    thumbs,
   },
   {
     id: "contact",
@@ -39,31 +49,37 @@ const zones = [
 ];
 ---
 
-<BaseLayout title="Play — Kevin Dong" description="A tiny driving game that doubles as my portfolio." hideNav>
+<BaseLayout title="Play — Kevin Dong" description="A tiny diorama that doubles as my portfolio." hideNav>
   <div class="game" id="game" data-zones={JSON.stringify(zones)}>
-    <canvas data-canvas aria-label="Top-down airfield. Click to drive the car into a building to open a project."></canvas>
+    <canvas data-canvas aria-label="A miniature diorama of my projects. Click a building to open its summary."></canvas>
     <div data-labels class="labels" aria-hidden="true"></div>
 
-    <div class="banner" data-banner aria-hidden="true">Kevin's Airfield</div>
+    <div class="banner" data-banner aria-hidden="true">Kevin's Workshop</div>
     <a class="skip" href={withBase("")}>Skip to regular site</a>
-    <p class="hint" data-hint>Click anywhere to drive</p>
+    <p class="hint" data-hint>Pick a building to look inside</p>
 
-    <div class="dialog" data-dialog hidden tabindex="-1" role="dialog" aria-live="polite" aria-label="Project">
-      <div class="dlg-wrap">
-        <div class="dlg-menu" data-dlg-menu hidden></div>
-        <div class="dlg-box">
-          <p class="dlg-text" data-dlg-text></p>
-        </div>
+    <div class="backdrop" data-backdrop hidden></div>
+    <aside class="panel" data-panel hidden role="dialog" aria-modal="true" aria-labelledby="panel-title">
+      <button class="close" type="button" data-close aria-label="Close">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"></path></svg>
+      </button>
+      <div class="media" data-media hidden></div>
+      <div class="body">
+        <p class="kicker" data-kicker></p>
+        <h2 id="panel-title" data-title></h2>
+        <p class="role" data-role></p>
+        <p class="summary" data-summary></p>
+        <ul class="tags" data-tags></ul>
+        <div class="actions" data-actions></div>
       </div>
-      <span data-dlg-more hidden></span>
-    </div>
+    </aside>
 
     <nav class="fallback" aria-label="Projects">
       <h1>Kevin Dong</h1>
       <ul>
         {zones.map((z) => (z.href ? <li><a href={z.href}>{z.label}</a></li> : (z.actions ?? []).map((a) => <li><a href={a.href}>{z.label}: {a.label}</a></li>)))}
       </ul>
-      <noscript><p>The interactive airfield needs JavaScript. These links go straight to each page.</p></noscript>
+      <noscript><p>The interactive diorama needs JavaScript. These links go straight to each page.</p></noscript>
     </nav>
   </div>
 </BaseLayout>
