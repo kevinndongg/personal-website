@@ -283,8 +283,8 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined): Group {
     for (const m of bwMats) m.color.setScalar(0.55 + 0.4 * h);
     for (const m of colorMats) m.opacity = h;
     for (const m of hazeMats) m.opacity = h * 0.42 * breath;
-    glowMat.opacity = h * 0.22 * breath;
-    bloomMat.opacity = h * 0.12 * breath;
+    glowMat.opacity = h * 0.0 * breath;
+    bloomMat.opacity = h * 0.0 * breath;
   };
   return g;
 }
