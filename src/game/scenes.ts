@@ -56,7 +56,7 @@ export function sceneSize(variant: ZoneVariant): { w: number; h: number } {
 const circle = (r: number): Footprint => ({ kind: "circle", r });
 const rect = (w: number, h: number): Footprint => ({ kind: "rect", w, h });
 
-/** Carnegie Mellon Racing: garage angled 37 deg south of east, formula car on batteries in front of it, snaking cone lane to a finish line. */
+/** Carnegie Mellon Racing: garage angled 37 deg south of east, formula car on batteries in front of it, a curved cone track to a finish line. */
 function racingScene(ox: number, oy: number): Scene {
   const { w, h } = sceneSize("garage");
   const at = (x: number, y: number) => ({ x: ox + x, y: oy + y });
@@ -85,50 +85,35 @@ function racingScene(ox: number, oy: number): Scene {
     { sprite: "laptop", ...along(F, 14, 46), ground: true },
   ];
 
-  // snaking lane running south: a sine-wave centerline with two cone lines at a constant offset along its normal
-  const lane = { x: F.x + 49, y: F.y + 52 };
-  const amp = 20;
-  const period = 150;
-  const length = 186;
-  const half = 14;
-  const spacing = 22;
-  const center = (t: number) => ({ x: lane.x + amp * Math.sin((2 * Math.PI * t) / period), y: lane.y + t });
-  const tangent = (t: number) => {
-    const dx = ((amp * 2 * Math.PI) / period) * Math.cos((2 * Math.PI * t) / period);
-    const len = Math.hypot(dx, 1);
-    return { x: dx / len, y: 1 / len };
-  };
-  let travelled = spacing;
-  let prev = center(0);
-  let count = 0;
-  const PAIRS = 6; // short course: six gates, then the finish line
-  for (let t = 0; t <= length && count < PAIRS; t += 0.5) {
-    const c = center(t);
-    travelled += Math.hypot(c.x - prev.x, c.y - prev.y);
-    prev = c;
-    if (travelled < spacing) continue;
-    travelled = 0;
-    const T = tangent(t);
-    const N = { x: -T.y, y: T.x };
-    const first = count < 3;
-    props.push({ sprite: first ? "cone-o" : "cone-b", x: c.x + N.x * half, y: c.y + N.y * half, solid: circle(3) });
-    props.push({ sprite: first ? "cone-o" : "cone-y", x: c.x - N.x * half, y: c.y - N.y * half, solid: circle(3) });
-    count++;
+  // cone track: one clockwise bend of constant width. Inside boundary = blue cones, outside = yellow,
+  // each boundary evenly spaced along its own length; the finish line closes the track between the end cones.
+  const TURN_START = (60 * Math.PI) / 180; // heading at the start (down-right), radians, y = south
+  const TURN = (80 * Math.PI) / 180; // how far the track bends
+  const R = 65; // centerline radius
+  const half = 14; // half the track width: inner radius R - half, outer R + half
+  const GAP = 20; // target spacing between neighbouring cones on a boundary
+  const start = { x: F.x + 48, y: F.y + 52 }; // centerline start, just ahead of the formula car
+  const arcCenter = { x: start.x - R * Math.sin(TURN_START), y: start.y + R * Math.cos(TURN_START) };
+  const onArc = (radius: number, heading: number) => ({
+    x: arcCenter.x + radius * Math.sin(heading),
+    y: arcCenter.y - radius * Math.cos(heading),
+  });
+  for (const [radius, sprite] of [
+    [R - half, "cone-b"],
+    [R + half, "cone-y"],
+  ] as const) {
+    const n = Math.round((radius * TURN) / GAP) + 1; // cones including both ends
+    for (let i = 0; i < n; i++) {
+      const pos = onArc(radius, TURN_START + (TURN * i) / (n - 1));
+      props.push({ sprite, ...pos, solid: circle(3) });
+    }
   }
-  // extra cones at the spots Kevin marked: outer corners of the bends
-  const extraCones: [string, number, number][] = [
-    ["cone-o", 171.3, 172.0],
-    ["cone-o", 211.1, 165.0],
-    ["cone-b", 167.1, 223.1],
-    ["cone-o", 224.8, 220.7],
-    ["cone-y", 208.3, 254.2],
-  ];
-  for (const [sprite, x, y] of extraCones) props.push({ sprite, ...at(x, y), solid: circle(3) });
+  const finish = onArc(R, TURN_START + TURN);
+  const finishAngle = Math.atan2(-Math.cos(TURN_START + TURN), Math.sin(TURN_START + TURN)); // across the track
 
   const decals: Decal[] = [
     { kind: "frame", ...F, w: 76, h: 44, angle: ANGLE, color: "#c9a526", fill: "#474853" },
-    // finish line, placed and angled where Kevin sketched it (area-relative center, 49 deg across the lane)
-    { kind: "checker", ...at(172.4, 254.2), w: 52, h: 8, angle: (49.2 * Math.PI) / 180 },
+    { kind: "checker", x: finish.x, y: finish.y, w: 2 * half - 6, h: 8, angle: finishAngle },
     { kind: "cable", points: [along(F, -8, -26), along(F, -6, -22), along(F, -9, -18)] },
   ];
 
