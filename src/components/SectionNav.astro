@@ -1,16 +1,12 @@
 ---
 import { withBase } from "../lib/url";
+import { contactLinks } from "../lib/contact";
 
 const path = Astro.url.pathname;
 const homeHref = withBase("");
 const photographyHref = withBase("photography");
 const isPhotography = path.startsWith(photographyHref);
 
-const contactLinks = [
-  { label: "Email", href: "mailto:kevin.dong.haonan@gmail.com" },
-  { label: "LinkedIn", href: "https://linkedin.com/in/kevindong30" },
-  { label: "GitHub", href: "https://github.com/kevinndongg" },
-];
 ---
 
 <nav class="section-nav" aria-label="Site navigation">

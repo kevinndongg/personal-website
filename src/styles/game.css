@@ -1,0 +1,548 @@
+html:has(.game),
+html:has(.game) body {
+  height: 100%;
+  overflow: hidden;
+  background: #1c1713;
+}
+
+.game {
+  --paper: var(--color-bg, #f5f1ea);
+  --paper-2: var(--color-surface, #ece2d3);
+  --line: var(--color-border, #d9cab3);
+  --ink: var(--color-text, #3b2a20);
+  --ink-soft: var(--color-text-muted, #7a6552);
+  --ease: cubic-bezier(0.22, 0.8, 0.24, 1);
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  font-family: var(--font-body, system-ui, sans-serif);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.game canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.labels {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* name tag that rises over a hovered building: a plain little paper label */
+.zone-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  padding: 7px 14px;
+  font-family: var(--font-display, serif);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: var(--ink);
+  background: var(--paper);
+  border-radius: 999px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 6px 18px rgba(40, 24, 10, 0.28),
+    0 0 0 1px rgba(59, 42, 32, 0.12);
+  will-change: transform;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 180ms var(--ease),
+    visibility 180ms;
+}
+
+.zone-label.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.banner {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  padding: 8px 16px;
+  font-family: var(--font-display, serif);
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(40, 24, 10, 0.22);
+  opacity: 0;
+  transform: translateY(-10px);
+  transition:
+    opacity 500ms var(--ease),
+    transform 500ms var(--ease);
+  pointer-events: none;
+}
+
+.banner.show {
+  opacity: 1;
+  transform: none;
+}
+
+.skip {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(40, 24, 10, 0.22);
+  text-decoration: none;
+  transition: background 150ms;
+}
+
+.skip:hover,
+.skip:focus-visible {
+  background: var(--paper);
+}
+
+.hint {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  margin: 0;
+  padding: 8px 16px;
+  transform: translateX(-50%);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--paper);
+  background: rgba(36, 26, 18, 0.62);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border-radius: 999px;
+  white-space: nowrap;
+  transition: opacity 400ms;
+  pointer-events: none;
+}
+
+.hint.gone {
+  opacity: 0;
+}
+
+/* ---- the card that opens beside the zoomed-in building ---- */
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  cursor: zoom-out;
+}
+
+.panel {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  overscroll-behavior: contain;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow:
+    0 24px 60px rgba(30, 16, 6, 0.38),
+    0 0 0 1px rgba(59, 42, 32, 0.1);
+  -webkit-user-select: text;
+  user-select: text;
+  opacity: 0;
+  transition:
+    transform 460ms var(--ease),
+    opacity 260ms ease;
+}
+
+.panel[hidden] {
+  display: none;
+}
+
+.panel.open {
+  opacity: 1;
+  transform: none;
+}
+
+/* desktop: a floating card on the side opposite the box */
+.panel[data-side="right"],
+.panel[data-side="left"] {
+  top: 50%;
+  width: min(460px, 42vw);
+  max-height: calc(100% - 48px);
+  border-radius: 18px;
+}
+
+.panel[data-side="right"] {
+  right: max(24px, 3vw);
+  transform: translate(36px, -50%);
+}
+
+.panel[data-side="left"] {
+  left: max(24px, 3vw);
+  transform: translate(-36px, -50%);
+}
+
+.panel[data-side="right"].open,
+.panel[data-side="left"].open {
+  transform: translateY(-50%);
+}
+
+/* narrow screens: a sheet that rises from the bottom, leaving the box visible above it */
+.panel[data-side="bottom"] {
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  max-height: 50%;
+  border-radius: 18px;
+  transform: translateY(40px);
+  transition:
+    transform 460ms var(--ease),
+    opacity 260ms ease,
+    max-height 320ms var(--ease);
+}
+
+/* pulled up by its handle: the sheet takes most of the screen for reading */
+.panel[data-side="bottom"].expanded {
+  max-height: calc(100% - 64px);
+}
+
+.grip {
+  display: none;
+  flex: none;
+  width: 100%;
+  height: 22px;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.grip span {
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin: 8px auto 0;
+  background: var(--line);
+  border-radius: 999px;
+}
+
+.panel[data-side="bottom"] .grip {
+  display: block;
+}
+
+.close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 86%, transparent);
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(59, 42, 32, 0.14);
+  cursor: pointer;
+  transition: background 150ms;
+}
+
+.close:hover {
+  background: var(--paper-2);
+}
+
+.close:focus-visible,
+.btn:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.body {
+  display: grid;
+  gap: 12px;
+  padding: 20px 22px 22px;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding-right: 34px; /* clear of the close button */
+}
+
+.head[hidden],
+.logo[hidden] {
+  display: none;
+}
+
+/* the project's logo as a small square chip; cover keeps the centre of wide marks */
+.logo {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+  background: var(--paper-2);
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.head-text {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.kicker {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.panel h2 {
+  margin: 0;
+  font-family: var(--font-display, serif);
+  font-size: clamp(24px, 2.2vw, 30px);
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.role {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.summary {
+  margin: 2px 0 0;
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+/* the results: the part a recruiter actually wants */
+.bullets {
+  display: grid;
+  gap: 9px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bullets[hidden] {
+  display: none;
+}
+
+.bullets li {
+  position: relative;
+  padding-left: 16px;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.bullets li::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 0.62em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tags[hidden] {
+  display: none;
+}
+
+.tag {
+  padding: 3px 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  background: var(--paper-2);
+  border-radius: 999px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.btn {
+  appearance: none;
+  padding: 10px 16px;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1.5px var(--line);
+  cursor: pointer;
+  transition:
+    background 150ms,
+    box-shadow 150ms,
+    transform 150ms;
+}
+
+.btn:hover {
+  background: var(--paper-2);
+}
+
+.btn.primary {
+  color: var(--paper);
+  background: var(--ink);
+  box-shadow: none;
+}
+
+.btn.primary:hover {
+  background: color-mix(in srgb, var(--ink) 82%, #fff);
+  transform: translateY(-1px);
+}
+
+/*
+ * The photography page: the scene is the content (the camera and the light table are the controls, and the photo's title
+ * and place are printed on the film), so the panel is only a small link to the full gallery, in the top right corner. It
+ * has no backdrop, so the camera and the light table stay clickable.
+ */
+.panel[data-variant="link"] {
+  top: max(14px, 2vh);
+  right: max(18px, 2vw);
+  bottom: auto;
+  left: auto;
+  width: auto;
+  max-height: none;
+  overflow: visible;
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  transform: none;
+}
+
+.panel[data-variant="link"] .grip,
+.panel[data-variant="link"] .close,
+.panel[data-variant="link"] .head,
+.panel[data-variant="link"] .logo,
+.panel[data-variant="link"] .summary,
+.panel[data-variant="link"] .bullets,
+.panel[data-variant="link"] .tags {
+  display: none;
+}
+
+.panel[data-variant="link"] .body {
+  display: block;
+  padding: 0;
+}
+
+.panel[data-variant="link"] .actions {
+  margin: 0;
+}
+
+.panel[data-variant="link"] .btn {
+  padding: 8px 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #f5f1ea;
+  background: none;
+  box-shadow: none;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.65);
+}
+
+.panel[data-variant="link"] .btn:hover {
+  color: #fff;
+  background: none;
+  transform: none;
+}
+
+/* text for screen readers only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Plain-HTML fallback: visible without JS, screen-reader-only once the scene boots */
+.fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 18px;
+  z-index: -1;
+}
+
+.fallback a {
+  color: var(--color-accent, #8a5a35);
+}
+
+.game.ready .fallback {
+  inset: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .banner,
+  .panel,
+  .zone-label {
+    transition: opacity 120ms;
+  }
+  .panel[data-side] {
+    transform: none;
+  }
+  .panel[data-side="right"],
+  .panel[data-side="left"] {
+    transform: translateY(-50%);
+  }
+}

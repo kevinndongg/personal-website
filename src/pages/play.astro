@@ -1,0 +1,150 @@
+---
+import { getCollection } from "astro:content";
+import { getImage } from "astro:assets";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { withBase } from "../lib/url";
+import { contactLinks } from "../lib/contact";
+import { sortPhotos } from "../lib/photos";
+import "../styles/game.css";
+
+const projects = (await getCollection("projects")).sort((a, b) => a.data.order - b.data.order);
+const photos = await getCollection("photos");
+
+// Every photo, in the same order as /photography. The light table lays them out a page at a time and the camera zooms
+// into one, and it has to work for any number of photos, so each one goes in as plain data: an image big enough to fill
+// the screen when zoomed into, and its aspect so that the layout is known before any image has loaded. The game loads
+// the images only for the page that is showing (and the next), so adding photos only adds a file under
+// src/content/photos.
+const reel = await Promise.all(
+  sortPhotos(photos).map(async (p) => {
+    const { width, height } = p.data.image;
+    return {
+      src: (await getImage({ src: p.data.image, width: 1400 })).src,
+      aspect: width / height,
+      title: p.data.title,
+      location: p.data.location,
+    };
+  })
+);
+
+/** The project's markdown body: the lead sentence(s), and the bullet list that carries the results. */
+function parseBody(body = "") {
+  const lines = body
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const isBullet = (l: string) => /^[-*]\s+/.test(l);
+  return {
+    lead: lines.filter((l) => !isBullet(l)).join(" "),
+    bullets: lines.filter(isBullet).map((l) => l.replace(/^[-*]\s+/, "")),
+  };
+}
+
+const zones = [
+  ...(await Promise.all(
+    projects.map(async (p) => {
+      const { lead, bullets } = parseBody(p.body);
+      const links = p.data.links ?? {};
+      return {
+        id: p.id,
+        kind: "project" as const,
+        label: p.data.title,
+        summary: lead || p.data.summary,
+        bullets,
+        variant: p.id === "cmu-racing" ? ("garage" as const) : undefined,
+        href: withBase(`projects/${p.id}`),
+        accent: p.data.accentColor,
+        role: p.data.role,
+        period: p.data.period ?? p.data.dateRange,
+        organization: p.data.organization,
+        techStack: p.data.techStack,
+        // a small logo chip beside the title
+        image: p.data.image ? (await getImage({ src: p.data.image, width: 160 })).src : undefined,
+        actions: [
+          links.paper && { label: "Read the paper", href: links.paper, external: true },
+          links.repo && { label: "Source code", href: links.repo, external: true },
+          links.demo && { label: "Live demo", href: links.demo, external: true },
+        ].filter(Boolean),
+      };
+    })
+  )),
+  {
+    id: "gallery",
+    kind: "gallery" as const,
+    variant: "photodesk" as const,
+    label: "Photo Gallery",
+    summary: `${photos.length} photos I took just for fun — quiet streets, soft light, small moments.`,
+    href: withBase("photography"),
+    actions: [{ label: "Open the gallery", href: withBase("photography") }],
+    accent: "#8a4fd0",
+    photos: reel,
+  },
+  {
+    id: "contact",
+    kind: "contact" as const,
+    label: "Contact",
+    summary: "Want to get in touch? Pick a way to reach me.",
+    actions: contactLinks.map((l) => ({ ...l, external: !l.href.startsWith("mailto:") })),
+    accent: "#2f74e0",
+  },
+];
+---
+
+<BaseLayout title="Play — Kevin Dong" description="A tiny diorama that doubles as my portfolio." hideNav>
+  <div class="game" id="game" data-zones={JSON.stringify(zones)}>
+    <canvas data-canvas aria-label="A miniature diorama of my projects. Click a building to open its summary."></canvas>
+    <div data-labels class="labels" aria-hidden="true"></div>
+
+    <div class="banner" data-banner aria-hidden="true">Kevin's Workshop</div>
+    <a class="skip" href={withBase("")}>Skip to regular site</a>
+    <p class="hint" data-hint>Pick a building to look inside</p>
+
+    <!-- announces the photo on the table (the title and place are drawn on the film, which a screen reader cannot read) -->
+    <p class="sr-only" data-live aria-live="polite"></p>
+
+    <div class="backdrop" data-backdrop hidden></div>
+    <aside class="panel" data-panel hidden role="dialog" aria-modal="true" aria-labelledby="panel-title">
+      <button class="grip" type="button" data-grip aria-label="Show more or less" aria-expanded="false"><span></span></button>
+      <button class="close" type="button" data-close aria-label="Close">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"></path></svg>
+      </button>
+      <div class="body">
+        <header class="head">
+          <img class="logo" data-logo alt="" hidden />
+          <div class="head-text">
+            <p class="kicker" data-kicker></p>
+            <h2 id="panel-title" data-title></h2>
+            <p class="role" data-role></p>
+          </div>
+        </header>
+        <p class="summary" data-summary></p>
+        <ul class="bullets" data-bullets></ul>
+        <ul class="tags" data-tags></ul>
+        <div class="actions" data-actions></div>
+      </div>
+    </aside>
+
+    <nav class="fallback" aria-label="Projects">
+      <h1>Kevin Dong</h1>
+      <ul>
+        {zones.map((z) => (z.href ? <li><a href={z.href}>{z.label}</a></li> : (z.actions ?? []).map((a) => <li><a href={a.href}>{z.label}: {a.label}</a></li>)))}
+      </ul>
+      <noscript><p>The interactive diorama needs JavaScript. These links go straight to each page.</p></noscript>
+    </nav>
+  </div>
+</BaseLayout>
+
+<script>
+  import { startGame } from "../game/main";
+
+  let stop: (() => void) | undefined;
+
+  document.addEventListener("astro:page-load", () => {
+    const root = document.getElementById("game");
+    if (root) stop = startGame(root);
+  });
+  document.addEventListener("astro:before-swap", () => {
+    stop?.();
+    stop = undefined;
+  });
+</script>
