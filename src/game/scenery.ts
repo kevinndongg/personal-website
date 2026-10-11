@@ -73,22 +73,24 @@ function omCameraModel(): Group {
   g.add(mesh(new CylinderGeometry(3.4, 3.4, 2.6, 16), toon(SILVER_DARK), bx - 2, 25.4, -17));
   g.add(mesh(new CylinderGeometry(1.4, 1.4, 1.6, 10), toon("#c0392b"), bx - 2, 24.8, 11));
   const lever = new Group();
-  lever.position.set(bx - 2, 24.2, 15.5); // pivot on the top plate, resting along the plate and pointing outward (+z)
+  lever.position.set(bx - 2, 24.2, 15.5); // pivot on the top plate; at rest it is parked across the middle of the plate
+  lever.rotation.y = -2.1;
   lever.add(box(2.2, 0.7, 11, SILVER, 0, 0, 5.5));
   lever.add(box(3.2, 1.3, 3.4, SILVER_DARK, 0, -0.1, 11));
   lever.add(mesh(new CylinderGeometry(1.5, 1.5, 1.2, 10), toon(SILVER_DARK), 0, -0.2, 0));
   g.add(lever);
 
   g.userData.animate = ({ t, hover }: AnimCtx) => {
-    // one stroke every 6 seconds: out and across quickly, a brief hold, then easing back to rest
+    // one stroke every 6 seconds: from its parked place in the middle the lever sweeps away from the lens, out to the
+    // side of the body (the advanced place), holds a moment, then eases back to where it started
     const k = t % 6;
-    let a = 0;
+    let p = 0; // 0 = parked, 1 = advanced
     if (t > 0) {
-      if (k < 0.45) a = ease(k / 0.45) * 2.1;
-      else if (k < 0.65) a = 2.1;
-      else if (k < 1.3) a = 2.1 * (1 - ease((k - 0.65) / 0.65));
+      if (k < 0.45) p = ease(k / 0.45);
+      else if (k < 0.65) p = 1;
+      else if (k < 1.3) p = 1 - ease((k - 0.65) / 0.65);
     }
-    lever.rotation.y = -a; // swings toward the back of the camera
+    lever.rotation.y = -2.1 * (1 - p);
     // a soft sweep of light across the glass when the box is hovered
     (glint.material as MeshBasicMaterial).opacity = hover * (0.4 + 0.3 * Math.sin(t * 1.7));
     glint.position.z = -1.5 + Math.sin(t * 1.1) * 2.5;
@@ -211,14 +213,33 @@ function radialTexture(): CanvasTexture {
  */
 function lightTableModel(w: number, d: number, zone: Zone | undefined): Group {
   const g = new Group();
-  const TOP = 7;
-  g.add(box(w, TOP, d, "#2b2d33", 0, 0, 0));
-  g.add(box(w + 0.8, 0.8, d + 0.8, "#4a4d57", 0, TOP - 0.8, 0)); // lip
+  const TOP = 5; // thickness of the table top
+  const TILT = (10 * Math.PI) / 180; // propped up at the back so it faces the viewer a little
+  const PIVOT = 28; // height of the top's centre above the floor
+  const top = new Group();
+  top.position.y = PIVOT;
+  top.rotation.x = TILT; // positive raises the north (back) edge
+  g.add(top);
+  // four legs: each reaches up to the underside of the tilted top, so the back ones are taller
+  const legMat = "#8a8f9a";
+  const lxs = [-(w / 2 - 4), w / 2 - 4];
+  const lzs = [-(d / 2 - 4), d / 2 - 4];
+  for (const lx of lxs) {
+    for (const lz of lzs) {
+      const h = PIVOT - lz * Math.sin(TILT) + 0.5;
+      g.add(box(3, h, 3, legMat, lx, 0, lz));
+    }
+  }
+  for (const lx of lxs) g.add(box(1.6, 1.6, d - 8, legMat, lx, 9, 0)); // side rails
+  g.add(box(w - 8, 1.6, 1.6, legMat, 0, 9, d / 2 - 4)); // front rail
+  g.add(box(w - 8, 1.6, 1.6, legMat, 0, 9, -(d / 2 - 4))); // back rail
+  top.add(box(w, TOP, d, "#2b2d33", 0, 0, 0));
+  top.add(box(w + 0.8, 0.8, d + 0.8, "#4a4d57", 0, TOP - 0.8, 0)); // lip
   const plateMat = new MeshBasicMaterial({ color: "#6f7176" });
   const plate = new Mesh(new PlaneGeometry(w - 10, d - 10), plateMat);
   plate.rotation.x = -Math.PI / 2;
   plate.position.y = TOP + 0.05;
-  g.add(plate);
+  top.add(plate);
 
   const urls = zone?.strip?.length ? zone.strip : [];
   const pick = (i: number) => urls[i % Math.max(1, urls.length)] ?? "";
@@ -239,7 +260,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined): Group {
       m.rotation.x = -Math.PI / 2;
       m.position.set(0, y, z);
       m.renderOrder = order;
-      g.add(m);
+      top.add(m);
     };
     const bwMat = new MeshBasicMaterial({ color: "#8c8c8c" });
     const colorMat = new MeshBasicMaterial({ color: "#ffffff", opacity: 0 });
@@ -266,13 +287,13 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined): Group {
   glow.rotation.x = -Math.PI / 2;
   glow.position.y = TOP + 0.3;
   glow.renderOrder = 4;
-  g.add(glow);
+  top.add(glow);
   const bloomMat = glowMat.clone();
   const bloom = new Mesh(new PlaneGeometry(w + 70, d + 70), bloomMat);
   bloom.rotation.x = -Math.PI / 2;
   bloom.position.y = TOP + 7;
   bloom.renderOrder = 6;
-  g.add(bloom);
+  top.add(bloom);
 
   const off = new Color("#6f7176");
   const on = new Color("#e8e0c8");

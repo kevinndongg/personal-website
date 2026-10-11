@@ -33,7 +33,7 @@ export function photoDeskScene(ox: number, oy: number): Scene {
     building: { x: ox, y: oy, w: W, h: H },
     labelAt: { x: ox + 112, y: oy + 40 },
     labelHeight: 40,
-    height: 34,
+    height: 46,
     props,
     decals,
   };
