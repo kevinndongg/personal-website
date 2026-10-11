@@ -30,9 +30,22 @@ const CAMERA = { x: 46, y: 76 };
  * than a 16:10 screen once the table's raised top is counted in, so on a 16:9 one the table's height is the limit.
  */
 const WIDE: Rect = { x: -184, y: -164, w: 532, h: 302 };
-const TALL: Rect = { x: -16, y: -218, w: 336, h: 352 };
+const TALL: Rect = { x: -16, y: -280, w: 336, h: 414 };
 /** Where the camera ends up (its centre), in the same zoomed coordinates. */
 const CAMERA_AT = { wide: { x: -110, y: -12 }, tall: { x: 46, y: -172 } };
+
+/**
+ * The still life round the camera, at its own scale: a telephoto standing at its back left, a film canister at its front
+ * right, and two clear filters (one leaning on the other) at its front left. Where each is on the map (area-local, relative to the camera), and where it ends up
+ * on a portrait screen (zoomed coordinates), where the camera has no room in front of it and they go to its right. Wide, they
+ * keep their place relative to the camera (the map's growth carries them with it), and may sit a little past the edge of the
+ * framed area.
+ */
+const EXTRAS = [
+  { sprite: "telephoto", dx: -17, dy: -28, foot: { w: 22, h: 22 }, tall: { x: 175, y: -222 } },
+  { sprite: "film-canister", dx: 20, dy: 35, foot: { w: 22, h: 18 }, tall: { x: 241, y: -150 } },
+  { sprite: "filter-stack", dx: -20, dy: 45, foot: { w: 18, h: 18 }, tall: { x: 292, y: -150 } },
+];
 
 /** Where the map's zoom is anchored: the middle of the table's front edge, so the table grows back and sideways. */
 const ANCHOR = { x: TABLE.x, y: TABLE.front };
@@ -101,6 +114,20 @@ export function photoDeskScene(ox: number, oy: number): Scene {
       tall: relative(gt, cameraFrom, gt, CAMERA_AT.tall),
     },
   });
+  // spare lenses and film stock beside the camera (each is a prop of its own, so each has its own place; nothing here is
+  // a control, and they keep their place relative to the camera when the project opens)
+  for (const e of EXTRAS) {
+    const from = { x: CAMERA.x + e.dx, y: CAMERA.y + e.dy };
+    props.push({
+      sprite: e.sprite,
+      ...at(from.x, from.y),
+      solid: rect(e.foot.w, e.foot.h),
+      focus: {
+        ...relative(g, from, g, { x: CAMERA_AT.wide.x + e.dx * g, y: CAMERA_AT.wide.y + e.dy * g }),
+        tall: relative(gt, from, gt, e.tall),
+      },
+    });
+  }
   // the light table on the right: the viewer's way into the photos. It grows exactly as much as the map does.
   props.push({
     sprite: "lighttable",
