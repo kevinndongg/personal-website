@@ -85,7 +85,6 @@ export class Panel {
     this.root.setAttribute("aria-modal", String(!linkOnly));
     if (linkOnly) this.root.setAttribute("aria-label", `${zone.label}: link to the full gallery`);
     else this.root.removeAttribute("aria-label");
-    this.root.style.setProperty("--accent", zone.accent);
     this.root.scrollTop = 0;
     this.root.hidden = false;
     this.backdrop.hidden = linkOnly;

@@ -35,7 +35,7 @@ html:has(.game) body {
   pointer-events: none;
 }
 
-/* name tag that rises over a hovered building: a little paper label with a dot in the project's colour */
+/* name tag that rises over a hovered building: a plain little paper label */
 .zone-label {
   position: absolute;
   top: 0;
@@ -44,7 +44,7 @@ html:has(.game) body {
   align-items: center;
   gap: 8px;
   max-width: 260px;
-  padding: 7px 14px 7px 11px;
+  padding: 7px 14px;
   font-family: var(--font-display, serif);
   font-size: 15px;
   font-weight: 500;
@@ -64,16 +64,6 @@ html:has(.game) body {
   transition:
     opacity 180ms var(--ease),
     visibility 180ms;
-}
-
-.zone-label::before {
-  content: "";
-  flex: none;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--accent, var(--color-accent, #8a5a35));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #8a5a35) 22%, transparent);
 }
 
 .zone-label.visible {
@@ -160,7 +150,6 @@ html:has(.game) body {
 }
 
 .panel {
-  --accent: var(--color-accent, #8a5a35);
   position: absolute;
   z-index: 2;
   display: flex;
@@ -256,16 +245,6 @@ html:has(.game) body {
   display: block;
 }
 
-.panel::before {
-  content: "";
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  flex: none;
-  height: 4px;
-  background: var(--accent);
-}
-
 .close {
   position: absolute;
   top: 14px;
@@ -291,7 +270,7 @@ html:has(.game) body {
 
 .close:focus-visible,
 .btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -336,7 +315,7 @@ html:has(.game) body {
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--ink);
 }
 
 .panel h2 {
@@ -392,7 +371,7 @@ html:has(.game) body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--ink);
 }
 
 .tags {
@@ -447,13 +426,13 @@ html:has(.game) body {
 }
 
 .btn.primary {
-  color: #fff;
-  background: var(--accent);
+  color: var(--paper);
+  background: var(--ink);
   box-shadow: none;
 }
 
 .btn.primary:hover {
-  background: color-mix(in srgb, var(--accent) 86%, #000);
+  background: color-mix(in srgb, var(--ink) 82%, #fff);
   transform: translateY(-1px);
 }
 
@@ -476,7 +455,6 @@ html:has(.game) body {
   transform: none;
 }
 
-.panel[data-variant="link"]::before,
 .panel[data-variant="link"] .grip,
 .panel[data-variant="link"] .close,
 .panel[data-variant="link"] .head,

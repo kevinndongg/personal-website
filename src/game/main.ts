@@ -38,7 +38,6 @@ export function startGame(root: HTMLElement): () => void {
     const el = document.createElement("div");
     el.className = "zone-label";
     el.textContent = zone.label;
-    el.style.setProperty("--accent", zone.accent);
     labelsEl.append(el);
     return el;
   });
