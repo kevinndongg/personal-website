@@ -53,6 +53,7 @@ const zones = [
         bullets,
         variant: p.id === "cmu-racing" ? ("garage" as const) : undefined,
         href: withBase(`projects/${p.id}`),
+        accent: p.data.accentColor,
         role: p.data.role,
         period: p.data.period ?? p.data.dateRange,
         organization: p.data.organization,
@@ -75,6 +76,7 @@ const zones = [
     summary: `${photos.length} photos I took just for fun — quiet streets, soft light, small moments.`,
     href: withBase("photography"),
     actions: [{ label: "Open the gallery", href: withBase("photography") }],
+    accent: "#8a4fd0",
     photos: reel,
   },
   {
@@ -83,6 +85,7 @@ const zones = [
     label: "Contact",
     summary: "Want to get in touch? Pick a way to reach me.",
     actions: contactLinks.map((l) => ({ ...l, external: !l.href.startsWith("mailto:") })),
+    accent: "#2f74e0",
   },
 ];
 ---

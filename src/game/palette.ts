@@ -45,5 +45,12 @@ export const CAR = {
   outline: "#16161d",
 };
 
-// Every project box shares the site's one accent: the warm brown of the rest of the site (--color-accent).
-export const ZONE_ACCENT = "#8a5a35";
+// Zone roofs fall back to these when a project has no accentColor.
+export const ZONE_FALLBACK_ACCENTS = [
+  "#d8322c",
+  "#2f74e0",
+  "#e8a317",
+  "#2fa84f",
+  "#e07a1f",
+  "#8a4fd0",
+];
