@@ -1,4 +1,4 @@
-import { ZONE_FALLBACK_ACCENTS } from "./palette";
+import { ZONE_ACCENT } from "./palette";
 import { buildScene, sceneSize } from "./scenes";
 import type { Decal, Rect, Scene, ZoneVariant } from "./scenes";
 
@@ -25,7 +25,6 @@ export interface ZoneInput {
   summary: string;
   href?: string;
   actions?: ZoneAction[];
-  accent?: string;
   // overlay content
   role?: string;
   period?: string;
@@ -125,7 +124,7 @@ function defaultVariant(input: ZoneInput): ZoneVariant {
 function layoutZones(inputs: ZoneInput[]): Zone[] {
   const used = new Set<Slot>(inputs.map((i) => ZONE_SLOTS[i.id]).filter(Boolean));
   const spare = SLOT_ORDER.filter((s) => !used.has(s));
-  return inputs.map((input, i) => {
+  return inputs.map((input) => {
     const variant = defaultVariant(input);
     const { w, h } = sceneSize(variant);
     const slot = ZONE_SLOTS[input.id] ?? spare.shift() ?? "LM";
@@ -134,7 +133,7 @@ function layoutZones(inputs: ZoneInput[]): Zone[] {
     return {
       ...input,
       variant,
-      accent: input.accent ?? ZONE_FALLBACK_ACCENTS[i % ZONE_FALLBACK_ACCENTS.length],
+      accent: ZONE_ACCENT,
       scene: buildScene(input.id, variant, x, y),
     } satisfies Zone;
   });

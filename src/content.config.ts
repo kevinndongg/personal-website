@@ -22,7 +22,6 @@ const projects = defineCollection({
           paper: z.string().url().optional(),
         })
         .optional(),
-      accentColor: z.string().optional(),
       animation: z.enum([
         "ftc-gears",
         "racing-speed-lines",
