@@ -30,10 +30,37 @@ export interface Prop {
    *  When set, x/y is the prop's center instead of its bottom-center, and a rect footprint rotates with it. */
   angle?: number;
   ground?: boolean; // flat on the floor: drawn in the ground layer, never y-sorted
+  /**
+   * What the prop does when the camera zooms into its project: it scales about its own centre and moves by (dx, dz)
+   * world px, easing in with the zoom and back out again on the map. `tall` replaces it on portrait screens.
+   */
+  focus?: PropFocus & { tall?: PropFocus };
+}
+
+export interface PropFocus {
+  /** Uniform scale at full zoom (default 1). */
+  scale?: number;
+  /** Per-axis scale along the ground, for flat props such as a mat that has to cover a bigger area (default `scale`). */
+  sx?: number;
+  sz?: number;
+  dx?: number;
+  dz?: number;
 }
 
 export interface Scene {
   area: Rect; // the project box: hovering it lifts the props; clicking it opens the project
+  /** The world rect to frame (and keep sharp) when zoomed in, for props that grow beyond `area`. Defaults to `area`. */
+  focusArea?: Rect;
+  /** Like `focusArea` but for portrait screens, where the props are laid out stacked rather than side by side. */
+  focusAreaTall?: Rect;
+  /** How much of the free part of the screen the framed area fills when zoomed in (0..1). Defaults to 0.82. */
+  focusFill?: number;
+  /**
+   * When this project is zoomed into, the whole map (ground, neighbours, everything) scales up by `scale` about the
+   * point `about`, so what grows stays in proportion with what is around it. Props then describe their own `focus`
+   * relative to that, and `focusArea` is the framing after the map has grown. `tall` is the scale on portrait screens.
+   */
+  zoom?: { about: { x: number; y: number }; scale: number; tall?: number };
   building: Rect;
   labelAt: { x: number; y: number };
   labelHeight: number; // how high above the ground the HTML label hovers (3D px)
@@ -57,7 +84,7 @@ const BUILDING = { building: { w: 128, h: 80 }, office: { w: 96, h: 80 } } as co
 /** Area size (px, tile multiples) for a variant. */
 export function sceneSize(variant: ZoneVariant): { w: number; h: number } {
   if (variant === "garage") return { w: 224, h: 256 };
-  if (variant === "photodesk") return { w: 224, h: 144 };
+  if (variant === "photodesk") return { w: 256, h: 144 };
   return { w: BUILDING[variant].w + 32, h: 144 };
 }
 

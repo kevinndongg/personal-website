@@ -33,9 +33,11 @@ import {
 } from "three";
 import { GROUND_MARGIN, buildGroundLayer } from "./ground";
 import { createModel, tireModel, woodTexture } from "./models";
+import type { AnimCtx } from "./models";
 import { sceneryModel } from "./scenery";
+import type { PropFocus, Rect } from "./scenes";
 import { TILE } from "./world";
-import type { World } from "./world";
+import type { World, Zone } from "./world";
 
 // Colors are authored as plain sRGB hex values; lighting is tuned by eye, so no color management.
 ColorManagement.enabled = false;
@@ -55,6 +57,7 @@ const POST_FS = `
   uniform vec2 res;
   uniform vec4 focusRect; // focused project box in screen uv (minX, minY, maxX, maxY)
   uniform float focusAmt;
+  uniform float pure; // 0 the graded picture .. 1 the scene's own pixels (zoomed right into a photo)
   uniform vec3 voidCol;
   varying vec2 vUv;
 
@@ -103,7 +106,10 @@ const POST_FS = `
     float grain = hash(px) + hash(px + 17.0) - 1.0;
     c += grain * 0.025 * bg;
 
-    gl_FragColor = vec4(c, 1.0);
+    // zoomed right into a photo: no grade at all (no muting, tint, exposure, vignette or grain), so the pixels on screen
+    // are the photo's own; only the dimming away from it stays, for the margins round it
+    vec3 raw = scene(vUv) * (1.0 - 0.42 * away);
+    gl_FragColor = vec4(mix(c, raw, pure), 1.0);
   }
 `;
 
@@ -119,6 +125,20 @@ const SHADOW_PAD = 3 * TILE; // how far the drop shadow's texture reaches past t
 /** Defaults for the hover effect on a project box (a scene can override via `scene.hover`). */
 const LIFT = 4; // world px the props rise (scene.hover.lift is in these units now)
 const GLOW = 0.12; // how much brighter the ground gets (white overlay opacity)
+
+/** A prop's zoom-in behaviour (`Prop.focus`) with every field filled in. */
+interface ResolvedFocus {
+  sx: number;
+  sy: number;
+  sz: number;
+  dx: number;
+  dz: number;
+}
+
+function resolveFocus(f: PropFocus): ResolvedFocus {
+  const sy = f.scale ?? 1;
+  return { sx: f.sx ?? sy, sy, sz: f.sz ?? sy, dx: f.dx ?? 0, dz: f.dz ?? 0 };
+}
 
 const VISUAL_SCALE: Record<string, number> = {
   cone: 1.3,
@@ -224,7 +244,23 @@ export class Renderer3D {
   private zoneModels = new Map<string, Object3D[]>();
   private zoneGlow = new Map<string, Mesh>();
   /** Per-model animation callbacks (see `userData.animate` in models.ts) grouped by zone. */
-  private animators: { fn: (c: { t: number; hover: number; pixel: number }) => void; zoneId: string }[] = [];
+  private animators: { fn: (c: AnimCtx) => void; zoneId: string }[] = [];
+  /** Props that grow and move while their project is zoomed into (`Prop.focus`), with the placement they start from. */
+  private focusProps: {
+    model: Object3D;
+    zoneId: string;
+    wide: ResolvedFocus;
+    tall: ResolvedFocus;
+    baseScale: number;
+    x: number;
+    z: number;
+  }[] = [];
+  private zoneFocus = new Map<string, number>(); // per project, 0..1, eased in step with the camera
+  /** A portrait screen: projects that have a stacked layout for it use that when zoomed in (see `Scene.focusAreaTall`). */
+  private tall = false;
+  /** Everything that is part of the map. It scales up about a project while that project is zoomed into (`Scene.zoom`). */
+  private root = new Group();
+  private mapZoom = { x: 0, z: 0, scale: 1 };
   private hoverAmount = new Map<string, number>();
   private frozenT = new Map<string, number>();
   private reduceMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -235,6 +271,18 @@ export class Renderer3D {
   private target = { wpp: 1, left: 0, top: 0 };
   private focused: { zoneId: string; panel: "left" | "right" | "bottom"; frac: number } | null = null;
   private focusAmt = 0; // 0..1, eased: how strongly the rest of the map is dimmed/blurred
+  /**
+   * Zoomed into something on the focused project (world points to frame), rather than the project as a whole. `normal`
+   * is the way the points face: the camera looks along it, so what it shows is square-on, not foreshortened.
+   */
+  private focusPts: { zoneId: string; points: Vector3[]; fill: number; normal: Vector3 } | null = null;
+  /** Which way the camera looks from (a unit vector from the map's centre to the camera): the map's tilt, or square-on. */
+  private baseDir = new Vector3(0, 1, 0);
+  private camDir = new Vector3(0, 1, 0);
+  private targetDir = new Vector3(0, 1, 0);
+  /** A camera used only to work out view matrices for an orientation the camera has not got to yet. */
+  private scratchCam = new OrthographicCamera(-1, 1, 1, -1, 1, 6000);
+  private pureAmt = 0; // 0..1, eased: how much of the grade is skipped (it is, zoomed right into a photo)
   private lastTime = 0;
   private focusRect = new Vector4(0, 0, 0, 0);
   private dapple: CanvasTexture;
@@ -282,6 +330,7 @@ export class Renderer3D {
         res: { value: new Vector2(1, 1) },
         focusRect: { value: new Vector4(0, 0, 0, 0) },
         focusAmt: { value: 0 },
+        pure: { value: 0 },
         voidCol: { value: new Color(VOID) },
       },
       depthTest: false,
@@ -318,6 +367,10 @@ export class Renderer3D {
     sun.shadow.normalBias = 0.6;
     scene.add(sun, sun.target);
 
+    // everything below belongs to the map and goes in `map`, which is what scales when a project is zoomed into
+    const map = this.root;
+    scene.add(map);
+
     // ground: the 2D floor drawing as a smooth texture, a shadow-catching overlay and drifting leaf-shade
     // (the texture also holds a margin of plain asphalt past the map, which only "fade" mode reveals)
     const tex = new CanvasTexture(buildGroundLayer(world));
@@ -330,13 +383,13 @@ export class Renderer3D {
     ground.rotation.x = -Math.PI / 2;
     ground.position.copy(this.center);
     ground.renderOrder = -1;
-    scene.add(ground);
+    map.add(ground);
     this.groundMesh = ground;
     const shadowCatcher = new Mesh(new PlaneGeometry(mapSize, mapSize), new ShadowMaterial({ color: "#0b1220", opacity: 0.4 }));
     shadowCatcher.rotation.x = -Math.PI / 2;
     shadowCatcher.position.set(this.center.x, 0.05, this.center.z);
     shadowCatcher.receiveShadow = true;
-    scene.add(shadowCatcher);
+    map.add(shadowCatcher);
     this.catcherMesh = shadowCatcher;
     const leaves = new Mesh(
       new PlaneGeometry(mapSize, mapSize),
@@ -345,7 +398,7 @@ export class Renderer3D {
     leaves.rotation.x = -Math.PI / 2;
     leaves.position.set(this.center.x, 0.08, this.center.z);
     leaves.renderOrder = 0.5;
-    scene.add(leaves);
+    map.add(leaves);
     this.leavesMesh = leaves;
 
     // scene props
@@ -362,11 +415,24 @@ export class Renderer3D {
         model.userData.baseY = p.elevation ?? 0;
         if (p.angle !== undefined) model.rotation.y = -p.angle;
         model.scale.setScalar(VISUAL_SCALE[p.sprite.split("-")[0]] ?? 1);
+        if (p.focus) {
+          const wide = resolveFocus(p.focus);
+          this.focusProps.push({
+            model,
+            zoneId: zone.id,
+            wide,
+            tall: p.focus.tall ? resolveFocus(p.focus.tall) : wide,
+            baseScale: model.scale.x,
+            x: model.position.x,
+            z: model.position.z,
+          });
+        }
         model.userData.zoneId = zone.id;
+        model.userData.sprite = p.sprite;
         model.traverse((o) => {
           if (typeof o.userData.animate === "function") this.animators.push({ fn: o.userData.animate, zoneId: zone.id });
         });
-        scene.add(model);
+        map.add(model);
         this.pickables.push(model);
         let list = this.zoneModels.get(zone.id);
         if (!list) this.zoneModels.set(zone.id, (list = []));
@@ -385,7 +451,7 @@ export class Renderer3D {
       glow.position.set(a.x + a.w / 2, 0.12, a.y + a.h / 2);
       glow.renderOrder = 1;
       glow.visible = false;
-      scene.add(glow);
+      map.add(glow);
       this.zoneGlow.set(zone.id, glow);
     }
 
@@ -393,7 +459,7 @@ export class Renderer3D {
     for (const item of world.items) {
       const t = tireModel();
       t.position.set(item.tx * TILE + TILE / 2, 0, item.ty * TILE + TILE / 2);
-      scene.add(t);
+      map.add(t);
     }
 
     // everything that is solid casts and receives soft shadows
@@ -413,7 +479,7 @@ export class Renderer3D {
     shadow.rotation.x = -Math.PI / 2;
     shadow.renderOrder = -2;
     shadow.castShadow = false;
-    scene.add(shadow);
+    map.add(shadow);
     this.edgeShadow = shadow;
 
     const wood = woodTexture();
@@ -423,7 +489,7 @@ export class Renderer3D {
     const slab = new Mesh(new BoxGeometry(mapSize, SLAB_H, mapSize), side);
     slab.position.set(this.center.x, -SLAB_H / 2 - 0.05, this.center.z);
     slab.castShadow = false;
-    scene.add(slab);
+    map.add(slab);
     this.slab = slab;
 
     this.edgeMask = fadeMaskTexture(mapSize + 2 * GROUND_MARGIN, mapSize);
@@ -466,16 +532,15 @@ export class Renderer3D {
     this.colorTarget.setSize(this.width, this.height);
     this.quad.uniforms.texel.value.set(1 / this.width, 1 / this.height);
     this.quad.uniforms.res.value.set(this.width, this.height);
+    this.tall = this.width < this.height * 0.9;
     this.fitCamera();
   }
 
   /** Orthographic camera at a fixed tilt, scaled so the whole map fits and centered on it. */
   private fitCamera() {
     const { camera, center, mapSize } = this;
-    const dir = new Vector3(Math.sin(YAW) * Math.cos(TILT), Math.sin(TILT), Math.cos(YAW) * Math.cos(TILT));
-    camera.position.copy(center).addScaledVector(dir, CAM_DIST);
-    camera.lookAt(center);
-    camera.updateMatrixWorld(true);
+    this.baseDir.set(Math.sin(YAW) * Math.cos(TILT), Math.sin(TILT), Math.cos(YAW) * Math.cos(TILT));
+    const inv = this.viewInverse(this.baseDir);
     let minX = Infinity,
       maxX = -Infinity,
       minY = Infinity,
@@ -485,7 +550,7 @@ export class Renderer3D {
     for (const y of [this.edge === "slab" ? -SLAB_H : 0, 45]) {
       for (const x of [-pad, mapSize + pad]) {
         for (const z of [-pad, mapSize + pad]) {
-          const v = new Vector3(x, y, z).applyMatrix4(camera.matrixWorldInverse);
+          const v = new Vector3(x, y, z).applyMatrix4(inv);
           minX = Math.min(minX, v.x);
           maxX = Math.max(maxX, v.x);
           minY = Math.min(minY, v.y);
@@ -502,7 +567,27 @@ export class Renderer3D {
     camera.bottom = cy - (this.height * this.wpp) / 2;
     camera.updateProjectionMatrix();
     this.base = { wpp: this.wpp, left: camera.left, top: camera.top };
+    this.camDir.copy(this.baseDir);
+    this.targetDir.copy(this.baseDir);
+    this.orient();
     this.retarget(true);
+  }
+
+  /** The world-to-view matrix of a camera looking at the map's centre from direction `dir` (without moving the camera). */
+  private viewInverse(dir: Vector3) {
+    const c = this.scratchCam;
+    c.position.copy(this.center).addScaledVector(dir, CAM_DIST);
+    c.lookAt(this.center);
+    c.updateMatrixWorld(true);
+    return c.matrixWorldInverse;
+  }
+
+  /** Points the camera along `camDir` (it always looks at the map's centre; the view window is what zooms and pans). */
+  private orient() {
+    const c = this.camera;
+    c.position.copy(this.center).addScaledVector(this.camDir, CAM_DIST);
+    c.lookAt(this.center);
+    c.updateMatrixWorld(true);
   }
 
   /**
@@ -511,53 +596,89 @@ export class Renderer3D {
    */
   focus(zoneId: string | null, panel: "left" | "right" | "bottom" = "right", frac = 0.4) {
     this.focused = zoneId ? { zoneId, panel, frac } : null;
+    this.focusPts = null; // back to framing the whole project
+    this.retarget(false);
+  }
+
+  /**
+   * Frames these world points (a photo on the light table, say) as tightly as `fill` of the screen allows, while the
+   * project is open; `null` goes back to framing the whole project. The camera eases there like it does for the project.
+   */
+  focusPoints(zoneId: string, points: Vector3[] | null, fill = 0.95) {
+    if (!points || points.length < 4) {
+      this.focusPts = null;
+    } else {
+      // the way the points face (the first corner, then the two next to it, span their plane): the camera will look along it
+      const normal = points[1].clone().sub(points[0]).cross(points[3].clone().sub(points[0])).normalize();
+      if (normal.y < 0) normal.negate();
+      const ok = Number.isFinite(normal.x + normal.y + normal.z) && normal.lengthSq() > 0.5;
+      this.focusPts = { zoneId, points, fill, normal: ok ? normal : this.baseDir.clone() };
+    }
     this.retarget(false);
   }
 
   private retarget(snapNow: boolean) {
     const f = this.focused;
+    // the direction the camera should end up looking from: the map's tilt, or square-on to what is being zoomed into
+    this.targetDir.copy(f && this.focusPts && this.focusPts.zoneId === f.zoneId ? this.focusPts.normal : this.baseDir);
     if (!f) {
       this.target = { ...this.base };
     } else {
       const zone = this.world.zones.find((z) => z.id === f.zoneId);
       if (zone) {
-        const a = zone.scene.area;
+        const a = this.focusFrame(zone);
+        const pts = this.focusPts && this.focusPts.zoneId === f.zoneId ? this.focusPts : null;
+        // framing is worked out for the camera's destination orientation, not the one it has now
+        const inv = this.viewInverse(this.targetDir);
         let minX = Infinity,
           maxX = -Infinity,
           minY = Infinity,
           maxY = -Infinity;
-        for (const y of [0, zone.scene.height ?? 26]) {
-          for (const [x, z] of [
-            [a.x, a.y],
-            [a.x + a.w, a.y],
-            [a.x, a.y + a.h],
-            [a.x + a.w, a.y + a.h],
-          ]) {
-            const v = new Vector3(x, y, z).applyMatrix4(this.camera.matrixWorldInverse);
-            minX = Math.min(minX, v.x);
-            maxX = Math.max(maxX, v.x);
-            minY = Math.min(minY, v.y);
-            maxY = Math.max(maxY, v.y);
+        const take = (v: Vector3) => {
+          minX = Math.min(minX, v.x);
+          maxX = Math.max(maxX, v.x);
+          minY = Math.min(minY, v.y);
+          maxY = Math.max(maxY, v.y);
+        };
+        if (pts) {
+          for (const p of pts.points) take(p.clone().applyMatrix4(inv));
+        } else {
+          for (const y of [0, zone.scene.height ?? 26]) {
+            for (const [x, z] of [
+              [a.x, a.y],
+              [a.x + a.w, a.y],
+              [a.x, a.y + a.h],
+              [a.x + a.w, a.y + a.h],
+            ]) {
+              take(new Vector3(x, y, z).applyMatrix4(inv));
+            }
           }
         }
-        // the part of the screen left over for the 3D view once the panel is open
+        // the part of the screen left over for the 3D view once the panel is open (a bottom sheet is nudged a little
+        // down from the middle of what is left; with no sheet there is nothing to nudge for, and the framed area is
+        // centred, so there is as much room above it as below)
         const free = 1 - f.frac;
         const region =
           f.panel === "bottom"
-            ? { cx: 0.5, cy: free / 2 + 0.02, w: 1, h: free }
+            ? { cx: 0.5, cy: free / 2 + (f.frac > 0 ? 0.02 : 0), w: 1, h: free }
             : f.panel === "right"
               ? { cx: free / 2, cy: 0.5, w: free, h: 1 }
               : { cx: 1 - free / 2, cy: 0.5, w: free, h: 1 };
+        const fill = pts?.fill ?? zone.scene.focusFill ?? 0.82;
         const wpp = Math.min(
           this.base.wpp,
-          Math.max((maxX - minX) / (this.width * region.w * 0.82), (maxY - minY) / (this.height * region.h * 0.82))
+          Math.max((maxX - minX) / (this.width * region.w * fill), (maxY - minY) / (this.height * region.h * fill))
         );
         const vx = (minX + maxX) / 2;
         const vy = (minY + maxY) / 2;
         this.target = { wpp, left: vx - region.cx * this.width * wpp, top: vy + region.cy * this.height * wpp };
       }
     }
-    if (snapNow) this.view = { ...this.target };
+    if (snapNow) {
+      this.view = { ...this.target };
+      this.camDir.copy(this.targetDir);
+      this.orient();
+    }
     this.applyView();
   }
 
@@ -571,10 +692,51 @@ export class Renderer3D {
     c.updateProjectionMatrix();
   }
 
-  /** Render-pixel coordinates (float) of a world point. */
+  /** Render-pixel coordinates (float) of a map point (the map may be scaled up: see `Scene.zoom`). */
   toPixel(x: number, y: number, z: number): { px: number; py: number } {
-    const v = new Vector3(x, y, z).applyMatrix4(this.camera.matrixWorldInverse);
+    const v = this.mapToWorld(new Vector3(x, y, z)).applyMatrix4(this.camera.matrixWorldInverse);
     return { px: (v.x - this.camera.left) / this.wpp, py: (this.camera.top - v.y) / this.wpp };
+  }
+
+  /** Dev probe: the numbers that drive the zoom (camera view, map scale, dim), to look for stalls and jumps in them. */
+  debugView() {
+    return { wpp: this.view.wpp, left: this.view.left, top: this.view.top, mapScale: this.mapZoom.scale, focus: this.focusAmt };
+  }
+
+  /** A project's whole-map zoom for this screen's shape, at full zoom: the point it grows about, and by how much. */
+  private zoomOf(zone: Zone): { x: number; z: number; scale: number } {
+    const zm = zone.scene.zoom;
+    if (!zm) return { x: 0, z: 0, scale: 1 };
+    return { x: zm.about.x, z: zm.about.y, scale: (this.tall ? zm.tall : undefined) ?? zm.scale };
+  }
+
+  /** Where a point of the map is in the world right now, with the map scaled up about the project being opened. */
+  private mapToWorld(p: Vector3): Vector3 {
+    const { x, z, scale } = this.mapZoom;
+    p.x = x + (p.x - x) * scale;
+    p.y *= scale;
+    p.z = z + (p.z - z) * scale;
+    return p;
+  }
+
+  /**
+   * The rect the camera frames when zoomed into a project, for this screen's shape. It is in world coordinates once the
+   * map has grown (a project with a `zoom` describes its zoomed-in layout that way).
+   */
+  private focusFrame(zone: Zone): Rect {
+    const s = zone.scene;
+    return (this.tall ? s.focusAreaTall : undefined) ?? s.focusArea ?? s.area;
+  }
+
+  /**
+   * The same rect in map coordinates (what `pick` returns and what the project's own props are laid out in), which is
+   * the zoomed framing shrunk back by the project's map zoom.
+   */
+  focusBox(zone: Zone): Rect {
+    const r = this.focusFrame(zone);
+    const { x, z, scale } = this.zoomOf(zone);
+    if (scale === 1) return r;
+    return { x: x + (r.x - x) / scale, y: z + (r.y - z) / scale, w: r.w / scale, h: r.h / scale };
   }
 
   /** Hover effect for one project box, `amount` 0..1: its props rise and its ground brightens. Works for any zone. */
@@ -582,7 +744,10 @@ export class Renderer3D {
     this.hoverAmount.set(zoneId, amount);
     const cfg = this.world.zones.find((z) => z.id === zoneId)?.scene.hover;
     const lift = (cfg?.lift ?? LIFT / 2) * 2; // scene overrides were written in "pixels" (~2 world px each)
-    for (const m of this.zoneModels.get(zoneId) ?? []) m.position.y = (m.userData.baseY ?? 0) + amount * lift;
+    for (const m of this.zoneModels.get(zoneId) ?? []) {
+      if (m.userData.flat) continue; // a mat lying on the ground does not rise with the rest
+      m.position.y = (m.userData.baseY ?? 0) + amount * lift;
+    }
     const glow = this.zoneGlow.get(zoneId);
     if (glow) {
       glow.visible = amount > 0.001;
@@ -590,27 +755,71 @@ export class Renderer3D {
     }
   }
 
-  /** Where a click lands: the world position (px) and the zone whose model was hit, if any. */
-  pick(clientX: number, clientY: number): { x: number; y: number; zoneId?: string } | null {
+  /**
+   * Where a click lands: the map position (px), and the zone and prop (sprite id) whose model was hit, if any, and the
+   * named part of the prop (`userData.part`, e.g. a button on it) when the hit was on one.
+   */
+  pick(
+    clientX: number,
+    clientY: number
+  ): {
+    x: number;
+    y: number;
+    zoneId?: string;
+    propId?: string;
+    partId?: string;
+    slot?: number;
+    uv?: { x: number; y: number };
+  } | null {
     const rect = this.canvas.getBoundingClientRect();
     const ndc = new Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.camera);
     const point = new Vector3();
     if (!this.raycaster.ray.intersectPlane(this.groundPlane, point)) return null;
-    const hit = this.raycaster.intersectObjects(this.pickables, true)[0];
+    // three.js raycasts straight through `visible = false`, so a hidden or purely decorative mesh (a glow plane, a hover
+    // ring) would otherwise be what the pointer "hits" and block the real thing under it
+    const hit = this.raycaster.intersectObjects(this.pickables, true).find((h) => {
+      if (h.object.userData.noPick) return false;
+      for (let o: Object3D | null = h.object; o; o = o.parent) if (!o.visible) return false;
+      return true;
+    });
     let zoneId: string | undefined;
+    let propId: string | undefined;
+    let partId: string | undefined;
+    let slot: number | undefined;
     for (let o: Object3D | null = hit?.object ?? null; o; o = o.parent) {
+      if (!partId && o.userData.part) partId = o.userData.part;
+      if (slot === undefined && typeof o.userData.slot === "number") slot = o.userData.slot;
       if (o.userData.zoneId) {
         zoneId = o.userData.zoneId;
+        propId = o.userData.sprite;
         break;
       }
     }
-    return { x: point.x, y: point.z, zoneId };
+    // the ground point is in the world; hand it back in map coordinates, so it can be tested against the project boxes
+    const { x: zx, z: zz, scale } = this.mapZoom;
+    // `slot` is which numbered place on the prop was hit (e.g. which photo of the light table's page)
+    return {
+      x: zx + (point.x - zx) / scale,
+      y: zz + (point.z - zz) / scale,
+      zoneId,
+      propId,
+      partId,
+      slot,
+      uv: hit?.uv ? { x: hit.uv.x, y: hit.uv.y } : undefined,
+    };
   }
 
-  /** Screen position (css px) of a world point at the given height. */
+  /** Screen position (css px) of an object in the scene (wherever it is right now, however it is moving). */
+  projectObject(o: Object3D): { x: number; y: number } {
+    const v = o.getWorldPosition(new Vector3()).project(this.camera);
+    const rect = this.canvas.getBoundingClientRect();
+    return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
+  }
+
+  /** Screen position (css px) of a map point at the given height. */
   project(x: number, height: number, z: number): { x: number; y: number } {
-    const v = new Vector3(x, height, z).project(this.camera);
+    const v = this.mapToWorld(new Vector3(x, height, z)).project(this.camera);
     const rect = this.canvas.getBoundingClientRect();
     return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
   }
@@ -619,7 +828,7 @@ export class Renderer3D {
     const { renderer } = this;
 
     // ease the camera toward its target (a gentle exponential approach: quick start, soft landing)
-    const dt = Math.min(0.1, Math.max(0, time - this.lastTime));
+    const dt = Math.min(1 / 30, Math.max(0, time - this.lastTime));
     this.lastTime = time;
     const k = 1 - Math.exp(-dt * 6.5);
     const t = this.target;
@@ -627,6 +836,10 @@ export class Renderer3D {
     this.view.left += (t.left - this.view.left) * k;
     this.view.top += (t.top - this.view.top) * k;
     this.focusAmt += ((this.focused ? 1 : 0) - this.focusAmt) * k;
+    // the camera turns to look square-on at what it is zoomed into (and back), at the same pace as it zooms
+    this.camDir.lerp(this.targetDir, k).normalize();
+    this.orient();
+    this.pureAmt += ((this.focused && this.focusPts ? 1 : 0) - this.pureAmt) * k;
     this.applyView();
 
     // drifting leaf-shade (a slow breeze across the yard)
@@ -634,38 +847,97 @@ export class Renderer3D {
       this.dapple.offset.set((time * 0.004) % 1, (time * 0.0022) % 1);
     }
 
+    // how far into each project the camera is, per project (so one that is being left eases back while another opens)
+    for (const zone of this.world.zones) {
+      const cur = this.zoneFocus.get(zone.id) ?? 0;
+      const goal = this.focused?.zoneId === zone.id ? 1 : 0;
+      const next = cur + (goal - cur) * k;
+      this.zoneFocus.set(zone.id, Math.abs(goal - next) < 0.001 ? goal : next);
+    }
+    // the whole map grows about the project being opened (the one furthest in, if two are easing past each other)
+    let zoom = { x: 0, z: 0, scale: 1 };
+    let furthest = 0;
+    for (const zone of this.world.zones) {
+      const full = this.zoomOf(zone);
+      const amount = this.zoneFocus.get(zone.id) ?? 0;
+      if (full.scale !== 1 && amount > furthest) {
+        furthest = amount;
+        zoom = { x: full.x, z: full.z, scale: 1 + (full.scale - 1) * amount };
+      }
+    }
+    this.mapZoom = zoom;
+    this.root.scale.setScalar(zoom.scale);
+    this.root.position.set(zoom.x * (1 - zoom.scale), 0, zoom.z * (1 - zoom.scale));
+
+    // props that grow with the zoom
+    for (const f of this.focusProps) {
+      const amount = this.zoneFocus.get(f.zoneId) ?? 0;
+      const fx = this.tall ? f.tall : f.wide;
+      f.model.scale.set(
+        f.baseScale * (1 + (fx.sx - 1) * amount),
+        f.baseScale * (1 + (fx.sy - 1) * amount),
+        f.baseScale * (1 + (fx.sz - 1) * amount)
+      );
+      f.model.position.x = f.x + fx.dx * amount;
+      f.model.position.z = f.z + fx.dz * amount;
+    }
+    // the hover glow grows from the project's box to the zoomed-in framing, so it still lies under everything
+    for (const zone of this.world.zones) {
+      const glow = this.zoneGlow.get(zone.id);
+      if (!glow) continue;
+      const a = zone.scene.area;
+      // never smaller than the box itself: on a wide screen everything fits inside it and the glow just grows with the map
+      const f = this.focusBox(zone);
+      const x0 = Math.min(a.x, f.x);
+      const y0 = Math.min(a.y, f.y);
+      const b = { x: x0, y: y0, w: Math.max(a.x + a.w, f.x + f.w) - x0, h: Math.max(a.y + a.h, f.y + f.h) - y0 };
+      const amount = this.zoneFocus.get(zone.id) ?? 0;
+      glow.scale.set(1 + ((b.w - 2) / (a.w - 2) - 1) * amount, 1 + ((b.h - 2) / (a.h - 2) - 1) * amount, 1);
+      glow.position.x = a.x + a.w / 2 + (b.x + b.w / 2 - (a.x + a.w / 2)) * amount;
+      glow.position.z = a.y + a.h / 2 + (b.y + b.h / 2 - (a.y + a.h / 2)) * amount;
+    }
+
     // animations
     const pixel = 0.7; // motion in the models is continuous now; this is just a small unit
     for (const a of this.animators) {
       const hover = this.hoverAmount.get(a.zoneId) ?? 0;
+      const focus = this.zoneFocus.get(a.zoneId) ?? 0;
       const pause = this.world.zones.find((z) => z.id === a.zoneId)?.scene.animation?.pauseOnHover && hover > 0.5;
       if (!pause) this.frozenT.set(a.zoneId, time);
-      a.fn({ t: this.reduceMotion ? 0 : (this.frozenT.get(a.zoneId) ?? time), hover, pixel });
+      a.fn({ t: this.reduceMotion ? 0 : (this.frozenT.get(a.zoneId) ?? time), hover, focus, pixel });
     }
 
     // where the focused project box sits on screen (uv), for the dim/blur outside it
     if (this.focused) {
       const zone = this.world.zones.find((z) => z.id === this.focused!.zoneId);
       if (zone) {
-        const a = zone.scene.area;
+        const a = this.focusFrame(zone);
+        const pts = this.focusPts && this.focusPts.zoneId === zone.id ? this.focusPts.points : null;
         let u0 = 1,
           v0 = 1,
           u1 = 0,
           v1 = 0;
-        for (const y of [0, zone.scene.height ?? 26]) {
-          for (const [x, z] of [
-            [a.x, a.y],
-            [a.x + a.w, a.y],
-            [a.x, a.y + a.h],
-            [a.x + a.w, a.y + a.h],
-          ]) {
-            const p = new Vector3(x, y, z).project(this.camera);
-            const u = (p.x + 1) / 2;
-            const v = (p.y + 1) / 2;
-            u0 = Math.min(u0, u);
-            v0 = Math.min(v0, v);
-            u1 = Math.max(u1, u);
-            v1 = Math.max(v1, v);
+        const take = (p: Vector3) => {
+          const u = (p.x + 1) / 2;
+          const v = (p.y + 1) / 2;
+          u0 = Math.min(u0, u);
+          v0 = Math.min(v0, v);
+          u1 = Math.max(u1, u);
+          v1 = Math.max(v1, v);
+        };
+        if (pts) {
+          // zoomed into one thing on the project (a photo on the table): keep that sharp, and let the rest fall back
+          for (const p of pts) take(p.clone().project(this.camera));
+        } else {
+          for (const y of [0, zone.scene.height ?? 26]) {
+            for (const [x, z] of [
+              [a.x, a.y],
+              [a.x + a.w, a.y],
+              [a.x, a.y + a.h],
+              [a.x + a.w, a.y + a.h],
+            ]) {
+              take(new Vector3(x, y, z).project(this.camera));
+            }
           }
         }
         this.focusRect.set(u0 - 0.01, v0 - 0.01, u1 + 0.01, v1 + 0.01);
@@ -673,6 +945,8 @@ export class Renderer3D {
     }
     this.quad.uniforms.focusRect.value.copy(this.focusRect);
     this.quad.uniforms.focusAmt.value = this.focusAmt;
+    // (snapped at the ends, so "none of the grade" really is none, not 99.9%)
+    this.quad.uniforms.pure.value = this.pureAmt < 0.002 ? 0 : this.pureAmt > 0.998 ? 1 : this.pureAmt;
 
     // scene -> multisampled target, then the grade / grain pass to the screen
     renderer.setRenderTarget(this.colorTarget);

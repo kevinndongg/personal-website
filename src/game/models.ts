@@ -575,6 +575,7 @@ export function extinguisherModel(): Group {
 export interface AnimCtx {
   t: number; // seconds (0 when reduced motion is on)
   hover: number; // 0..1, how hovered this model's project box is
+  focus: number; // 0..1, eased: how far the camera has zoomed into this model's project (0 on the map)
   pixel: number; // world height of one rendered pixel, for stepping motion in whole pixels
 }
 

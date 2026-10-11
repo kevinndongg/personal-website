@@ -33,9 +33,17 @@ export interface ZoneInput {
   techStack?: string[];
   bullets?: string[];
   image?: string;
-  thumbs?: string[];
-  /** Photo urls laid out on the light table (4 per row), photodesk variant only. */
-  strip?: string[];
+  /** The photos the light table cycles through, in order, photodesk variant only. */
+  photos?: ZonePhoto[];
+}
+
+export interface ZonePhoto {
+  /** The image: big enough to fill the screen when the camera is zoomed into it. */
+  src: string;
+  /** Width over height: it decides which slot of a page it goes in, and layouts do not wait for images. */
+  aspect: number;
+  title: string;
+  location?: string;
 }
 
 export interface Zone extends ZoneInput {

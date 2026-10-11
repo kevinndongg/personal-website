@@ -3,6 +3,12 @@ import type { Zone, ZoneAction } from "./world";
 
 export type PanelSide = "left" | "right" | "bottom";
 
+/**
+ * The photography page is the scene itself (the light table and the camera are the controls, and the title and place of
+ * the photo are printed on the film), so it has no card: only a small link to the full gallery in the corner.
+ */
+const isLinkOnly = (zone: Zone) => zone.kind === "gallery";
+
 const KIND_LABEL: Record<string, string> = { project: "Project", gallery: "Photography", contact: "Get in touch" };
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string) {
@@ -16,7 +22,6 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
 export class Panel {
   private root: HTMLElement;
   private backdrop: HTMLElement;
-  private media: HTMLElement;
   private logo: HTMLImageElement;
   private kicker: HTMLElement;
   private title: HTMLElement;
@@ -30,11 +35,12 @@ export class Panel {
   isOpen = false;
   /** Called when the panel closes (Esc, the close button or the backdrop). */
   onClose: () => void = () => {};
+  /** Asked before Esc closes the panel: return true if it dealt with the key itself (e.g. zoomed back out a level). */
+  beforeEscape: () => boolean = () => false;
 
   constructor(root: HTMLElement, backdrop: HTMLElement, signal: AbortSignal) {
     this.root = root;
     this.backdrop = backdrop;
-    this.media = root.querySelector("[data-media]")!;
     this.logo = root.querySelector("[data-logo]")!;
     this.kicker = root.querySelector("[data-kicker]")!;
     this.title = root.querySelector("[data-title]")!;
@@ -52,7 +58,7 @@ export class Panel {
       (e) => {
         if (this.isOpen && e.key === "Escape") {
           e.preventDefault();
-          this.close();
+          if (!this.beforeEscape()) this.close();
         }
       },
       { signal }
@@ -60,7 +66,9 @@ export class Panel {
   }
 
   /** Fraction of the viewport the panel covers on its axis (width for left/right, height for the bottom sheet). */
-  coverage(side: PanelSide): number {
+  coverage(side: PanelSide, zone?: Zone): number {
+    // the photography page has no card, so the scene may use the whole screen
+    if (zone && isLinkOnly(zone)) return 0;
     if (side === "bottom") return 0.5;
     const w = Math.min(460, innerWidth * 0.42);
     return Math.min(0.55, (w + Math.max(24, innerWidth * 0.03) + 16) / innerWidth);
@@ -68,18 +76,25 @@ export class Panel {
 
   open(zone: Zone, side: PanelSide) {
     window.clearTimeout(this.closeTimer);
+    const linkOnly = isLinkOnly(zone);
     this.fill(zone);
     this.setExpanded(false);
     this.root.dataset.side = side;
+    this.root.dataset.variant = linkOnly ? "link" : "card";
+    // the link sits over a scene that stays clickable (the camera's controls, the table), so nothing is dimmed or blocked
+    this.root.setAttribute("aria-modal", String(!linkOnly));
+    if (linkOnly) this.root.setAttribute("aria-label", `${zone.label}: link to the full gallery`);
+    else this.root.removeAttribute("aria-label");
     this.root.style.setProperty("--accent", zone.accent);
     this.root.scrollTop = 0;
     this.root.hidden = false;
-    this.backdrop.hidden = false;
+    this.backdrop.hidden = linkOnly;
     this.isOpen = true;
     // next frame, so the slide-in transition runs from its starting position
     requestAnimationFrame(() => {
       this.root.classList.add("open");
-      (this.root.querySelector("[data-close]") as HTMLElement).focus({ preventScroll: true });
+      // a card takes the focus (its close button); the link does not, so the arrow keys and Enter go to the scene
+      if (!linkOnly) (this.root.querySelector("[data-close]") as HTMLElement).focus({ preventScroll: true });
     });
   }
 
@@ -106,19 +121,7 @@ export class Panel {
   }
 
   private fill(zone: Zone) {
-    // the gallery shows a strip of its photos on top; projects show their logo as a chip beside the title
-    this.media.replaceChildren();
-    this.media.hidden = true;
-    if (zone.thumbs?.length) {
-      for (const src of zone.thumbs) {
-        const img = el("img");
-        img.src = src;
-        img.alt = "";
-        this.media.append(img);
-      }
-      this.media.hidden = false;
-      this.media.dataset.kind = "thumbs";
-    }
+    // projects show their logo as a chip beside the title
     if (zone.image) this.logo.src = zone.image;
     else this.logo.removeAttribute("src");
     this.logo.hidden = !zone.image;

@@ -4,17 +4,28 @@ import { getImage } from "astro:assets";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { withBase } from "../lib/url";
 import { contactLinks } from "../lib/contact";
+import { sortPhotos } from "../lib/photos";
 import "../styles/game.css";
 
 const projects = (await getCollection("projects")).sort((a, b) => a.data.order - b.data.order);
 const photos = await getCollection("photos");
-const featured = [...photos.filter((p) => p.data.featured), ...photos.filter((p) => !p.data.featured)].slice(0, 4);
 
-const thumbs = await Promise.all(featured.map(async (p) => (await getImage({ src: p.data.image, width: 360 })).src));
-
-// the photos laid out on the light table: 8 of them (featured first), bigger than the card thumbnails
-const ordered = [...photos.filter((p) => p.data.featured), ...photos.filter((p) => !p.data.featured)];
-const strip = await Promise.all(ordered.slice(0, 8).map(async (p) => (await getImage({ src: p.data.image, width: 480 })).src));
+// Every photo, in the same order as /photography. The light table lays them out a page at a time and the camera zooms
+// into one, and it has to work for any number of photos, so each one goes in as plain data: an image big enough to fill
+// the screen when zoomed into, and its aspect so that the layout is known before any image has loaded. The game loads
+// the images only for the page that is showing (and the next), so adding photos only adds a file under
+// src/content/photos.
+const reel = await Promise.all(
+  sortPhotos(photos).map(async (p) => {
+    const { width, height } = p.data.image;
+    return {
+      src: (await getImage({ src: p.data.image, width: 1400 })).src,
+      aspect: width / height,
+      title: p.data.title,
+      location: p.data.location,
+    };
+  })
+);
 
 /** The project's markdown body: the lead sentence(s), and the bullet list that carries the results. */
 function parseBody(body = "") {
@@ -66,8 +77,7 @@ const zones = [
     href: withBase("photography"),
     actions: [{ label: "Open the gallery", href: withBase("photography") }],
     accent: "#8a4fd0",
-    thumbs,
-    strip,
+    photos: reel,
   },
   {
     id: "contact",
@@ -89,13 +99,15 @@ const zones = [
     <a class="skip" href={withBase("")}>Skip to regular site</a>
     <p class="hint" data-hint>Pick a building to look inside</p>
 
+    <!-- announces the photo on the table (the title and place are drawn on the film, which a screen reader cannot read) -->
+    <p class="sr-only" data-live aria-live="polite"></p>
+
     <div class="backdrop" data-backdrop hidden></div>
     <aside class="panel" data-panel hidden role="dialog" aria-modal="true" aria-labelledby="panel-title">
       <button class="grip" type="button" data-grip aria-label="Show more or less" aria-expanded="false"><span></span></button>
       <button class="close" type="button" data-close aria-label="Close">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"></path></svg>
       </button>
-      <div class="media" data-media hidden></div>
       <div class="body">
         <header class="head">
           <img class="logo" data-logo alt="" hidden />
