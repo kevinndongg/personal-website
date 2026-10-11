@@ -3,6 +3,7 @@ import { Panel } from "./panel";
 import type { PanelSide } from "./panel";
 import { Renderer3D } from "./render3d";
 import { filmRig } from "./scenery";
+import type { MoveKey } from "./scenery";
 import { TILE, generateWorld, rectContains } from "./world";
 import type { Zone, ZoneInput } from "./world";
 
@@ -42,49 +43,13 @@ export function startGame(root: HTMLElement): () => void {
     return el;
   });
 
-  // Labels hung on the camera's controls while the photography page is open. They say what each control does, and they
-  // are buttons too, so a label is as good a place to click as the control it names.
   const galleryZone = world.zones.find((z) => z.kind === "gallery");
-  const controlLabels = galleryZone
-    ? [
-        { key: "lever" as const, title: "Next page", sub: "advance lever", act: () => wind(1) },
-        { key: "rewind" as const, title: "Previous page", sub: "rewind knob", act: () => wind(-1) },
-        // the shutter button zooms the view into the selected photo (it is only on screen while looking at the page)
-        { key: "shutter" as const, title: "Zoom in", sub: "shutter button", act: () => zoomToggle() },
-      ].map((c) => {
-        const el = document.createElement("button");
-        el.type = "button";
-        el.className = "control-label";
-        el.setAttribute("aria-label", `${c.title} (${c.sub})`);
-        const title = document.createElement("b");
-        title.textContent = c.title;
-        const sub = document.createElement("span");
-        sub.textContent = c.sub;
-        el.append(title, sub);
-        el.addEventListener("click", c.act, { signal });
-        labelsEl.append(el);
-        return { ...c, el, titleEl: title };
-      })
-    : [];
-  // announces the photo that is up, for screen readers (its title and place are printed on the film in the scene)
+  let swipe: { id: number; x: number; y: number } | null = null; // a touch that began while zoomed into a photo
+  // the viewer has used a control, a photo or a key: the offer (the lever turning the page by itself, and the glow) is
+  // done, for this visit
+  let used = false;
+  // announces the photo that is up, for screen readers (its title and place are not drawn anywhere in the scene)
   const live = root.querySelector<HTMLElement>("[data-live]");
-
-  // Previous / next buttons at the left and right edges of the screen while the photography page is open. Zoomed into a
-  // photo the camera, with its labelled controls, is off screen, so these (and the arrow keys and the wheel) are how you
-  // move on. They do what the lever and knob do: a page at a time, or a photo at a time while zoomed in.
-  const edgeArrows = galleryZone
-    ? ([-1, 1] as const).map((direction) => {
-        const el = document.createElement("button");
-        el.type = "button";
-        el.className = `edge-arrow ${direction < 0 ? "left" : "right"}`;
-        el.innerHTML = `<svg viewBox="0 0 16 16" width="22" height="22" aria-hidden="true"><path d="${
-          direction < 0 ? "M10 3L5 8l5 5" : "M6 3l5 5-5 5"
-        }" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"></path></svg>`;
-        el.addEventListener("click", () => wind(direction), { signal });
-        root.append(el);
-        return { direction, el };
-      })
-    : [];
 
   function resize() {
     renderer.resize(innerWidth, innerHeight);
@@ -138,6 +103,9 @@ export function startGame(root: HTMLElement): () => void {
 
   function open(zone: Zone, fromUrl = false) {
     const side = sideFor(zone);
+    // the gallery is a roll with a start and an end: opening it begins at the start (a turn of the window, which opens it
+    // again, does not)
+    if (zone.kind === "gallery" && !(panel.isOpen && openZone === zone)) filmRig(zone).reset();
     openZone = zone;
     openSide = side;
     renderer.focus(zone.id, side, panel.coverage(side, zone));
@@ -210,12 +178,18 @@ export function startGame(root: HTMLElement): () => void {
 
   /**
    * The photography page leaves the scene clickable. Looking at the page: the camera's controls change the page (the
-   * rewind knob back, the lever and the rest of the camera on, the shutter button zooms in), and a click on a photo zooms
+   * rewind knob back, the lever on, the shutter button zooms in; the rest of the camera does nothing), and a click on a photo zooms
    * the view into it. Zoomed in, a click anywhere zooms back out. Those are the only things on it that are not "click
    * anywhere to go back"; everywhere else behaves as on the other projects (zoom-out cursor, click to close).
    */
   function onCamera(hit: Hit) {
     return !!openZone && hit?.zoneId === openZone.id && hit.propId === "omcamera";
+  }
+
+  /** Which of the camera's controls a hit landed on (the lever, the rewind knob, the shutter button), or null: the body is not one. */
+  function control(hit: Hit): "lever" | "rewind" | "shutter" | null {
+    if (!onCamera(hit)) return null;
+    return hit?.partId === "lever" || hit?.partId === "rewind" || hit?.partId === "shutter" ? hit.partId : null;
   }
 
   /** The photo of the page that a hit landed on, or null (the film between photos, an empty slot, anything else). */
@@ -232,19 +206,25 @@ export function startGame(root: HTMLElement): () => void {
 
   /** Moves the open photography page on (1) or back (-1): a page at a time, or a photo at a time while zoomed in. */
   function wind(direction: 1 | -1) {
-    if (panel.isOpen && openZone?.kind === "gallery") filmRig(openZone).queue(direction);
+    if (panel.isOpen && openZone?.kind === "gallery") {
+      used = true;
+      filmRig(openZone).queue(direction);
+    }
   }
 
-  /** The shutter button: zoom into the selected photo, or back out to the page. */
+  /** The shutter button: zoom into the current photo, or back out to the page. */
   function zoomToggle() {
-    if (panel.isOpen && openZone?.kind === "gallery") filmRig(openZone).toggleZoom();
+    if (panel.isOpen && openZone?.kind === "gallery") {
+      used = true;
+      filmRig(openZone).toggleZoom();
+    }
   }
 
   /** Tell the camera which of its controls the pointer is over, and the table which photo, so they can light up. */
   function lightControl(hit: Hit) {
     if (openZone?.kind !== "gallery") return;
     const rig = filmRig(openZone);
-    rig.hint = onCamera(hit) ? (hit?.partId === "rewind" ? "rewind" : hit?.partId === "shutter" ? "shutter" : "lever") : null;
+    rig.hint = control(hit);
     rig.hoverIndex = photoUnder(hit);
   }
 
@@ -284,9 +264,9 @@ export function startGame(root: HTMLElement): () => void {
           const zoomed = filmRig(openZone).mode === "photo";
           canvas.style.cursor = zoomed
             ? "zoom-out"
-            : onCamera(hit) || photoUnder(hit) !== null
+            : control(hit) || photoUnder(hit) !== null
               ? "pointer"
-              : onFilm(hit)
+              : onFilm(hit) || onCamera(hit)
                 ? "default"
                 : "zoom-out";
         }
@@ -316,16 +296,26 @@ export function startGame(root: HTMLElement): () => void {
         if (openZone?.kind !== "gallery") return;
         const rig = filmRig(openZone);
         if (rig.mode === "photo") {
-          rig.zoomOut(); // zoomed into a photo, a click anywhere goes back to the page
+          if (e.pointerType === "mouse") {
+            rig.zoomOut(); // zoomed into a photo, a click anywhere goes back to the page
+          } else {
+            // touch and pen: a swipe moves on to the next photo, a tap goes back to the page (told apart when the
+            // finger lifts)
+            swipe = { id: e.pointerId, x: e.clientX, y: e.clientY };
+            canvas.setPointerCapture?.(e.pointerId);
+          }
           return;
         }
         const hit = renderer.pick(e.clientX, e.clientY);
         const photo = photoUnder(hit);
-        if (onCamera(hit)) {
-          if (hit?.partId === "shutter") zoomToggle();
-          else wind(hit?.partId === "rewind" ? -1 : 1);
-        } else if (photo !== null) rig.zoomIn(photo);
-        else if (!onFilm(hit)) panel.close(); // (the film between the photos does nothing)
+        const pressed = control(hit);
+        if (pressed) {
+          if (pressed === "shutter") zoomToggle();
+          else wind(pressed === "rewind" ? -1 : 1);
+        } else if (photo !== null) {
+          used = true;
+          rig.zoomIn(photo);
+        } else if (!onFilm(hit) && !onCamera(hit)) panel.close(); // (the film between the photos, and the camera's body, do nothing)
         return;
       }
       const hit = renderer.pick(e.clientX, e.clientY);
@@ -336,16 +326,55 @@ export function startGame(root: HTMLElement): () => void {
     { signal }
   );
 
-  // keyboard, while the photography page is open: left and right arrows flip the page (or, zoomed in, step to the next
-  // photo), Enter zooms in or out (unless something else, like the link, has the focus and wants Enter)
+  // A swipe, zoomed into a photo, does what the arrow keys do (the photo is dragged along: swiping left shows the one to
+  // the right). A short touch is a tap, which goes back to the page.
+  const SWIPE_PX = 40;
+  canvas.addEventListener(
+    "pointerup",
+    (e) => {
+      const s = swipe;
+      if (!s || e.pointerId !== s.id) return;
+      swipe = null;
+      if (!panel.isOpen || openZone?.kind !== "gallery") return;
+      const rig = filmRig(openZone);
+      if (rig.mode !== "photo") return;
+      const dx = e.clientX - s.x;
+      const dy = e.clientY - s.y;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE_PX) {
+        rig.zoomOut();
+        return;
+      }
+      used = true;
+      if (Math.abs(dx) >= Math.abs(dy)) rig.move(dx < 0 ? "right" : "left");
+      else rig.move(dy < 0 ? "down" : "up");
+    },
+    { signal }
+  );
+  canvas.addEventListener(
+    "pointercancel",
+    () => {
+      swipe = null;
+    },
+    { signal }
+  );
+
+  // keyboard, while the photography page is open. Looking at the page, any arrow key turns it (left and up back, right and
+  // down forward). Zoomed in, the arrows move to the photo next to this one in that direction on the table, and turn the
+  // page at its edge. Enter zooms in (to the photo last looked at, the first of the page after a turn) or
+  // out, unless something else, like the link, has the focus and wants Enter.
+  const ARROWS: Record<string, MoveKey> = { ArrowRight: "right", ArrowLeft: "left", ArrowDown: "down", ArrowUp: "up" };
   addEventListener(
     "keydown",
     (e) => {
       if (e.altKey || e.ctrlKey || e.metaKey) return;
       if (!panel.isOpen || openZone?.kind !== "gallery") return;
-      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      const arrow = ARROWS[e.key];
+      if (arrow) {
         e.preventDefault();
-        wind(e.key === "ArrowRight" ? 1 : -1);
+        const rig = filmRig(openZone);
+        used = true;
+        if (rig.mode === "photo") rig.move(arrow);
+        else wind(arrow === "right" || arrow === "down" ? 1 : -1);
       } else if (e.key === "Enter" && (document.activeElement === document.body || document.activeElement === canvas)) {
         e.preventDefault();
         zoomToggle();
@@ -408,27 +437,10 @@ export function startGame(root: HTMLElement): () => void {
     if (galleryZone) {
       const rig = filmRig(galleryZone);
       const open = panel.isOpen && openZone === galleryZone;
-      // the camera's control labels follow the controls (the camera moves while the project opens and closes), and are
-      // there while looking at the page: zoomed into a photo the camera is off screen
-      const showing = open && rig.mode === "page";
-      for (const c of controlLabels) {
-        const anchor = rig.anchors[c.key];
-        if (anchor && (showing || c.el.classList.contains("visible"))) {
-          const p = renderer.projectObject(anchor);
-          c.el.style.transform = `translate(calc(${p.x}px - 50%), calc(${p.y}px - 100% - 24px))`;
-        }
-        c.el.classList.toggle("visible", showing);
-        c.el.classList.toggle("hot", showing && rig.hint === c.key);
-      }
-      // the edge arrows are there whenever the page is open, and say whether they turn a page or a photo
-      for (const a of edgeArrows) {
-        const label = `${a.direction < 0 ? "Previous" : "Next"} ${rig.mode === "photo" ? "photo" : "page"}`;
-        if (a.el.getAttribute("aria-label") !== label) {
-          a.el.setAttribute("aria-label", label);
-          a.el.title = label;
-        }
-        a.el.classList.toggle("visible", open);
-      }
+      // While the page is up (not zoomed into a photo) and nothing has been used yet, the camera offers itself: the lever
+      // turns the page by itself and the lever and knob glow in turn (the camera model does that).
+      rig.invite = open && rig.mode === "page" && !used;
+      rig.used = used;
     }
   }
 
@@ -542,8 +554,6 @@ export function startGame(root: HTMLElement): () => void {
     abort.abort();
     renderer.dispose();
     labels.forEach((el) => el.remove());
-    controlLabels.forEach((c) => c.el.remove());
-    edgeArrows.forEach((a) => a.el.remove());
     root.classList.remove("ready");
   };
 }

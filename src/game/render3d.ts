@@ -307,6 +307,8 @@ export class Renderer3D {
 
     this.renderer = new WebGLRenderer({ canvas, antialias: false, alpha: false });
     this.renderer.outputColorSpace = LinearSRGBColorSpace;
+    // a material may carry its own clipping planes (the light table's film is cut off at the plate while it slides)
+    this.renderer.localClippingEnabled = true;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = PCFSoftShadowMap;
     // alpha 0 marks "nothing drawn here" in the scene target; the post pass uses it to grain the surface around the map
@@ -808,13 +810,6 @@ export class Renderer3D {
       slot,
       uv: hit?.uv ? { x: hit.uv.x, y: hit.uv.y } : undefined,
     };
-  }
-
-  /** Screen position (css px) of an object in the scene (wherever it is right now, however it is moving). */
-  projectObject(o: Object3D): { x: number; y: number } {
-    const v = o.getWorldPosition(new Vector3()).project(this.camera);
-    const rect = this.canvas.getBoundingClientRect();
-    return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
   }
 
   /** Screen position (css px) of a map point at the given height. */

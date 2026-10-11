@@ -18,21 +18,21 @@ const MAT = { x: 8, y: 8, w: W - 16, h: H - 16 };
 // `grow` is how much the map grows about the table when the project opens (so how big the table ends up against the map):
 // on a wide screen it is picked so that the table, with the camera beside it, about fills the height of the screen.
 const TABLE = { w: 150, d: 120, x: 160, front: 132, grow: 2.4, growTall: 2.0 };
-// `grow` is the camera's size once the project is open, against its size on the map (the table's is `TABLE.grow`). It is
-// big enough to read as the second thing on the page and for its controls to have labels beside them.
-const CAMERA = { x: 46, y: 76, grow: 2.0 };
+// The camera grows exactly as much as the table does once the project is open (so, in proportion to it, a second thing of
+// the same standing on the page, big enough for its controls to be told apart and to have labels).
+const CAMERA = { x: 46, y: 76 };
 
 /**
  * What the box covers once opened (area-local, after the map has grown): camera and table side by side, or stacked for
- * portrait screens. These are the numbers to tune; everything below is worked out from them. The camera, at `grow`,
- * takes about 104 x 88 of this, and `CAMERA_AT` puts its centre so that it clears the table (which spans x -20..340 and
- * z -156..132 when wide, and ends at z -108 when stacked) with a little room. `WIDE`'s shape is meant to match a 16:10
- * screen once the table's raised top is counted in, so on a 16:9 one the table's height is the limit.
+ * portrait screens. These are the numbers to tune; everything below is worked out from them. The camera, at the table's
+ * `grow`, takes about 125 x 106 of this, and `CAMERA_AT` puts its centre so that it clears the table (which spans x
+ * -20..340 and z -156..132 when wide, and ends at z -108 when stacked) with some room. `WIDE`'s shape is a little wider
+ * than a 16:10 screen once the table's raised top is counted in, so on a 16:9 one the table's height is the limit.
  */
-const WIDE: Rect = { x: -146, y: -164, w: 494, h: 302 };
-const TALL: Rect = { x: -16, y: -206, w: 336, h: 340 };
+const WIDE: Rect = { x: -184, y: -164, w: 532, h: 302 };
+const TALL: Rect = { x: -16, y: -218, w: 336, h: 352 };
 /** Where the camera ends up (its centre), in the same zoomed coordinates. */
-const CAMERA_AT = { wide: { x: -86, y: -12 }, tall: { x: 46, y: -160 } };
+const CAMERA_AT = { wide: { x: -110, y: -12 }, tall: { x: 46, y: -172 } };
 
 /** Where the map's zoom is anchored: the middle of the table's front edge, so the table grows back and sideways. */
 const ANCHOR = { x: TABLE.x, y: TABLE.front };
@@ -88,7 +88,8 @@ export function photoDeskScene(ox: number, oy: number): Scene {
 
   // the camera stands on the left with its lens toward the viewer (south), turned 20 degrees clockwise (toward the west):
   // PI/2 turns its +x front to face +y, and a larger angle swings the front clockwise on screen
-  // (opened up, it grows a little less than the table and sits level with the middle of it)
+  // (opened up, it grows as much as the table does, so only the map's own zoom scales it, and it sits level with the
+  // middle of it, a little way off to the left)
   const cameraFrom = { x: CAMERA.x, y: CAMERA.y };
   props.push({
     sprite: "omcamera",
@@ -96,8 +97,8 @@ export function photoDeskScene(ox: number, oy: number): Scene {
     angle: Math.PI / 2 + (20 * Math.PI) / 180,
     solid: rect(32, 46),
     focus: {
-      ...relative(g, cameraFrom, CAMERA.grow, CAMERA_AT.wide),
-      tall: relative(gt, cameraFrom, CAMERA.grow, CAMERA_AT.tall),
+      ...relative(g, cameraFrom, g, CAMERA_AT.wide),
+      tall: relative(gt, cameraFrom, gt, CAMERA_AT.tall),
     },
   });
   // the light table on the right: the viewer's way into the photos. It grows exactly as much as the map does.
