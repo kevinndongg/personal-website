@@ -11,12 +11,13 @@ import {
   MeshBasicMaterial,
   Plane,
   PlaneGeometry,
+  RingGeometry,
   Texture,
   Vector3,
 } from "three";
 import type { Footprint, Prop } from "./scenes";
 import type { Zone, ZonePhoto } from "./world";
-import { box, mesh, toon } from "./models";
+import { box, cyl, mesh, toon } from "./models";
 import type { AnimCtx } from "./models";
 import { ImageCache } from "./photocache";
 
@@ -31,6 +32,7 @@ const SILVER_DARK = "#9ea3ad";
 const BLACK = "#1b1c20";
 // The rewind knob, the advance lever and the shutter button are silver (red) like the rest, but each has a colour of its
 // own (a shade off): the materials are shared by colour, and these are tinted when the pointer is over them.
+const LEATHER = "#6b4425";
 const KNOB_COLOR = "#9ea3ae";
 const LEVER_ARM = "#c3c7d0";
 const LEVER_TIP = "#9ea3af";
@@ -490,6 +492,27 @@ function omCameraModel(rig: FilmRig): Group {
   g.add(box(0.3, 10, 38, "#26272c", bx + 8.1, 5, 0)); // textured front panel
   for (const z of [-22.6, 22.6]) g.add(box(2.2, 2.4, 1.2, SILVER_DARK, bx, 20, z)); // strap lugs
 
+  // The leather strap: it hangs from each lug down the side of the body to the desk, and goes round in a loose loop behind
+  // the camera, a flat band lying on the mat (a polyline of short boxes) with a small buckle on the way.
+  const loop: [number, number][] = [
+    [-6, -24],
+    [-12, -27],
+    [-22, -27],
+    [-31, -21],
+    [-37, -12],
+    [-40, -3],
+  ];
+  const strapLine: [number, number][] = [...loop, ...[...loop].reverse().map(([x, z]): [number, number] => [x, -z])];
+  for (const side of [-1, 1]) g.add(box(3, 19.6, 0.7, LEATHER, bx, 0.4, side * 23.1));
+  for (let i = 0; i < strapLine.length - 1; i++) {
+    const [x0, z0] = strapLine[i];
+    const [x1, z1] = strapLine[i + 1];
+    const seg = box(Math.hypot(x1 - x0, z1 - z0) + 0.8, 0.6, 3, LEATHER, (x0 + x1) / 2, 0.1, (z0 + z1) / 2);
+    seg.rotation.y = -Math.atan2(z1 - z0, x1 - x0);
+    g.add(seg);
+  }
+  g.add(box(3.4, 0.9, 4.4, SILVER, -22, 0.55, -27)); // buckle
+
   // lens
   const y = 12;
   g.add(axle(11, 1.6, SILVER, 2.8, y, 0)); // mount ring
@@ -601,6 +624,106 @@ function omCameraModel(rig: FilmRig): Group {
   return g;
 }
 
+// ---------------------------------------------------------------- the still life beside the camera
+
+// The camera's spares, at its own scale (its lens barrel is about 18 across; a 135 mm telephoto, a filter and a film
+// canister are these sizes next to an OM-1). Nothing here is a control: each group is tagged as part of the table.
+
+/**
+ * A telephoto lens standing on its rear mount, front glass up: barrel, focus ring, silver band, and a hood made of a ring
+ * of panels so the glass shows inside it. Origin at the middle of its base, on the desk.
+ */
+function telephotoModel(): Group {
+  const g = new Group();
+  g.add(cyl(8.4, 8.4, 2, SILVER, 0, 0, 0, 28)); // rear mount
+  g.add(cyl(9, 9, 20, BLACK, 0, 2, 0, 28)); // barrel
+  g.add(cyl(9.6, 9.6, 6, "#26272c", 0, 8, 0, 28)); // focus ring
+  g.add(cyl(9.7, 9.7, 0.8, SILVER_DARK, 0, 14.6, 0, 28));
+  g.add(cyl(9.3, 9.3, 1, SILVER, 0, 22, 0, 28)); // front rim
+  g.add(cyl(7.6, 7.6, 0.4, "#1d3550", 0, 23, 0, 24)); // front glass
+  const panels = 12;
+  for (let i = 0; i < panels; i++) {
+    const a = (i / panels) * Math.PI * 2;
+    const panel = box(5.4, 5.6, 0.8, "#1d1e22", Math.cos(a) * 9.9, 23, Math.sin(a) * 9.9);
+    panel.rotation.y = -a + Math.PI / 2;
+    g.add(panel);
+  }
+  g.userData.part = "film";
+  return g;
+}
+
+/**
+ * A canister of film, standing (black body, yellow label, silver cap), with its tab: the leader drawn out of the side and
+ * curling toward the viewer. Origin at the middle of the canister's base, on the desk.
+ */
+function filmCanisterModel(): Group {
+  const g = new Group();
+  const cx = 0;
+  g.add(cyl(4, 4, 15, "#2b2d33", cx, 0, 0, 20));
+  g.add(cyl(4.12, 4.12, 7, "#e8a317", cx, 4, 0, 20));
+  g.add(cyl(3.2, 3.2, 2.2, SILVER, cx, 15, 0, 20));
+  // The film tab: the leader, drawn out of the canister's side and curling toward the viewer, a band as wide as 35 mm film
+  // is next to the canister, with a sprocket hole every so often down both edges.
+  const R = 5; // radius of the curl
+  const SWEEP = (100 * Math.PI) / 180;
+  const SEGS = 7;
+  for (let i = 0; i < SEGS; i++) {
+    const a0 = (i / SEGS) * SWEEP;
+    const a1 = ((i + 1) / SEGS) * SWEEP;
+    const p0: [number, number] = [cx + 4 + R * Math.sin(a0), R * (1 - Math.cos(a0))];
+    const p1: [number, number] = [cx + 4 + R * Math.sin(a1), R * (1 - Math.cos(a1))];
+    const mx = (p0[0] + p1[0]) / 2;
+    const mz = (p0[1] + p1[1]) / 2;
+    const len = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+    const rot = -Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
+    const band = box(len + 0.25, 10.5, 0.35, "#8a5a2e", mx, 3, mz);
+    band.rotation.y = rot;
+    g.add(band);
+    for (const hy of [3.9, 12.1]) {
+      const hole = box(0.9, 0.9, 0.55, "#17110c", mx, hy - 0.45, mz);
+      hole.rotation.y = rot;
+      g.add(hole);
+    }
+  }
+  g.userData.part = "film"; // part of the table: nothing here is a control
+  return g;
+}
+
+/**
+ * Two clear filters: one lying flat on the desk and the other leaning on it, its far edge on the desk and its near edge
+ * resting on the first one's rim (so it is tilted down by the thickness of a filter over its width, and they overlap by only
+ * a little). A silver ring each (a flat top, a dark knurled edge) with a pane of clear glass in the middle, which shows the
+ * desk through it. Origin at the middle of the pair, on the desk.
+ */
+function filterStackModel(): Group {
+  const g = new Group();
+  const R = 7; // outer radius
+  const T = 2.4; // thickness
+  const glass = new MeshBasicMaterial({ color: "#d7e8f0", transparent: true, opacity: 0.22, depthWrite: false });
+  /** One filter, centred on its own origin: its top face at +T/2, its bottom at -T/2. */
+  const filter = () => {
+    const f = new Group();
+    const top = mesh(new RingGeometry(5.7, R, 32), toon(SILVER_DARK), 0, T / 2, 0);
+    top.rotation.x = -Math.PI / 2;
+    f.add(top);
+    f.add(mesh(new CylinderGeometry(R + 0.1, R + 0.1, T, 32, 1, true), toon("#26272c"), 0, 0, 0)); // the edge
+    f.add(mesh(new CylinderGeometry(5.7, 5.7, 0.3, 28), glass, 0, 0, 0)); // the glass
+    return f;
+  };
+  // The first lies flat, on the left. The second's near edge comes down on its rim, so the two overlap only a little.
+  const flat = filter();
+  flat.position.set(-6.4, T / 2, 0);
+  g.add(flat);
+  // The second leans: tilted so its far (right) edge is on the desk and its near edge on the first one's top.
+  const tilt = Math.asin(T / (2 * R));
+  const lean = filter();
+  lean.rotation.z = -tilt;
+  lean.position.set(6.4, R * Math.sin(tilt) + (T / 2) * Math.cos(tilt), 0);
+  g.add(lean);
+  g.userData.part = "film";
+  return g;
+}
+
 // ---------------------------------------------------------------- the light table's film
 
 // Film is laid out in its own pixels, then scaled to fit the plate. A strip is one continuous piece of film: a band along
@@ -617,13 +740,13 @@ const HOLE_WID = 26; // across it
 const HOLE_INSET = 14; // from the strip's edge
 const STRIP_LEN = 2 * WIN_LONG + 3 * GAP;
 const STRIP_WID = WIN_SHORT + 2 * BAND;
-// The film's own canvas (holes, numbers) is small, and so are the black-and-white copy and the haze: the photos
-// themselves are never drawn into a canvas for the lit view, they go on as textures at their own resolution.
-// The film base (holes, windows) is painted once and is seen at its edges when a landscape photo is framed, so it is
-// sharper than the copies; the frame numbers are separate little canvases, so a page change repaints almost nothing.
+// The film's own canvas (holes) is painted once, and is seen at its edges when a landscape photo is framed, so it is
+// sharp; the frame numbers are separate little canvases, so a page change repaints almost nothing. The photos go on as
+// textures: a small one (SMALL_W wide) for the map and as a page arrives, and one at the image's own resolution once the
+// table is hovered or opened, brought in a plane per frame so no frame has six uploads to do.
 const BASE_SCALE = 0.8;
-const BW_SCALE = 0.5;
 const HAZE_SCALE = 1 / 8;
+const SMALL_W = 384;
 const NUM_SCALE = 2; // pixels per film pixel of a frame number's canvas
 const NUM_H = 48; // the number's box (film px): wide enough for three digits, and tall enough for them
 
@@ -652,11 +775,10 @@ interface Strip {
   w: number; // film px
   h: number;
   base: HTMLCanvasElement; // the film itself: the base, the windows and the holes (cut through), painted once
-  bw: HTMLCanvasElement; // the unlit look: all of it, photos included, in black and white
   haze: HTMLCanvasElement; // a small, blurry copy of the photos for the glow
-  tex: { base: CanvasTexture; bw: CanvasTexture; haze: CanvasTexture };
-  mats: { base: MeshBasicMaterial; bw: MeshBasicMaterial; haze: MeshBasicMaterial };
-  meshes: { base: Mesh; bw: Mesh; haze: Mesh };
+  tex: { base: CanvasTexture; haze: CanvasTexture };
+  mats: { base: MeshBasicMaterial; haze: MeshBasicMaterial };
+  meshes: { base: Mesh; haze: Mesh };
   baseOut: Mesh; // a second copy of the film, for the page that is sliding out (it shares the base's texture)
 }
 
@@ -685,8 +807,8 @@ interface NumberPlate {
 
 /**
  * The light table: a low dark frame with a frosted plate and, on it, a page of photos on film. Off (the map, not hovered)
- * the plate is dull and the photos are black and white; hovering switches the light on, the photos turn to colour and glow
- * through the film with a haze. Opened, that light is off the photos for good: they are shown as they were shot, with no
+ * the plate is dull and the photos are dim and black and white (the same layers, made grey as they are drawn); hovering
+ * switches the light on, the photos turn to colour and glow through the film with a haze. Opened, that light is off the photos for good: they are shown as they were shot, with no
  * haze, no glow and nothing under or over them. A click on a photo, or the camera's controls, zoom the view into it.
  */
 function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: FilmRig): Group {
@@ -720,7 +842,6 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
   for (const z of [-d / 2, d / 2]) top.add(box(w + RIM, rimH, RIM, "#4a4d57", 0, rimY, z));
   for (const x of [-w / 2, w / 2]) top.add(box(RIM, rimH, d - RIM, "#4a4d57", x, rimY, 0));
   const Y_PLATE = TOP + 0.5;
-  const Y_BW = TOP + 0.8;
   const Y_BASE = TOP + 1.1;
   const Y_NUM = TOP + 1.2;
   const Y_GHOST = TOP + 1.3;
@@ -762,6 +883,26 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
   const clipL = new Plane();
   const clipR = new Plane();
   const clip = [clipL, clipR];
+  // The map's black and white is made as the film is drawn, not baked: one pair of values, shared by every film material
+  // (`gray` 1 = black and white .. 0 = colour, `dim` = brightness), set each frame from how lit the table is. So the live
+  // layers are what the map shows too, and the page slides there exactly as it does open.
+  const film = { gray: { value: 1 }, dim: { value: 0.55 } };
+  const grey = (m: MeshBasicMaterial) => {
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.uGray = film.gray;
+      shader.uniforms.uDim = film.dim;
+      shader.fragmentShader = shader.fragmentShader
+        .replace("void main() {", "uniform float uGray;\nuniform float uDim;\nvoid main() {")
+        .replace(
+          "#include <opaque_fragment>",
+          "float lum = dot(outgoingLight, vec3(0.299, 0.587, 0.114)) * 1.05;\n" +
+            "outgoingLight = mix(outgoingLight, vec3(lum), uGray) * uDim;\n" +
+            "#include <opaque_fragment>"
+        );
+    };
+    m.customProgramCacheKey = () => "film-grey";
+    return m;
+  };
   const SLIDE_TIME = 0.55; // seconds for the film to slide a page
   const SLIDE_DIST = (plateW + totalW) / 2 + 2; // far enough that the film starts and ends clear of the plate
 
@@ -811,18 +952,18 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
       return cell;
     });
     const base = mkCanvas(sw * BASE_SCALE, sh * BASE_SCALE);
-    const bw = mkCanvas(sw * BW_SCALE, sh * BW_SCALE);
     const haze = mkCanvas(sw * HAZE_SCALE, sh * HAZE_SCALE);
-    const tex = { base: canvasTexture(base, true), bw: canvasTexture(bw, true), haze: canvasTexture(haze, false) };
+    const tex = { base: canvasTexture(base, true), haze: canvasTexture(haze, false) };
     const mats = {
-      bw: new MeshBasicMaterial({ color: "#8c8c8c", map: tex.bw, transparent: true, depthWrite: false }),
-      base: new MeshBasicMaterial({
-        color: "#ffffff",
-        map: tex.base,
-        transparent: true,
-        depthWrite: false,
-        clippingPlanes: clip,
-      }),
+      base: grey(
+        new MeshBasicMaterial({
+          color: "#ffffff",
+          map: tex.base,
+          transparent: true,
+          depthWrite: false,
+          clippingPlanes: clip,
+        })
+      ),
       haze: new MeshBasicMaterial({
         color: "#ffffff",
         map: tex.haze,
@@ -840,14 +981,13 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
       top.add(m);
       return m;
     };
-    const meshes = { bw: plane(mats.bw, Y_BW, 3), base: plane(mats.base, Y_BASE, 4), haze: plane(mats.haze, Y_HAZE, 6, 1.04) };
-    meshes.bw.userData.part = "film"; // part of the table: a click on the film between photos does nothing
-    meshes.base.userData.part = "film";
+    const meshes = { base: plane(mats.base, Y_BASE, 4), haze: plane(mats.haze, Y_HAZE, 6, 1.04) };
+    meshes.base.userData.part = "film"; // part of the table: a click on the film between photos does nothing
     meshes.haze.userData.noPick = true; // it spills past the film, and is not a thing to click
     const baseOut = plane(mats.base, Y_BASE, 4);
     baseOut.visible = false;
     baseOut.userData.noPick = true;
-    const st: Strip = { cells, landscape, cx, w: sw, h: sh, base, bw, haze, tex, mats, meshes, baseOut };
+    const st: Strip = { cells, landscape, cx, w: sw, h: sh, base, haze, tex, mats, meshes, baseOut };
     strips.push(st);
     paintBase(st); // the film does not change with the page
   };
@@ -858,13 +998,15 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
   // ---- the photos themselves: one unlit plane per slot, each showing its image at the image's own resolution
   const photoPlanes: PhotoPlane[] = [];
   for (let slot = 0; slot < PAGE_SLOTS; slot++) {
-    const mat = new MeshBasicMaterial({
-      color: "#ffffff",
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      clippingPlanes: clip,
-    });
+    const mat = grey(
+      new MeshBasicMaterial({
+        color: "#ffffff",
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        clippingPlanes: clip,
+      })
+    );
     const m = new Mesh(new PlaneGeometry(1, 1), mat);
     m.rotation.x = -Math.PI / 2;
     m.position.set(slotRect[slot].x, Y_PHOTO, slotRect[slot].z);
@@ -873,13 +1015,15 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     m.userData.noPick = true; // the slot's own plane is what a click lands on
     top.add(m);
     // the photo that was here before: just under this one, so a new photo fades in over it
-    const ghostMat = new MeshBasicMaterial({
-      color: "#ffffff",
-      transparent: true,
-      opacity: 0,
-      depthWrite: false,
-      clippingPlanes: clip,
-    });
+    const ghostMat = grey(
+      new MeshBasicMaterial({
+        color: "#ffffff",
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        clippingPlanes: clip,
+      })
+    );
     const ghost = new Mesh(new PlaneGeometry(1, 1), ghostMat);
     ghost.rotation.x = -Math.PI / 2;
     ghost.position.set(slotRect[slot].x, Y_GHOST, slotRect[slot].z);
@@ -897,7 +1041,9 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     const canvas = mkCanvas(b.fw * NUM_SCALE, NUM_H * NUM_SCALE);
     const tex = canvasTexture(canvas, false);
     tex.anisotropy = 4;
-    const mat = new MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false, clippingPlanes: clip });
+    const mat = grey(
+      new MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false, clippingPlanes: clip })
+    );
     const m = new Mesh(new PlaneGeometry(b.fw * s, NUM_H * s), mat);
     m.rotation.x = -Math.PI / 2;
     m.position.set(b.x, Y_NUM, b.z);
@@ -910,7 +1056,9 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     const gCanvas = mkCanvas(b.fw * NUM_SCALE, NUM_H * NUM_SCALE);
     const gTex = canvasTexture(gCanvas, false);
     gTex.anisotropy = 4;
-    const gMat = new MeshBasicMaterial({ map: gTex, transparent: true, opacity: 0, depthWrite: false, clippingPlanes: clip });
+    const gMat = grey(
+      new MeshBasicMaterial({ map: gTex, transparent: true, opacity: 0, depthWrite: false, clippingPlanes: clip })
+    );
     const gm = new Mesh(new PlaneGeometry(b.fw * s, NUM_H * s), gMat);
     gm.rotation.x = -Math.PI / 2;
     gm.position.set(b.x, Y_NUM, b.z);
@@ -920,20 +1068,53 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     top.add(gm);
     numberGhosts.push({ canvas: gCanvas, tex: gTex, mat: gMat, mesh: gm });
   }
-  // textures for the images on the page (and the next): made when an image has arrived, let go of when no longer near
-  const textures = new Map<string, Texture>();
-  const textureFor = (src: string, im: HTMLImageElement) => {
-    let t = textures.get(src);
-    if (!t) {
-      t = new Texture(im);
+  // Textures for the images on the page (and the next), made when an image has arrived and let go of when no longer near.
+  // Each photo has a small one (a canvas SMALL_W wide: also what the haze is drawn from) at once, and a full one (the
+  // image itself, mipmapped) when the table is hovered or opened.
+  interface PhotoTex {
+    canvas: HTMLCanvasElement;
+    small: Texture;
+    full?: Texture;
+  }
+  const textures = new Map<string, PhotoTex>();
+  /** The photo's textures, the small one made if it is not there yet (one `drawImage`, about a millisecond). */
+  const photoTex = (src: string, im: HTMLImageElement): PhotoTex => {
+    let e = textures.get(src);
+    if (!e) {
+      const w = Math.min(SMALL_W, im.naturalWidth);
+      const canvas = mkCanvas(w, (w * im.naturalHeight) / im.naturalWidth);
+      const ctx = canvas.getContext("2d")!;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(im, 0, 0, canvas.width, canvas.height);
+      const small = canvasTexture(canvas, true);
+      small.anisotropy = 4;
+      e = { canvas, small };
+      textures.set(src, e);
+    }
+    return e;
+  };
+  /** The full-size texture for a photo (made on first ask). */
+  const fullTex = (src: string, im: HTMLImageElement): Texture => {
+    const e = photoTex(src, im);
+    if (!e.full) {
+      const t = new Texture(im);
       t.generateMipmaps = true;
       t.minFilter = LinearMipmapLinearFilter;
       t.magFilter = LinearFilter;
       t.anisotropy = 8;
       t.needsUpdate = true;
-      textures.set(src, t);
+      e.full = t;
     }
-    return t;
+    return e.full;
+  };
+  /** Makes the small texture for an image that is on its way (the next page's), once it has arrived. */
+  const warm = (src: string) => {
+    const im = images.get(src, () => {
+      const loaded = images.get(src);
+      if (loaded?.naturalWidth) photoTex(src, loaded);
+    });
+    if (im?.naturalWidth) photoTex(src, im);
   };
 
   // ---- one pickable plane per photo window; also what the view frames when zoomed into a photo there
@@ -1005,13 +1186,8 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     st.tex.base.needsUpdate = true;
   }
 
-  /** The unlit look (black and white) and the haze, drawn from the images that have arrived. */
-  function paintCopies(st: Strip, page: number) {
-    const bctx = st.bw.getContext("2d", { willReadFrequently: true })!;
-    bctx.imageSmoothingEnabled = true;
-    bctx.imageSmoothingQuality = "high";
-    bctx.clearRect(0, 0, st.bw.width, st.bw.height);
-    bctx.drawImage(st.base, 0, 0, st.bw.width, st.bw.height); // (no numbers on it: the map's look, where they are too small to read)
+  /** The haze (a small blurry copy of the page's photos, for the glow on the map), drawn from their small textures. */
+  function paintHaze(st: Strip, page: number) {
     const hctx = st.haze.getContext("2d")!;
     hctx.imageSmoothingEnabled = true;
     hctx.imageSmoothingQuality = "high";
@@ -1024,23 +1200,14 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
       for (const c of st.cells) {
         const i = rig.layout.pages[page]?.[c.slot] ?? -1;
         if (i < 0) continue;
-        const im = images.get(photos[i].src, markDirty);
-        if (!im || !im.naturalWidth) continue;
+        const e = textures.get(photos[i].src);
+        if (!e) continue;
         const f = fitInWindow(c, photos[i].aspect);
-        if (!pass) bctx.drawImage(im, f.x * BW_SCALE, f.y * BW_SCALE, f.w * BW_SCALE, f.h * BW_SCALE);
-        hctx.drawImage(im, f.x * HAZE_SCALE, f.y * HAZE_SCALE, f.w * HAZE_SCALE, f.h * HAZE_SCALE);
+        hctx.drawImage(e.canvas, f.x * HAZE_SCALE, f.y * HAZE_SCALE, f.w * HAZE_SCALE, f.h * HAZE_SCALE);
       }
     }
     hctx.globalCompositeOperation = "source-over";
     hctx.globalAlpha = 1;
-    const img = bctx.getImageData(0, 0, st.bw.width, st.bw.height);
-    const px = img.data;
-    for (let k = 0; k < px.length; k += 4) {
-      const l = Math.min(255, (0.299 * px[k] + 0.587 * px[k + 1] + 0.114 * px[k + 2]) * 1.05);
-      px[k] = px[k + 1] = px[k + 2] = l;
-    }
-    bctx.putImageData(img, 0, 0);
-    st.tex.bw.needsUpdate = true;
     st.tex.haze.needsUpdate = true;
   }
 
@@ -1051,9 +1218,10 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
       if (p >= 0) keep.add(photos[p].src);
     }
     for (const pl of photoPlanes) if (pl.ghostA > 0 && pl.ghostSrc) keep.add(pl.ghostSrc);
-    for (const [src, t] of textures) {
+    for (const [src, e] of textures) {
       if (!keep.has(src)) {
-        t.dispose();
+        e.small.dispose();
+        e.full?.dispose();
         textures.delete(src);
       }
     }
@@ -1097,7 +1265,8 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
         continue;
       }
       const f = fitInWindow(cellOf[slot], photos[i].aspect);
-      plane.mat.map = textureFor(src!, im);
+      const have = photoTex(src!, im);
+      plane.mat.map = have.full ?? have.small; // (the full one is brought in by `animate`, a plane a frame)
       plane.mat.needsUpdate = true;
       plane.mesh.scale.set(f.w * s, f.h * s, 1);
       plane.ready = true;
@@ -1126,10 +1295,6 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     }
   }
 
-  // The black and white copy and the haze are for the map (and the page view as the project opens), never for looking at a
-  // photo, so they are not repainted while the view is on one: they are brought up to date, a strip a frame, once it is not.
-  const staleCopies = new Set<Strip>();
-
   /** `startSlide`: the page has just begun to slide, so the numbers on show are kept for the page going out. */
   function paintPage(page: number, how: PageChange, startSlide = false) {
     if (startSlide) {
@@ -1143,9 +1308,9 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     }
     paintNumbers(page);
     placePhotos(page, how);
-    for (const st of strips) staleCopies.add(st);
-    // the next page is the likely next thing: start its images loading
-    for (const i of rig.layout.pages[page + 1] ?? []) if (i >= 0) images.get(photos[i].src);
+    for (const st of strips) paintHaze(st, page);
+    // the next page is the likely next thing: start its images loading, and make their small textures as they arrive
+    for (const i of rig.layout.pages[page + 1] ?? []) if (i >= 0) warm(photos[i].src);
   }
 
   // ---- outline: the photo under the pointer (nothing is shown as selected: a photo is chosen by clicking it)
@@ -1184,6 +1349,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
   let lastT = 0;
   let fade = 0; // 0..1: the page's film, dipping out and back in when it is changed
   let slide: { dir: 1 | -1; t: number } | null = null; // the film sliding to a new page (see below)
+  let hazeSlide = 1; // 0..1: the haze, dipping out while the film slides
   g.userData.animate = ({ t, hover, focus }: AnimCtx) => {
     rig.step(t);
     const instant = t <= 0; // reduced motion: the scene clock is held, so ease nothing
@@ -1191,12 +1357,12 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     lastT = t;
     const k = instant ? 1 : 1 - Math.exp(-dt * 10);
 
-    // A different page. With the project open and the view on the page, the film slides: the page that was there runs off
-    // one side as the new page runs in from the other (forward is the lever's way: it goes left). Looking at a photo
-    // there is no slide (the view is already panning to the next photo): the new photos take the place of the old ones,
-    // each fading in over the one it replaces. On the map the film dips out, is repainted, and comes back.
+    // A different page. Looking at the page (on the map or open), the film slides: the page that was there runs off one
+    // side as the new page runs in from the other (forward is the lever's way: it goes left). Looking at a photo there is
+    // no slide (the view is already panning to the next photo): the new photos take the place of the old ones, each fading
+    // in over the one it replaces. Only the first paint, and reduced motion, dip out and back instead.
     const looking = rig.mode === "photo";
-    const canSlide = !looking && !instant && shownPage >= 0 && focus > 0.95 && count > 0;
+    const canSlide = !looking && !instant && shownPage >= 0 && count > 0;
     const wantPage = rig.page;
     let how: PageChange = looking ? "cross" : slide ? "slide" : "dip";
     let startSlide = false;
@@ -1248,12 +1414,19 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     const across = new Vector3(me.elements[0], me.elements[1], me.elements[2]).normalize();
     clipL.setFromNormalAndCoplanarPoint(across, new Vector3(-plateW / 2, 0, 0).applyMatrix4(me));
     clipR.setFromNormalAndCoplanarPoint(across.clone().negate(), new Vector3(plateW / 2, 0, 0).applyMatrix4(me));
-    // the map's copies of the page, brought up to date a strip a frame when not looking at a photo (and not while the film
-    // is sliding: repainting them is the heaviest thing here, and nothing would show it)
-    if (!looking && !slide && staleCopies.size) {
-      const st = staleCopies.values().next().value as Strip;
-      staleCopies.delete(st);
-      paintCopies(st, shownPage);
+    // Photos at their own resolution, once the table is hovered or opened: one plane a frame (a mipmapped upload each), so
+    // a page's six never land in one frame; a page that has just slid in sharpens within a few frames of arriving.
+    if (hover > 0.5 || focus > 0.02 || looking) {
+      for (const p of photoPlanes) {
+        if (!p.ready || !p.src) continue;
+        const e = textures.get(p.src);
+        if (!e || (e.full && p.mat.map === e.full)) continue;
+        const im = images.get(p.src);
+        if (!im || !im.naturalWidth) continue;
+        p.mat.map = fullTex(p.src, im);
+        p.mat.needsUpdate = true;
+        break;
+      }
     }
 
     // The light. On the map the table is lit by hovering it; once the project is open it is lit, and stays on, and the
@@ -1263,17 +1436,19 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     const breath = 1 + Math.sin(t * 1.4) * 0.06 * h;
     plateMat.color.copy(off).lerp(on, h);
     const hazeClear = rig.mode === "photo" ? 0 : 1 - ease(focus);
+    // the film's grey: black and white and dim unlit, colour and full brightness lit or open
+    film.gray.value = 1 - lit;
+    film.dim.value = 0.55 + 0.45 * lit;
+    // the haze is a glow over the page that is there: it dips out while a page slides, and comes back
+    hazeSlide += ((slide ? 0 : 1) - hazeSlide) * k;
     for (const st of strips) {
-      st.mats.bw.color.setScalar(0.55 + 0.4 * h);
-      st.mats.bw.opacity = (1 - lit) * fade;
-      st.meshes.bw.visible = st.mats.bw.opacity > 0.004;
-      st.mats.base.opacity = lit * fade;
+      st.mats.base.opacity = fade;
       st.meshes.base.visible = st.mats.base.opacity > 0.004;
       st.meshes.base.position.x = st.cx + inOff;
       st.baseOut.position.x = st.cx + outOff;
       st.baseOut.visible = slide !== null && st.meshes.base.visible;
       // the haze is for the map: gone once the project opens, and never there while looking at one photo
-      st.mats.haze.opacity = h * 0.42 * breath * hazeClear * fade;
+      st.mats.haze.opacity = h * 0.42 * breath * hazeClear * fade * hazeSlide;
       st.meshes.haze.visible = st.mats.haze.opacity > 0.004;
     }
     const ka = instant ? 1 : 1 - Math.exp(-dt * 11);
@@ -1282,7 +1457,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
       p.ghost.position.x = slotRect[slot].x + outOff;
       p.amt += (1 - p.amt) * ka;
       if (1 - p.amt < 0.01) p.amt = 1;
-      p.mat.opacity = lit * fade * p.amt;
+      p.mat.opacity = fade * p.amt;
       p.mesh.visible = p.ready && p.mat.opacity > 0.004;
       // the photo that was here is held opaque under the new one until it is in, then goes (a photo whose image has not
       // arrived yet is not waited for: the old one fades out). While the page slides it is the page going out: held.
@@ -1304,7 +1479,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
           pruneTextures(shownPage);
         }
       }
-      p.ghostMat.opacity = lit * fade * p.ghostA;
+      p.ghostMat.opacity = fade * p.ghostA;
       p.ghost.visible = p.ghostA > 0 && p.ghostMat.opacity > 0.004;
     });
     numberPlates.forEach((n, slot) => {
@@ -1376,6 +1551,12 @@ export function sceneryModel(id: string, footprint: Footprint | undefined, _prop
   switch (id) {
     case "omcamera":
       return omCameraModel(rig);
+    case "telephoto":
+      return telephotoModel();
+    case "film-canister":
+      return filmCanisterModel();
+    case "filter-stack":
+      return filterStackModel();
     case "lighttable":
       return lightTableModel(w, d, zone, rig);
     case "deskmat":
