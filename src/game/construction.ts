@@ -73,7 +73,14 @@ export function constructionScene(ox: number, oy: number, id: string): Scene {
   const props: Prop[] = [
     { sprite: "tcrane-a", ...at(30, 45), solid: rect(10, 10), seed }, // the tall one, at the back
     { sprite: "tcrane-b", ...at(128, 41), solid: rect(10, 10), seed },
-    { sprite: "mcrane", ...at(126, 118), solid: rect(34, 12), seed }, // front right
+    { sprite: "mcrane", ...at(131, 114), solid: rect(34, 12), seed }, // front right, its boom reaching in over the structure
+    { sprite: "structure", ...at(84, 108), solid: rect(60, 46), seed },
+    { sprite: "cabin", ...at(20, 112), solid: rect(28, 16), seed },
+    { sprite: "pallet-a", ...at(44, 124), solid: rect(14, 9), seed },
+    { sprite: "pallet-b", ...at(60, 126), solid: rect(14, 9), seed },
+    { sprite: "fence", ...at(40, 133), solid: rect(60, 2), seed }, // two runs with the gate between them
+    { sprite: "fence", ...at(124, 133), solid: rect(52, 2), seed },
+    { sprite: "hazardsign", ...at(84, 129), solid: rect(14, 3), seed },
     { sprite: "cone-o", ...at(74, 137), solid: circle(3), seed },
     { sprite: "cone-o", ...at(94, 137), solid: circle(3), seed },
     { sprite: "cone-o", ...at(84, 141), solid: circle(3), seed },

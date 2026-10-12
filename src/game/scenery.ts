@@ -1548,7 +1548,7 @@ function deskMatModel(w: number, d: number): Group {
 export function sceneryModel(id: string, footprint: Footprint | undefined, prop: Prop, zones: Zone[]): Group | null {
   const w = footprint?.kind === "rect" ? footprint.w : 0;
   const d = footprint?.kind === "rect" ? footprint.h : 0;
-  const site = constructionModel(id, w, d, prop);
+  const site = constructionModel(id, w, d, prop, zones);
   if (site) return site;
   const zone = zones.find((z) => z.kind === "gallery");
   const rig = zone ? filmRig(zone) : new FilmRig();
