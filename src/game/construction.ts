@@ -68,12 +68,11 @@ export function constructionScene(ox: number, oy: number, id: string): Scene {
     },
   ];
 
-  // three cones either side of the gate gap in the fence
-  // cranes are anchored at their bottom centre like everything else, so y is the front edge of the footprint
+  // everything is anchored at its bottom centre, so y is the front edge of the footprint
   const props: Prop[] = [
     { sprite: "tcrane-a", ...at(30, 45), solid: rect(10, 10), seed }, // the tall one, at the back
     { sprite: "tcrane-b", ...at(128, 41), solid: rect(10, 10), seed },
-    { sprite: "mcrane", ...at(131, 114), solid: rect(34, 12), seed }, // front right, its boom reaching in over the structure
+    { sprite: "mcrane", ...at(137, 114), solid: rect(34, 12), seed }, // front right, its boom reaching in over the structure
     { sprite: "structure", ...at(84, 108), solid: rect(60, 46), seed },
     { sprite: "cabin", ...at(20, 112), solid: rect(28, 16), seed },
     { sprite: "pallet-a", ...at(44, 124), solid: rect(14, 9), seed },
@@ -81,6 +80,12 @@ export function constructionScene(ox: number, oy: number, id: string): Scene {
     { sprite: "fence", ...at(40, 133), solid: rect(60, 2), seed }, // two runs with the gate between them
     { sprite: "fence", ...at(124, 133), solid: rect(52, 2), seed },
     { sprite: "hazardsign", ...at(84, 129), solid: rect(14, 3), seed },
+    // workers: a circle footprint puts the model 3 px above its y, so these y values are the start of each route + 3
+    { sprite: "worker-a", ...at(14, 132), solid: circle(3), seed }, // paces the front, in front of the pallets
+    { sprite: "worker-b", ...at(70, 124), solid: circle(3), seed }, // pallets to structure
+    { sprite: "worker-c", ...at(50, 115), solid: circle(3), seed }, // a lap of the structure (starts at its front-left)
+    { sprite: "worker-d", ...at(12, 123), solid: circle(3), seed }, // the foreman, below the cabin
+    // three cones at the gate gap in the fence
     { sprite: "cone-o", ...at(74, 137), solid: circle(3), seed },
     { sprite: "cone-o", ...at(94, 137), solid: circle(3), seed },
     { sprite: "cone-o", ...at(84, 141), solid: circle(3), seed },

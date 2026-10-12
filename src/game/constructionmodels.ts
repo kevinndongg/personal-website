@@ -392,6 +392,152 @@ function hazardSignModel(accent: string): Group {
   return bake(g);
 }
 
+// ---------------------------------------------------------------- workers
+
+/** Where a worker goes, in world px relative to where it is placed (x already mirrored for the site). */
+interface Route {
+  pts: [number, number][];
+  /** Walks round and round (the last point leads back to the first); otherwise it goes out, waits, and comes back. */
+  loop?: boolean;
+  speed: number; // px per second
+  dwell?: number; // seconds spent standing at each end of an out-and-back route
+}
+
+interface Look {
+  vest: string;
+  hat: string;
+  /** Carries a plank on the way out, and walks back empty-handed. */
+  plank?: boolean;
+  /** Holds a clipboard instead of swinging that arm. */
+  clipboard?: boolean;
+}
+
+const smooth = (k: number) => {
+  const c = Math.min(1, Math.max(0, k));
+  return c * c * (3 - 2 * c);
+};
+
+/**
+ * A worker in a hard hat and a hi-vis vest, walking a route over and over. Legs and arms swing with the distance
+ * covered, and the heading turns smoothly at corners and at the ends of an out-and-back route.
+ */
+function workerModel(seed: number, name: string, route: Route, look: Look): Group {
+  const rand = siteRand(seed, name);
+  const poly = route.loop ? [...route.pts, route.pts[0]] : route.pts;
+  const cum = [0];
+  for (let i = 1; i < poly.length; i++) {
+    cum.push(cum[i - 1] + Math.hypot(poly[i][0] - poly[i - 1][0], poly[i][1] - poly[i - 1][1]));
+  }
+  const L = cum[cum.length - 1];
+
+  /** The point `s` px along the route (wrapped for a loop, held at the ends otherwise). */
+  const posAt = (s: number): [number, number] => {
+    const d = route.loop ? ((s % L) + L) % L : Math.min(L, Math.max(0, s));
+    let i = 1;
+    while (i < cum.length - 1 && cum[i] < d) i++;
+    const span = cum[i] - cum[i - 1] || 1;
+    const k = (d - cum[i - 1]) / span;
+    return [poly[i - 1][0] + (poly[i][0] - poly[i - 1][0]) * k, poly[i - 1][1] + (poly[i][1] - poly[i - 1][1]) * k];
+  };
+  /** The way the route runs at `s` (radians in the ground plane, z = south), averaged over a few px so corners round off. */
+  const tangent = (s: number) => {
+    const a = posAt(s - 3.5);
+    const b = posAt(s + 3.5);
+    return Math.atan2(b[1] - a[1], b[0] - a[0]);
+  };
+
+  // the figure, facing +x, drawn 1.5x like the other people on the map; the route itself is in true px
+  const SCALE = 1.5;
+  const figure = new Group();
+  figure.scale.setScalar(SCALE);
+  const limb = (z: number, y: number, len: number, color: string, w = 1.5) => {
+    const pivot = new Group();
+    pivot.position.set(0, y, z);
+    pivot.add(box(w, len, w, color, 0, -len, 0));
+    figure.add(pivot);
+    return pivot;
+  };
+  const legL = limb(-1.0, 4.5, 4.5, "#2c3350");
+  const legR = limb(1.0, 4.5, 4.5, "#2c3350");
+  const armL = limb(-2.7, 9.2, 4, "#cfd2d8", 1.2);
+  const armR = limb(2.7, 9.2, 4, "#cfd2d8", 1.2);
+  const torso = new Group();
+  torso.add(box(2.6, 5, 4.4, look.vest, 0, 4.5, 0));
+  torso.add(box(2.7, 0.7, 4.5, "#f4f4f4", 0, 5.4, 0)); // reflective bands
+  torso.add(box(2.7, 0.7, 4.5, "#f4f4f4", 0, 7.6, 0));
+  torso.add(box(3.2, 3, 3.2, "#e8b890", 0, 9.5, 0)); // head
+  torso.add(box(3.6, 1.5, 3.6, look.hat, 0, 11.9, 0));
+  torso.add(box(1.8, 0.4, 3.4, look.hat, 2.4, 11.9, 0)); // brim
+  figure.add(torso);
+  const plank = look.plank ? box(11, 0.8, 1.8, "#c9a36a", 4.5, 6.6, 0) : null;
+  if (plank) figure.add(plank);
+  if (look.clipboard) {
+    figure.add(box(0.4, 3.2, 2.4, "#7a5a3a", 2.4, 5.6, 1.8));
+    figure.add(box(0.2, 2.6, 1.9, "#f4f4f4", 2.65, 5.9, 1.8));
+  }
+  const walker = new Group();
+  walker.add(figure);
+  const g = new Group();
+  g.add(walker);
+
+  const legT = L / route.speed;
+  const dwell = route.dwell ?? 0;
+  const cycle = 2 * (legT + dwell);
+  const offset = rand(); // where in its cycle this worker is at t = 0
+  const STRIDE = 7; // px covered per full step cycle (both legs)
+  g.userData.animate = ({ t }: AnimCtx) => {
+    let s: number;
+    let heading: number;
+    let swingAmp = 1;
+    let travelled: number;
+    let carrying = false;
+    if (route.loop) {
+      travelled = t * route.speed + offset * L;
+      s = travelled;
+      heading = tangent(s);
+    } else {
+      const u = (t + offset * cycle) % cycle;
+      const turn = (k: number) => smooth(dwell > 0 ? k / (dwell * 0.8) : 1);
+      if (u < legT) {
+        s = u * route.speed;
+        heading = tangent(s);
+        swingAmp = Math.min(1, u / 0.4, (legT - u) / 0.4);
+        travelled = s;
+        carrying = true;
+      } else if (u < legT + dwell) {
+        s = L;
+        heading = tangent(L) + Math.PI * turn(u - legT);
+        swingAmp = 0;
+        travelled = L;
+      } else if (u < 2 * legT + dwell) {
+        const v = u - legT - dwell;
+        s = L - v * route.speed;
+        heading = tangent(s) + Math.PI;
+        swingAmp = Math.min(1, v / 0.4, (legT - v) / 0.4);
+        travelled = L + v * route.speed;
+      } else {
+        s = 0;
+        heading = tangent(0) + Math.PI + Math.PI * turn(u - 2 * legT - dwell);
+        swingAmp = 0;
+        travelled = 2 * L;
+      }
+    }
+    const [x, z] = posAt(s);
+    walker.position.set(x, 0, z);
+    walker.rotation.y = -heading;
+    const phase = (travelled / STRIDE) * 2 * Math.PI;
+    const step = Math.sin(phase) * 0.6 * swingAmp;
+    legL.rotation.z = step;
+    legR.rotation.z = -step;
+    figure.position.y = Math.abs(Math.sin(phase)) * 0.25 * swingAmp;
+    const holding = plank && (route.loop || carrying);
+    if (plank) plank.visible = !!holding;
+    armL.rotation.z = holding ? 1.15 : -step * 0.8;
+    armR.rotation.z = holding ? 1.15 : look.clipboard ? 0.9 : step * 0.8;
+  };
+  return g;
+}
+
 /**
  * The model for a construction-site prop id, or null when the id is not one of ours. `prop.seed` carries the project's
  * seed: it decides which way the site is mirrored, and the heights and pace of each crane.
@@ -413,6 +559,25 @@ export function constructionModel(id: string, w: number, d: number, prop: Prop, 
       return towerCraneModel(seed, id, 56 + r(id, 4), 46 + r(id, 3), m === 1 ? -1 : 1);
     case "mcrane":
       return mobileCraneModel(seed, id, m === 1 ? -1 : 1);
+    // the four workers; every route is relative to where the worker is placed, and runs mirrored with the site
+    case "worker-a": // paces along the front of the yard
+      return workerModel(seed, id, { pts: [[0, 0], [m * 54, 0]], speed: 7, dwell: 1.5 }, { vest: "#ff7a1a", hat: "#f6d02a" });
+    case "worker-b": // carries a plank from the pallets to the structure
+      return workerModel(
+        seed,
+        id,
+        { pts: [[0, 0], [m * 24, -8]], speed: 6, dwell: 1.2 },
+        { vest: "#c6e12b", hat: "#f6d02a", plank: true }
+      );
+    case "worker-c": // walks a lap of the structure
+      return workerModel(
+        seed,
+        id,
+        { pts: [[0, 0], [0, -54], [m * 67, -54], [m * 67, 0]], loop: true, speed: 6.5 },
+        { vest: "#ff7a1a", hat: "#f6d02a" }
+      );
+    case "worker-d": // the foreman, by the cabin, checking his clipboard
+      return workerModel(seed, id, { pts: [[0, 0], [m * 20, 1]], speed: 5, dwell: 3 }, { vest: "#ff7a1a", hat: "#f4f4f4", clipboard: true });
     case "structure":
       return structureModel(seed, w, d);
     case "cabin":
