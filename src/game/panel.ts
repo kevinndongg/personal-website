@@ -125,7 +125,10 @@ export class Panel {
     else this.logo.removeAttribute("src");
     this.logo.hidden = !zone.image;
 
-    const meta = [zone.period, zone.organization].filter(Boolean).join(" · ");
+    // a project still on the default site is not finished: say so on its card
+    const meta = [zone.variant === "construction" && "Under construction", zone.period, zone.organization]
+      .filter(Boolean)
+      .join(" · ");
     this.kicker.textContent = meta || KIND_LABEL[zone.kind] || "";
     this.title.textContent = zone.label;
     this.role.textContent = zone.role ?? "";

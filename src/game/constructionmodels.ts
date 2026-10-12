@@ -1,7 +1,7 @@
 import { BoxGeometry, Group, Vector3 } from "three";
 import type { BufferGeometry, Material, Mesh } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { isMirrored, siteRand } from "./construction";
+import { isMirrored, siteLayout, siteRand } from "./construction";
 import { box, cyl, mesh, toon } from "./models";
 import type { AnimCtx } from "./models";
 import type { Prop } from "./scenes";
@@ -245,8 +245,7 @@ const SCAFFOLD = "#b8bcc4";
  */
 function structureModel(seed: number, w: number, d: number): Group {
   const rand = siteRand(seed, "structure");
-  const variant = Math.floor(rand() * 3);
-  const side = rand() < 0.5 ? 1 : -1; // which way the tall end and the upper floor lie
+  const { variant, side } = siteLayout(seed); // side: which way the tall end and the upper floor lie
   const SLAB = 1.6;
   const COL = 3.4;
   const FLOOR = 18; // height of the upper floor's underside above the slab
@@ -529,7 +528,7 @@ function workerModel(seed: number, name: string, route: Route, look: Look): Grou
     const step = Math.sin(phase) * 0.6 * swingAmp;
     legL.rotation.z = step;
     legR.rotation.z = -step;
-    figure.position.y = Math.abs(Math.sin(phase)) * 0.25 * swingAmp;
+    figure.position.y = 0.05 + Math.abs(Math.sin(phase)) * 0.25 * swingAmp; // (a stepping foot just clears the ground)
     const holding = plank && (route.loop || carrying);
     if (plank) plank.visible = !!holding;
     armL.rotation.z = holding ? 1.15 : -step * 0.8;

@@ -37,9 +37,19 @@ export function siteRand(seed: number, name: string): () => number {
   return seeded(seed ^ hashString(name));
 }
 
-/** Whether a site's layout is flipped left-right. The scene and its models both ask, so they always agree. */
+/**
+ * The big choices for a site, drawn once so the scene and its models always agree: whether the layout is flipped
+ * left-right, which of the three structure layouts it gets, and which end of it is the tall one.
+ * (The salt is not arbitrary: it was picked so the projects there are today come out as unalike as three layouts and
+ * a mirror allow. Any other salt works, it just may give two neighbours the same site.)
+ */
+export function siteLayout(seed: number): { mirrored: boolean; variant: number; side: 1 | -1 } {
+  const r = siteRand(seed, "layout-3");
+  return { mirrored: r() < 0.5, variant: Math.floor(r() * 3), side: r() < 0.5 ? 1 : -1 };
+}
+
 export function isMirrored(seed: number): boolean {
-  return siteRand(seed, "mirror")() < 0.5;
+  return siteLayout(seed).mirrored;
 }
 
 export function constructionScene(ox: number, oy: number, id: string): Scene {
@@ -91,14 +101,16 @@ export function constructionScene(ox: number, oy: number, id: string): Scene {
     { sprite: "cone-o", ...at(84, 141), solid: circle(3), seed },
   ];
 
-  // the label stands over the structure, between the two crane masts
   const structure = { x: ox + (mirror ? W - 114 : 54), y: oy + 62, w: 60, h: 46 };
 
   return {
     area: { x: ox, y: oy, w: W, h: H },
     building: structure,
-    labelAt: { x: ox + W / 2, y: oy + 70 },
-    labelHeight: 62,
+    // The title is wider than the box, so it cannot fit between the masts: it floats above the whole site instead. At
+    // this camera tilt a point at the back of the box and 96 up lands about 40 px above the box's top edge, clear of
+    // the jib tips (the tall crane's reach back, slewed fully, is about 32 px above it).
+    labelAt: { x: ox + W / 2, y: oy + 14 },
+    labelHeight: 96,
     height: 78, // the cranes: tall enough that the zoomed-in framing includes them
     props,
     decals,
