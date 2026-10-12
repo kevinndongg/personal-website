@@ -1,4 +1,5 @@
 // Free-form project areas. Everything here is positioned in world pixels, not tiles.
+import { constructionScene } from "./construction";
 import { contactScene } from "./contact";
 import { photoDeskScene } from "./photodesk";
 
@@ -31,6 +32,8 @@ export interface Prop {
    *  When set, x/y is the prop's center instead of its bottom-center, and a rect footprint rotates with it. */
   angle?: number;
   ground?: boolean; // flat on the floor: drawn in the ground layer, never y-sorted
+  /** Variation for models that differ from one project to the next (a construction site is seeded by its project id). */
+  seed?: number;
   /**
    * What the prop does when the camera zooms into its project: it scales about its own centre and moves by (dx, dz)
    * world px, easing in with the zoom and back out again on the map. `tall` replaces it on portrait screens.
@@ -75,7 +78,7 @@ export interface Scene {
   decals: Decal[];
 }
 
-export type ZoneVariant = "garage" | "building" | "office" | "photodesk" | "plaques";
+export type ZoneVariant = "garage" | "building" | "office" | "photodesk" | "plaques" | "construction";
 
 export const GARAGE_W = 150; // roofed workshop + a 66 px open bay big enough for the formula car
 export const GARAGE_H = 56;
@@ -87,6 +90,7 @@ export function sceneSize(variant: ZoneVariant): { w: number; h: number } {
   if (variant === "garage") return { w: 224, h: 256 };
   if (variant === "photodesk") return { w: 256, h: 144 };
   if (variant === "plaques") return { w: 128, h: 144 };
+  if (variant === "construction") return { w: 160, h: 144 }; // the same footprint as the generic building
   return { w: BUILDING[variant].w + 32, h: 144 };
 }
 
@@ -248,5 +252,6 @@ export function buildScene(id: string, variant: ZoneVariant, ox: number, oy: num
   if (variant === "garage") return racingScene(ox, oy);
   if (variant === "photodesk") return photoDeskScene(ox, oy);
   if (variant === "plaques") return contactScene(ox, oy);
+  if (variant === "construction") return constructionScene(ox, oy, id);
   return defaultScene(ox, oy, id, variant);
 }
