@@ -1,4 +1,5 @@
 // Free-form project areas. Everything here is positioned in world pixels, not tiles.
+import { contactScene } from "./contact";
 import { photoDeskScene } from "./photodesk";
 
 export interface Rect {
@@ -74,7 +75,7 @@ export interface Scene {
   decals: Decal[];
 }
 
-export type ZoneVariant = "garage" | "building" | "office" | "photodesk";
+export type ZoneVariant = "garage" | "building" | "office" | "photodesk" | "plaques";
 
 export const GARAGE_W = 150; // roofed workshop + a 66 px open bay big enough for the formula car
 export const GARAGE_H = 56;
@@ -85,6 +86,7 @@ const BUILDING = { building: { w: 128, h: 80 }, office: { w: 96, h: 80 } } as co
 export function sceneSize(variant: ZoneVariant): { w: number; h: number } {
   if (variant === "garage") return { w: 224, h: 256 };
   if (variant === "photodesk") return { w: 256, h: 144 };
+  if (variant === "plaques") return { w: 128, h: 144 };
   return { w: BUILDING[variant].w + 32, h: 144 };
 }
 
@@ -245,5 +247,6 @@ function defaultScene(ox: number, oy: number, id: string, variant: "building" | 
 export function buildScene(id: string, variant: ZoneVariant, ox: number, oy: number): Scene {
   if (variant === "garage") return racingScene(ox, oy);
   if (variant === "photodesk") return photoDeskScene(ox, oy);
+  if (variant === "plaques") return contactScene(ox, oy);
   return defaultScene(ox, oy, id, variant);
 }
