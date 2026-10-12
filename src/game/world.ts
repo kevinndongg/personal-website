@@ -119,7 +119,7 @@ function slotOrigin(slot: Slot, w: number, h: number, edge: number) {
 }
 
 function defaultVariant(input: ZoneInput): ZoneVariant {
-  return input.variant ?? (input.kind === "contact" ? "office" : "building");
+  return input.variant ?? (input.kind === "contact" ? "plaques" : "building");
 }
 
 function layoutZones(inputs: ZoneInput[]): Zone[] {

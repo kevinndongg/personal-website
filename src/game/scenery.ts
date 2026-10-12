@@ -20,6 +20,7 @@ import type { Zone, ZonePhoto } from "./world";
 import { box, cyl, mesh, toon } from "./models";
 import type { AnimCtx } from "./models";
 import { ImageCache } from "./photocache";
+import { plaquesModel } from "./contactmodels";
 
 // Models for the photography area: an Olympus OM-1 and a light table. The table shows the photos a page at a time: six
 // frames of film laid out on it (two strips of two landscape photos, and one strip of two portrait ones). The camera is
@@ -1561,6 +1562,8 @@ export function sceneryModel(id: string, footprint: Footprint | undefined, _prop
       return lightTableModel(w, d, zone, rig);
     case "deskmat":
       return deskMatModel(w, d);
+    case "plaques":
+      return plaquesModel(w);
   }
   return null;
 }
