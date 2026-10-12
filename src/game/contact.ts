@@ -28,8 +28,8 @@ export function contactScene(ox: number, oy: number): Scene {
     area: { x: ox, y: oy, w: W, h: H },
     building: { x: ox + 8, y: oy + 44, w: W - 16, h: 56 },
     labelAt: { x: ox + W / 2, y: oy + 64 },
-    labelHeight: 36,
-    height: 34,
+    labelHeight: 48,
+    height: 46,
     props,
     decals,
   };

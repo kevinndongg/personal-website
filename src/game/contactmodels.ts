@@ -86,10 +86,10 @@ function easeInOut(k: number) {
 export function plaquesModel(w: number): Group {
   const g = new Group();
   const marks: Mark[] = ["email", "linkedin", "github"];
-  const POST_H = 16;
+  const POST_H = 28;
   const BOARD = 32;
   const gap = Math.min(40, (w - BOARD) / 2);
-  const REST = (25 * Math.PI) / 180;
+  const REST = (40 * Math.PI) / 180;
   const EXTRA = (14 * Math.PI) / 180;
 
   const boards: Group[] = [];
