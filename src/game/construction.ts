@@ -8,6 +8,7 @@ const W = 160;
 const H = 144;
 
 const circle = (r: number): Footprint => ({ kind: "circle", r });
+const rect = (w: number, h: number): Footprint => ({ kind: "rect", w, h });
 
 /** A stable 32-bit number for a string (FNV-1a). */
 export function hashString(s: string): number {
@@ -31,10 +32,19 @@ export function seeded(seed: number): () => number {
   };
 }
 
+/** A generator for one named part of a site (a crane, a worker): a given seed and name always give the same numbers. */
+export function siteRand(seed: number, name: string): () => number {
+  return seeded(seed ^ hashString(name));
+}
+
+/** Whether a site's layout is flipped left-right. The scene and its models both ask, so they always agree. */
+export function isMirrored(seed: number): boolean {
+  return siteRand(seed, "mirror")() < 0.5;
+}
+
 export function constructionScene(ox: number, oy: number, id: string): Scene {
   const seed = hashString(id);
-  const rand = seeded(seed);
-  const mirror = rand() < 0.5;
+  const mirror = isMirrored(seed);
 
   /** A point of the area (as authored, unmirrored) in world px. */
   const at = (x: number, y: number) => ({ x: ox + (mirror ? W - x : x), y: oy + y });
@@ -59,7 +69,11 @@ export function constructionScene(ox: number, oy: number, id: string): Scene {
   ];
 
   // three cones either side of the gate gap in the fence
+  // cranes are anchored at their bottom centre like everything else, so y is the front edge of the footprint
   const props: Prop[] = [
+    { sprite: "tcrane-a", ...at(30, 45), solid: rect(10, 10), seed }, // the tall one, at the back
+    { sprite: "tcrane-b", ...at(128, 41), solid: rect(10, 10), seed },
+    { sprite: "mcrane", ...at(126, 118), solid: rect(34, 12), seed }, // front right
     { sprite: "cone-o", ...at(74, 137), solid: circle(3), seed },
     { sprite: "cone-o", ...at(94, 137), solid: circle(3), seed },
     { sprite: "cone-o", ...at(84, 141), solid: circle(3), seed },
