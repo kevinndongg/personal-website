@@ -58,8 +58,8 @@ const zones = [
         period: p.data.period ?? p.data.dateRange,
         organization: p.data.organization,
         techStack: p.data.techStack,
-        // a small logo chip beside the title
-        image: p.data.image ? (await getImage({ src: p.data.image, width: 160 })).src : undefined,
+        // the logo, shown whole beside the title
+        image: p.data.image ? (await getImage({ src: p.data.image, width: 240 })).src : undefined,
         actions: [
           links.paper && { label: "Read the paper", href: links.paper, external: true },
           links.repo && { label: "Source code", href: links.repo, external: true },
@@ -112,11 +112,15 @@ const zones = [
         <header class="head">
           <img class="logo" data-logo alt="" hidden />
           <div class="head-text">
-            <p class="kicker" data-kicker></p>
             <h2 id="panel-title" data-title></h2>
             <p class="role" data-role></p>
+            <p class="kicker" data-kicker></p>
           </div>
         </header>
+        <div class="head-meta" data-head-meta hidden>
+          <span class="badge" data-badge hidden>Under construction</span>
+          <p class="org" data-org hidden></p>
+        </div>
         <p class="summary" data-summary></p>
         <ul class="bullets" data-bullets></ul>
         <ul class="tags" data-tags></ul>

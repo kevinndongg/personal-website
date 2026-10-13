@@ -26,6 +26,9 @@ export class Panel {
   private kicker: HTMLElement;
   private title: HTMLElement;
   private role: HTMLElement;
+  private headMeta: HTMLElement;
+  private badge: HTMLElement;
+  private org: HTMLElement;
   private summary: HTMLElement;
   private bullets: HTMLElement;
   private tags: HTMLElement;
@@ -45,6 +48,9 @@ export class Panel {
     this.kicker = root.querySelector("[data-kicker]")!;
     this.title = root.querySelector("[data-title]")!;
     this.role = root.querySelector("[data-role]")!;
+    this.headMeta = root.querySelector("[data-head-meta]")!;
+    this.badge = root.querySelector("[data-badge]")!;
+    this.org = root.querySelector("[data-org]")!;
     this.summary = root.querySelector("[data-summary]")!;
     this.bullets = root.querySelector("[data-bullets]")!;
     this.tags = root.querySelector("[data-tags]")!;
@@ -120,19 +126,22 @@ export class Panel {
   }
 
   private fill(zone: Zone) {
-    // projects show their logo as a chip beside the title
+    // projects show their logo whole, beside the title
     if (zone.image) this.logo.src = zone.image;
     else this.logo.removeAttribute("src");
     this.logo.hidden = !zone.image;
 
-    // a project still on the default site is not finished: say so on its card
-    const meta = [zone.variant === "construction" && "Under construction", zone.period, zone.organization]
-      .filter(Boolean)
-      .join(" · ");
-    this.kicker.textContent = meta || KIND_LABEL[zone.kind] || "";
     this.title.textContent = zone.label;
     this.role.textContent = zone.role ?? "";
     this.role.hidden = !zone.role;
+    // the date sits under the role; cards without one (contact) show what kind of card they are
+    this.kicker.textContent = zone.period || KIND_LABEL[zone.kind] || "";
+
+    // a project still on the default site is not finished: say so on its card
+    this.badge.hidden = zone.variant !== "construction";
+    this.org.textContent = zone.organization ?? "";
+    this.org.hidden = !zone.organization;
+    this.headMeta.hidden = this.badge.hidden && this.org.hidden;
     this.summary.textContent = zone.summary;
 
     this.bullets.replaceChildren(...(zone.bullets ?? []).map((b) => el("li", undefined, b)));

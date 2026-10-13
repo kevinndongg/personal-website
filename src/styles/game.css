@@ -295,15 +295,16 @@ html:has(.game) body {
   display: none;
 }
 
-/* the project's logo as a small square chip; cover keeps the centre of wide marks */
+/* the project's logo, shown whole on the card: capped by height and width, so each keeps its own proportions */
 .logo {
   flex: none;
-  width: 52px;
-  height: 52px;
-  object-fit: cover;
-  background: var(--paper-2);
-  border-radius: 12px;
-  box-shadow: 0 0 0 1px var(--line);
+  width: auto;
+  height: auto;
+  max-width: 112px;
+  max-height: 48px;
+  margin-top: 2px;
+  object-fit: contain;
+  border-radius: 6px;
 }
 
 .head-text {
@@ -312,13 +313,47 @@ html:has(.game) body {
   min-width: 0;
 }
 
+/* the date, under the role */
 .kicker {
-  margin: 0;
+  margin: 2px 0 0;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.head-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.head-meta[hidden],
+.org[hidden],
+.badge[hidden] {
+  display: none;
+}
+
+.org {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+/* a project still on the default site is not finished: say so */
+.badge {
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
   color: var(--ink);
+  background: var(--paper-2);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px var(--line);
 }
 
 .panel h2 {
@@ -461,6 +496,7 @@ html:has(.game) body {
 .panel[data-variant="link"] .grip,
 .panel[data-variant="link"] .close,
 .panel[data-variant="link"] .head,
+.panel[data-variant="link"] .head-meta,
 .panel[data-variant="link"] .logo,
 .panel[data-variant="link"] .summary,
 .panel[data-variant="link"] .bullets,
