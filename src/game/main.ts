@@ -44,11 +44,30 @@ export function startGame(root: HTMLElement): () => void {
 
   const galleryZone = world.zones.find((z) => z.kind === "gallery");
   let swipe: { id: number; x: number; y: number } | null = null; // a touch that began while zoomed into a photo
+  let lastStuck = 0; // how many strokes had hit the end of the roll when the arrows were last looked at
   // the viewer has used a control, a photo or a key: the offer (the lever turning the page by itself, and the glow) is
   // done, for this visit
   let used = false;
   // announces the photo that is up, for screen readers (its title and place are not drawn anywhere in the scene)
   const live = root.querySelector<HTMLElement>("[data-live]");
+
+  // Previous / next arrows at the left and right edges of the screen while zoomed into a photo (the camera and its controls
+  // are off screen then). The right one goes to the next photo and the left one to the one before, in the order the photos
+  // have on the table; at the first or last photo the one that would go past it is dimmed.
+  const photoArrows = galleryZone
+    ? ([-1, 1] as const).map((direction) => {
+        const el = document.createElement("button");
+        el.type = "button";
+        el.className = `edge-arrow ${direction < 0 ? "left" : "right"}`;
+        el.setAttribute("aria-label", direction < 0 ? "Previous photo" : "Next photo");
+        el.innerHTML = `<svg viewBox="0 0 16 16" width="22" height="22" aria-hidden="true"><path d="${
+          direction < 0 ? "M10 3L5 8l5 5" : "M6 3l5 5-5 5"
+        }" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"></path></svg>`;
+        el.addEventListener("click", () => wind(direction), { signal });
+        root.append(el);
+        return { direction, el };
+      })
+    : [];
 
   function resize() {
     renderer.resize(innerWidth, innerHeight);
@@ -440,6 +459,21 @@ export function startGame(root: HTMLElement): () => void {
       // turns the page by itself and the lever and knob glow in turn (the camera model does that).
       rig.invite = open && rig.mode === "page" && !used;
       rig.used = used;
+      // the photo arrows are there while zoomed into a photo; one that cannot go on is dimmed, and nudges when tried
+      const zoomed = open && rig.mode === "photo";
+      const stuck = rig.stuckCount !== lastStuck;
+      lastStuck = rig.stuckCount;
+      for (const a of photoArrows) {
+        a.el.classList.toggle("visible", zoomed);
+        const end = !rig.canStep(a.direction);
+        a.el.classList.toggle("end", end);
+        a.el.setAttribute("aria-disabled", String(end));
+        if (stuck && zoomed && a.direction === rig.dir) {
+          a.el.classList.remove("bump");
+          void a.el.offsetWidth; // (so the animation can run again)
+          a.el.classList.add("bump");
+        }
+      }
     }
   }
 

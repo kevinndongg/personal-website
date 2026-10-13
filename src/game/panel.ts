@@ -5,7 +5,8 @@ export type PanelSide = "left" | "right" | "bottom";
 
 /**
  * The photography page is the scene itself (the light table and the camera are the controls, and the title and place of
- * the photo are printed on the film), so it has no card: only a small link to the full gallery in the corner.
+ * the photo are printed on the film), so it has no card: at most a small link in the corner, and nothing at all when the
+ * zone has no actions.
  */
 const isLinkOnly = (zone: Zone) => zone.kind === "gallery";
 
@@ -83,16 +84,17 @@ export class Panel {
   open(zone: Zone, side: PanelSide) {
     window.clearTimeout(this.closeTimer);
     const linkOnly = isLinkOnly(zone);
+    const empty = linkOnly && !zone.actions?.length; // the scene is all there is: no panel to show
     this.fill(zone);
     this.setExpanded(false);
     this.root.dataset.side = side;
     this.root.dataset.variant = linkOnly ? "link" : "card";
     // the link sits over a scene that stays clickable (the camera's controls, the table), so nothing is dimmed or blocked
     this.root.setAttribute("aria-modal", String(!linkOnly));
-    if (linkOnly) this.root.setAttribute("aria-label", `${zone.label}: link to the full gallery`);
+    if (linkOnly && !empty) this.root.setAttribute("aria-label", `${zone.label}: link to the full gallery`);
     else this.root.removeAttribute("aria-label");
     this.root.scrollTop = 0;
-    this.root.hidden = false;
+    this.root.hidden = empty;
     this.backdrop.hidden = linkOnly;
     this.isOpen = true;
     // next frame, so the slide-in transition runs from its starting position
