@@ -74,6 +74,96 @@ html:has(.game) body {
   visibility: visible;
 }
 
+/*
+ * Previous / next at the screen's left and right edges while the photography page is zoomed into one photo (the camera and
+ * its controls are off screen then). At the first or last photo the one that would go past it is dimmed, and nudges.
+ */
+.edge-arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: #f5f1ea;
+  background: rgba(20, 17, 14, 0.55);
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
+  transform: translateY(-50%);
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 220ms var(--ease),
+    visibility 220ms,
+    background 120ms;
+}
+
+.edge-arrow.left {
+  left: max(14px, 1.5vw);
+}
+
+.edge-arrow.right {
+  right: max(14px, 1.5vw);
+}
+
+.edge-arrow.visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.edge-arrow.visible.end {
+  opacity: 0.35;
+}
+
+.edge-arrow:hover {
+  background: rgba(20, 17, 14, 0.82);
+}
+
+.edge-arrow:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.edge-arrow.bump.left {
+  animation: edge-bump-left 320ms var(--ease);
+}
+
+.edge-arrow.bump.right {
+  animation: edge-bump-right 320ms var(--ease);
+}
+
+@keyframes edge-bump-left {
+  0%,
+  100% {
+    transform: translate(0, -50%);
+  }
+  30% {
+    transform: translate(-7px, -50%);
+  }
+  60% {
+    transform: translate(2px, -50%);
+  }
+}
+
+@keyframes edge-bump-right {
+  0%,
+  100% {
+    transform: translate(0, -50%);
+  }
+  30% {
+    transform: translate(7px, -50%);
+  }
+  60% {
+    transform: translate(-2px, -50%);
+  }
+}
+
 .banner {
   position: absolute;
   top: 16px;
@@ -547,5 +637,8 @@ html:has(.game) body {
   .panel[data-side="right"],
   .panel[data-side="left"] {
     transform: translateY(-50%);
+  }
+  .edge-arrow.bump {
+    animation: none;
   }
 }

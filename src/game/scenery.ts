@@ -74,10 +74,11 @@ export interface PageLayout {
 /**
  * Splits the photos (given by their width over height) into pages, in gallery order: a landscape photo takes the next free
  * landscape slot and a portrait one the next portrait slot, and a page ends when the next photo's kind has no free slot.
- * So every page is a run of the gallery in order. The last page is the one the gallery runs out on, so it would be left with
- * empty slots: it takes the nearest earlier photos of the kinds it lacks instead (they are on the page before as well), so
- * it ends on the last photo and is full. (It stays short only if the whole gallery has too few photos of a kind.) A photo
- * on two pages belongs to the first for `pageOf` and `slotOf`. Works for any number of photos.
+ * So every page is a run of the photos in order (the order the light table reads them in: two landscape and a portrait a row,
+ * which fills slots 0, 1, 4 then 2, 3, 5). The last page is the one the photos run out on, so it would be left with empty
+ * slots: each takes the nearest earlier photo of its shape instead (they are on the page before as well), so the page is
+ * full. (It stays short only if there are too few photos of a shape.) A photo on two pages belongs to the first for `pageOf`
+ * and `slotOf`. Works for any number of photos.
  */
 export function buildPages(aspects: number[]): PageLayout {
   const pages: number[][] = [];
@@ -101,29 +102,32 @@ export function buildPages(aspects: number[]): PageLayout {
   });
   if (aspects.length) pages.push(cur);
 
-  // the last page: fill what it lacks with the latest earlier photos of that kind, and lay it out in gallery order again
+  // The last page: a hole takes the nearest earlier photo of its shape, in the place it was left (so the photos the page does
+  // have keep their reading positions, and only the gap is filled).
   const lastPage = pages.length - 1;
   if (lastPage >= 0 && pages[lastPage].includes(-1)) {
-    const own = pages[lastPage].filter((i) => i >= 0);
-    let needLandscape = LANDSCAPE_SLOTS - own.filter((i) => aspects[i] >= 1).length;
-    let needPortrait = PORTRAIT_SLOTS - own.filter((i) => aspects[i] < 1).length;
-    for (let j = Math.min(...own) - 1; j >= 0 && (needLandscape > 0 || needPortrait > 0); j--) {
-      if (aspects[j] < 1 ? needPortrait > 0 : needLandscape > 0) {
-        own.push(j);
-        if (aspects[j] < 1) needPortrait--;
-        else needLandscape--;
-      }
+    const page = pages[lastPage];
+    const first = Math.min(...page.filter((i) => i >= 0));
+    const holes = (from: number, to: number) => {
+      const out: number[] = [];
+      for (let slot = from; slot < to; slot++) if (page[slot] < 0) out.push(slot);
+      return out;
+    };
+    const nearest = (wantPortrait: boolean, count: number) => {
+      const out: number[] = [];
+      for (let j = first - 1; j >= 0 && out.length < count; j--) if (aspects[j] < 1 === wantPortrait) out.push(j);
+      return out.sort((x, y) => x - y);
+    };
+    for (const [from, to, portrait] of [
+      [0, LANDSCAPE_SLOTS, false],
+      [LANDSCAPE_SLOTS, PAGE_SLOTS, true],
+    ] as const) {
+      const slots = holes(from, to);
+      const fillers = nearest(portrait, slots.length);
+      slots.forEach((slot, n) => {
+        if (fillers[n] !== undefined) page[slot] = fillers[n]; // (an earlier photo keeps the place it has on its own page)
+      });
     }
-    own.sort((a, b) => a - b);
-    const filled: number[] = new Array(PAGE_SLOTS).fill(-1);
-    let l = 0;
-    let p = 0;
-    for (const i of own) {
-      const slot = aspects[i] < 1 ? LANDSCAPE_SLOTS + p++ : l++;
-      filled[slot] = i;
-      if (pageOf[i] === lastPage) slotOf[i] = slot; // (the earlier ones keep the place they have on their own page)
-    }
-    pages[lastPage] = filled;
   }
   return { pages, pageOf, slotOf };
 }
@@ -142,9 +146,14 @@ const TEASE_EVERY = 4; // ...and with the gallery open
 const TEASE_FIRST = 1.2; // seconds after the gallery opens (before anything has been used) to its first stroke
 const USER_PAUSE = 8; // seconds it leaves the page alone after the viewer's last move
 // The lever and the knob breathe (glow up from plain silver and back, in turn) while the gallery is open: how far, at the
-// peak of a breath (0 none .. 1 full amber). Strong until the viewer has used anything, and small after.
-const BREATH_FIRST = 0.85;
+// peak of a breath (0 none .. 1 full amber), and how fast (radians a second). Strong and quick until the viewer has used
+// anything, to say they are there to be pressed; small and slow after.
+const BREATH_FIRST = 1;
 const BREATH_USED = 0.2;
+const PULSE_FIRST = 5; // about a breath every 1.25 s
+const PULSE_USED = 2.3; // about every 2.7 s
+const SHINE = 0.3; // how much light a lit control gives off (of its amber), and
+const SHINE_FIRST = 0.3; // how much more before it has been used
 // At the end of the roll the lever is tried and sticks: it gets this far (of its whole sweep) before it hits the stop, and
 // rattles there a moment, then is let go. The rewind knob does the same, this far round (of a whole turn), at the start.
 const STUCK_LEVER = 0.16;
@@ -167,18 +176,20 @@ type PageChange = "dip" | "cross" | "slide";
 /** An arrow key, zoomed in: which way to go on the table. */
 export type MoveKey = "up" | "down" | "left" | "right";
 
-// Slots: 0 and 1 are the top row, 2 and 3 the bottom row, 4 above 5 is the portrait strip to their right. For each key
-// and slot, the slots next to it in that direction (the first one with a photo is where it goes), and, when there is
-// none, where it lands on the page it turns to: the same row or column of the next (down, right) or previous (up, left).
+// Slots: 0 and 1 are the top row, 2 and 3 the bottom row, 4 above 5 is the portrait strip to their right. A page reads
+// across the top (slots 0, 1, 4) and then across the bottom (2, 3, 5), whatever roll each is on. For each key and slot, the
+// slots next to it in that direction (the first one with a photo is where it goes), and, when there is none, where it lands
+// on the page it turns to. Left and right follow the reading order (so right at the end of the top row goes on to the
+// bottom row, and at the end of the page to the next page's first photo); up and down keep to the column.
 const NEIGHBOURS: Record<MoveKey, number[][]> = {
-  right: [[1, 4], [4], [3, 5], [5], [], []],
-  left: [[], [0], [], [2], [1, 0], [3, 2]],
+  right: [[1], [4], [3], [5], [2], []],
+  left: [[], [0], [4], [2], [1], [3]],
   down: [[2], [3], [], [], [5], []],
   up: [[], [], [0], [1], [], [4]],
 };
 const LANDING: Record<MoveKey, number[]> = {
-  right: [0, 0, 2, 2, 0, 2],
-  left: [4, 4, 5, 5, 4, 5],
+  right: [0, 0, 0, 0, 0, 0], // the next page's first photo
+  left: [5, 5, 5, 5, 5, 5], // the previous page's last
   down: [0, 1, 0, 1, 4, 4],
   up: [2, 3, 2, 3, 5, 5],
 };
@@ -220,6 +231,8 @@ export class FilmRig {
    * cleared for good by the first use).
    */
   invite = false;
+  /** Counts the strokes that hit the end of the roll (so the page can show it when the camera is off screen). */
+  stuckCount = 0;
   /** The viewer has used the gallery this visit (a control, a photo, a key, the wheel or a swipe). Set from outside. */
   used = false;
   private wasInvite = false;
@@ -296,6 +309,11 @@ export class FilmRig {
     if (direction) this.autoDir = direction;
   }
 
+  /** Whether the roll goes on in a direction: another page (looking at the page), or another photo (zoomed in). */
+  canStep(direction: 1 | -1): boolean {
+    return this.canMove(direction, undefined);
+  }
+
   /** Whether the roll goes on a page (or photo, zoomed in and not turning the page by `land`) in `direction`. */
   private canMove(direction: 1 | -1, land: number | undefined): boolean {
     if (!this.count) return false;
@@ -357,6 +375,16 @@ export class FilmRig {
     this.queue(forward ? 1 : -1, LANDING[direction][slot]);
   }
 
+  /**
+   * How far the film on the table is jammed: while a stroke is hitting the end of the roll, the way the lever or knob is
+   * stuck (to the stop, a short rattle, let go), signed by the stroke's direction (+ going forward), else 0.
+   */
+  get jam(): number {
+    const k = this.phase;
+    if (k === null || !this.blocked) return 0;
+    return this.dir * stuck(k, 1);
+  }
+
   /** How far the advance lever is toward its advanced place: 0 parked .. 1 out to the side of the body. */
   get lever(): number {
     const k = this.phase;
@@ -383,6 +411,7 @@ export class FilmRig {
       for (let q = this.queued.shift(); q !== undefined; q = this.queued.shift()) {
         this.dir = q.d;
         if (this.canMove(q.d, q.land)) this.advance(q.land);
+        else this.stuckCount++;
       }
       return;
     }
@@ -416,6 +445,7 @@ export class FilmRig {
       this.dir = dir;
       this.landing = asked?.land;
       this.blocked = asked !== undefined && !this.canMove(dir, asked.land);
+      if (this.blocked) this.stuckCount++;
       this.phase = 0;
     } else {
       this.phase += dt;
@@ -591,10 +621,11 @@ function omCameraModel(rig: FilmRig): Group {
     { mat: toon(LEVER_TIP), base: new Color(LEVER_TIP), glow: 0, hint: "lever" as const, phase: 0, shine: true },
     { mat: toon(SHUTTER_COLOR), base: new Color(SHUTTER_COLOR), glow: 0, hint: "shutter" as const, phase: null, shine: false },
   ];
-  /** How lit a control is by the offer at time `t`: a soft swell in its turn, steady when the clock is held. */
-  const swell = (t: number, phase: number) =>
-    t <= 0 ? 0.45 : Math.pow(0.5 + 0.5 * Math.sin(t * 2.3 - phase * Math.PI * 2), 2);
+  /** How lit a control is by the offer at point `p` of the pulse: a swell in its turn (`phase`, a fraction of the round). */
+  const swell = (p: number, phase: number) => Math.pow(0.5 + 0.5 * Math.sin(p - phase * Math.PI * 2), 2);
   let breath = 0; // how far a breath goes (see BREATH_FIRST / BREATH_USED), eased as it changes
+  let fresh = 1; // 1 until something has been used, then 0 (eased): the quick, strong pulsing
+  let pulse = 0; // where the pulse is in its round, in radians (it is added up, so its speed can change smoothly)
   let lastT = 0;
   g.userData.animate = ({ t, hover, focus }: AnimCtx) => {
     // the idle pass is quicker with the gallery open
@@ -611,13 +642,16 @@ function omCameraModel(rig: FilmRig): Group {
     // the size of the breath: none on the map, strong until something has been used, then small (over about half a second)
     const peak = (rig.used ? BREATH_USED : BREATH_FIRST) * ease(focus);
     breath = t <= 0 ? peak : breath + (peak - breath) * (1 - Math.exp(-elapsed * 5));
+    fresh = t <= 0 ? (rig.used ? 0 : 1) : fresh + ((rig.used ? 0 : 1) - fresh) * (1 - Math.exp(-elapsed * 4));
+    pulse += elapsed * (PULSE_USED + (PULSE_FIRST - PULSE_USED) * fresh);
     for (const c of tint) {
       c.glow += ((rig.hint === c.hint ? 1 : 0) - c.glow) * k;
-      const offered = c.phase === null ? 0 : breath * swell(t, c.phase);
+      // (with the clock held it cannot pulse: a steady glow instead)
+      const offered = c.phase === null ? 0 : breath * (t <= 0 ? 0.45 : swell(pulse, c.phase));
       const lit = Math.max(c.glow, offered);
       c.mat.color.copy(c.base).lerp(AMBER, lit);
-      // the knob itself shines (it gives off light, not just a different colour)
-      if (c.shine) c.mat.emissive.copy(AMBER).multiplyScalar(lit * 0.3);
+      // the knob and lever shine (they give off light, not just a different colour), more so before they have been used
+      if (c.shine) c.mat.emissive.copy(AMBER).multiplyScalar(lit * (SHINE + SHINE_FIRST * fresh));
     }
     // a soft sweep of light across the glass when the box is hovered
     (glint.material as MeshBasicMaterial).opacity = hover * (0.4 + 0.3 * Math.sin(t * 1.7));
@@ -905,6 +939,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     m.customProgramCacheKey = () => "film-grey";
     return m;
   };
+  const JAM_DIST = 3; // how far the film strains (table units) when the lever or knob jams: within its margin on the plate
   const SLIDE_TIME = 0.55; // seconds for the film to slide a page
   const SLIDE_DIST = (plateW + totalW) / 2 + 2; // far enough that the film starts and ends clear of the plate
 
@@ -1410,6 +1445,8 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
       inOff = slide.dir * SLIDE_DIST * (1 - e);
       outOff = -slide.dir * SLIDE_DIST * e;
     }
+    // a jammed lever or knob (the end of the roll): the film strains the way it was being wound, rattles, and settles
+    inOff -= JAM_DIST * rig.jam;
     // the clip planes: the plate's left and right edges, in the world as it is now
     top.updateWorldMatrix(true, false);
     const me = top.matrixWorld;
