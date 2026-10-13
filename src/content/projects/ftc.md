@@ -1,5 +1,5 @@
 ---
-title: "FIRST Tech Challenge, team 6417"
+title: "FIRST Tech Challenge"
 image: "./blucrulogo.png"
 alt: "Blu Cru logo"
 summary: "Full stack software development for autonomous & teleoperated robot. "
