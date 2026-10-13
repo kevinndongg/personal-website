@@ -4,27 +4,30 @@ import { getImage } from "astro:assets";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { withBase } from "../lib/url";
 import { contactLinks } from "../lib/contact";
-import { sortPhotos } from "../lib/photos";
+import { lightTableOrder, sortPhotos } from "../lib/photos";
 import "../styles/game.css";
 
 const projects = (await getCollection("projects")).sort((a, b) => a.data.order - b.data.order);
 const photos = await getCollection("photos");
 
-// Every photo, in the same order as /photography. The light table lays them out a page at a time and the camera zooms
+// Every photo, in the order the light table reads them (see `lightTableOrder`: a page is read across, two landscape photos
+// and a portrait one a row). The light table lays them out a page at a time and the camera zooms
 // into one, and it has to work for any number of photos, so each one goes in as plain data: an image big enough to fill
 // the screen when zoomed into, and its aspect so that the layout is known before any image has loaded. The game loads
 // the images only for the page that is showing (and the next), so adding photos only adds a file under
 // src/content/photos.
-const reel = await Promise.all(
-  sortPhotos(photos).map(async (p) => {
-    const { width, height } = p.data.image;
-    return {
-      src: (await getImage({ src: p.data.image, width: 1400 })).src,
-      aspect: width / height,
-      title: p.data.title,
-      location: p.data.location,
-    };
-  })
+const reel = lightTableOrder(
+  await Promise.all(
+    sortPhotos(photos).map(async (p) => {
+      const { width, height } = p.data.image;
+      return {
+        src: (await getImage({ src: p.data.image, width: 1400 })).src,
+        aspect: width / height,
+        title: p.data.title,
+        location: p.data.location,
+      };
+    })
+  )
 );
 
 /** The project's markdown body: the lead sentence(s), and the bullet list that carries the results. */
