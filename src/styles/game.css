@@ -189,26 +189,6 @@ html:has(.game) body {
   transform: none;
 }
 
-.skip {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  padding: 8px 14px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ink);
-  background: color-mix(in srgb, var(--paper) 88%, transparent);
-  border-radius: 999px;
-  box-shadow: 0 6px 18px rgba(40, 24, 10, 0.22);
-  text-decoration: none;
-  transition: background 150ms;
-}
-
-.skip:hover,
-.skip:focus-visible {
-  background: var(--paper);
-}
-
 .hint {
   position: absolute;
   bottom: 22px;

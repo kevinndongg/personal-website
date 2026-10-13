@@ -77,8 +77,8 @@ const zones = [
     variant: "photodesk" as const,
     label: "Photo Gallery",
     summary: `${photos.length} photos I took just for fun — quiet streets, soft light, small moments.`,
+    // only the no-JS fallback list links out: in the diorama the gallery is the scene itself
     href: withBase("photography"),
-    actions: [{ label: "Open the gallery", href: withBase("photography") }],
     accent: "#8a4fd0",
     photos: reel,
   },
@@ -99,7 +99,6 @@ const zones = [
     <div data-labels class="labels" aria-hidden="true"></div>
 
     <div class="banner" data-banner aria-hidden="true">Kevin's Workshop</div>
-    <a class="skip" href={withBase("")}>Skip to regular site</a>
     <p class="hint" data-hint>Pick a building to look inside</p>
 
     <!-- announces the photo on the table (the title and place are drawn on the film, which a screen reader cannot read) -->
