@@ -20,6 +20,8 @@ import type { Zone, ZonePhoto } from "./world";
 import { box, cyl, mesh, toon } from "./models";
 import type { AnimCtx } from "./models";
 import { ImageCache } from "./photocache";
+import { plaquesModel } from "./contactmodels";
+import { constructionModel } from "./constructionmodels";
 
 // Models for the photography area: an Olympus OM-1 and a light table. The table shows the photos a page at a time: six
 // frames of film laid out on it (two strips of two landscape photos, and one strip of two portrait ones). The camera is
@@ -1543,9 +1545,11 @@ function deskMatModel(w: number, d: number): Group {
 // ---------------------------------------------------------------- dispatch
 
 /** Builds a model for a photography-area prop id, or null when the id is not one of ours. */
-export function sceneryModel(id: string, footprint: Footprint | undefined, _prop: Prop, zones: Zone[]): Group | null {
+export function sceneryModel(id: string, footprint: Footprint | undefined, prop: Prop, zones: Zone[]): Group | null {
   const w = footprint?.kind === "rect" ? footprint.w : 0;
   const d = footprint?.kind === "rect" ? footprint.h : 0;
+  const site = constructionModel(id, w, d, prop, zones);
+  if (site) return site;
   const zone = zones.find((z) => z.kind === "gallery");
   const rig = zone ? filmRig(zone) : new FilmRig();
   switch (id) {
@@ -1561,6 +1565,8 @@ export function sceneryModel(id: string, footprint: Footprint | undefined, _prop
       return lightTableModel(w, d, zone, rig);
     case "deskmat":
       return deskMatModel(w, d);
+    case "plaques":
+      return plaquesModel(w);
   }
   return null;
 }

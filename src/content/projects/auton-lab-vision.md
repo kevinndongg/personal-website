@@ -1,5 +1,5 @@
 ---
-title: "Computer Vision Research --- DARPA Triage Challenge"
+title: "DARPA Triage Challenge"
 image: "./auton-lab-vision.png"
 alt: "Auton Lab Logo"
 summary: "Research on self-supervised vision transformers for medical triage."
