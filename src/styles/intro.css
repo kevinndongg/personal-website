@@ -46,15 +46,20 @@
 }
 
 .intro-reel {
-  --band: 2.5cqw; /* film above and below the frames, with the holes (and the numbers) */
+  --band: 2cqw; /* film above and below the frames, with the holes (and the numbers) */
   --gap: 0.8cqw;
   --tongue: 4cqw; /* the leader's end, which leads */
-  --r: 4.2cqw; /* the canister's radius: FilmCanister.astro is drawn 100 units across, one unit being `--r / 50` */
-  /* the foot ring: 25.7 of those units high at the can's side. The film's bottom edge is level with its top there. */
-  --foot: calc(var(--r) * 0.514);
-  --stage-h: calc(var(--r) * 3.442); /* the canister's height, from the foot's lowest point to the top of the knob */
-  /* where the film comes out: a slit in the can's side, at its right edge (as on a real canister), and what is left of the bar from there */
-  --slit: calc(2 * var(--r) - 0.15cqw);
+  /*
+    The canister is a drawing in units (FilmCanister.astro: the barrel is 82 across, and the drawing, with its margins, 90 by
+    166.8), and one of its units is this long. What is placed against it is given in them, and has to be kept in step with
+    that file: the film's top edge is 17.6 units from the drawing's top (just above the top face's middle: the film is
+    drawn as unrolled from the back of the barrel, where it is higher on the screen), and its start is 3 units
+    under the barrel's right edge (the barrel is whole; the film comes from behind it).
+  */
+  --u: 0.084cqw;
+  --stage-h: calc(var(--u) * 166.8);
+  --film-top: calc(var(--u) * 17.6);
+  --slit: calc(var(--u) * 79);
   --film-w: calc(100cqw - var(--slit));
   --frame-w: calc((var(--film-w) - var(--gap) - 0.6cqw - var(--tongue) - var(--n) * var(--gap)) / var(--n));
   --film-h: calc(2 * var(--band) + var(--frame-w) * 0.75);
@@ -77,11 +82,20 @@
 */
 .intro-gate {
   position: absolute;
-  z-index: 4;
+  z-index: 2; /* under the canister (3): the film comes from behind the barrel */
   left: var(--slit);
-  bottom: var(--foot);
+  top: var(--film-top);
   width: var(--film-w);
   overflow: hidden;
+}
+
+/* the film turns away behind the barrel, out of the light: a fixed shade over its first part, which it slides through */
+.intro-gate::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.22) 1.8cqw, rgba(0, 0, 0, 0) 4.5cqw);
+  pointer-events: none;
 }
 
 .intro-strip {
@@ -103,7 +117,7 @@
   */
   --tip: 2.4cqw;
   --m: 0.25cqw; /* film outside a row of holes, at the strip's edge: a hole is enclosed, not a notch */
-  --h: 0.7cqw; /* a hole's height (it is 1.1 wide, a rectangle, at a pitch of 1.9) */
+  --h: 0.6cqw; /* a hole's height (it is 1.1 wide, a rectangle, at a pitch of 1.9) */
   --solid: linear-gradient(var(--film), var(--film));
   --holes: repeating-linear-gradient(90deg, var(--film) 0 0.4cqw, transparent 0.4cqw 1.5cqw, var(--film) 1.5cqw 1.9cqw);
   background:
@@ -124,9 +138,9 @@
 */
 .intro-shadow-gate {
   position: absolute;
-  z-index: 2;
+  z-index: 1;
   left: var(--slit);
-  bottom: calc(var(--foot) - 3cqw);
+  top: calc(var(--film-top) - 3cqw);
   width: calc(var(--film-w) + 3cqw);
   height: calc(var(--film-h) + 6cqw);
   overflow: hidden;
@@ -142,20 +156,6 @@
   box-shadow: calc(var(--far) + 0.55cqw) 0.75cqw 1.1cqw rgba(0, 0, 0, 0.5);
   transform: translateX(-100%);
   will-change: transform;
-}
-
-/* the lip of the slit: a thin dark light-trap strip down the can's right edge, over the start of the film, a little taller than it */
-.can-lip {
-  position: absolute;
-  z-index: 5;
-  left: calc(var(--slit) - 0.3cqw);
-  bottom: calc(var(--foot) - 0.4cqw);
-  width: 0.6cqw;
-  height: calc(var(--film-h) + 0.8cqw);
-  border-radius: 0.25cqw;
-  background: linear-gradient(90deg, #2e2b27, #0d0c0b 55%, #060505);
-  box-shadow: 0.2cqw 0 0.4cqw rgba(0, 0, 0, 0.5);
-  pointer-events: none;
 }
 
 .intro-tongue {
@@ -261,16 +261,16 @@
 
 /*
   ---- the canister (a drawing: FilmCanister.astro): upright, standing on the bar at the left, and it stays put. The
-  drawing is 108 units wide (the body's 100 in the middle), so it is `2.16 r` wide and starts `0.08 r` left of the stage;
+  drawing is 90 units wide (the barrel's 82 in the middle, 4 of margin each side), so it starts 4 units left of the stage;
   its lowest point is the stage's bottom (the shadow it casts is let out of the drawing's box). The knob is its own
   element, standing on the stub, so that turning it is a composited transform and never repaints the drawing.
 */
 .intro-roll {
   position: absolute;
   z-index: 3;
-  left: calc(var(--r) * -0.08);
+  left: calc(var(--u) * -4);
   bottom: 0;
-  width: calc(var(--r) * 2.16);
+  width: calc(var(--u) * 90);
   aspect-ratio: var(--aspect);
 }
 

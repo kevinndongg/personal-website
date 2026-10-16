@@ -161,7 +161,7 @@ const zones = [
         <div class="intro-stage">
           <!-- the film's shadow: it comes out of the slit as the film does, and moves with it -->
           <div class="intro-shadow-gate" aria-hidden="true"><span class="intro-film-shadow" data-intro-shadow></span></div>
-          <!-- the gate: the film comes out of a slit in the canister's side, and is cut off where it is still inside -->
+          <!-- the gate: the film comes from behind the canister's barrel, and is cut off where it is still behind it -->
           <div class="intro-gate">
             <!-- laid out as it comes out: the last frame next to the canister, frame 1 at the tongue, which leads -->
             <div class="intro-strip" data-intro-strip>
@@ -184,8 +184,6 @@ const zones = [
               <span class="intro-tip" aria-hidden="true"></span>
             </div>
           </div>
-          <!-- where the film goes in: a lip over its start, in front of it, in the can's side -->
-          <span class="can-lip" aria-hidden="true"></span>
           <div class="intro-bar" aria-hidden="true"><span class="intro-bar-fill" data-intro-fill></span></div>
           <!-- the canister: it does not move, the film does; only the spool's knob turns, as the film goes out -->
           <FilmCanister />
