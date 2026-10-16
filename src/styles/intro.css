@@ -127,6 +127,9 @@
     var(--holes) 0 var(--m) / calc(100% - var(--tip)) var(--h) no-repeat,
     var(--solid) 0 100% / calc(100% - var(--tip)) var(--m) no-repeat,
     var(--holes) 0 calc(100% - var(--m)) / calc(100% - var(--tip)) var(--h) no-repeat;
+  /* inside the canister, until the pull begins: this is what the first paint shows, before any script has run, so it has to
+     be the hidden pose (the film's shadow, the bar's fill and the knob's strip each rest in theirs) */
+  transform: translateX(-100%);
   will-change: transform;
 }
 
