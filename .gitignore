@@ -3,6 +3,8 @@ dist/
 # generated types
 .astro/
 
+scratch_media/
+
 # dependencies
 node_modules/
 

@@ -578,11 +578,16 @@ html:has(.game) body {
   border: 0;
 }
 
-/* Plain-HTML fallback: visible without JS, screen-reader-only once the scene boots */
+/*
+  Plain-HTML fallback: a list of links, for when there is no scene: without JS (index.astro shows it in a <noscript>), or
+  when the scene cannot start (`.no-webgl`). It is NOT shown while the scene is on its way: with JS the page is the
+  loading screen, or, where that has already been seen, just the dark backdrop, never a cream page of links. Once the
+  scene is up it is for screen readers only.
+*/
 .fallback {
   position: absolute;
   inset: 0;
-  display: grid;
+  display: none;
   align-content: center;
   justify-items: center;
   gap: 12px;
@@ -596,7 +601,12 @@ html:has(.game) body {
   color: var(--color-accent, #8a5a35);
 }
 
+.game.no-webgl .fallback {
+  display: grid;
+}
+
 .game.ready .fallback {
+  display: grid;
   inset: auto;
   width: 1px;
   height: 1px;

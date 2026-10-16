@@ -1,0 +1,296 @@
+---
+// The 35 mm film canister of the loading screen (see pages/index.astro, styles/intro.css, game/intro.ts), as one vector
+// drawing, so that its ellipses, curves, type and shading are exact.
+//
+// It is drawn in units, `W` across the barrel (so the radius `R` is `W / 2`). The proportions are those of a real
+// cartridge (compare a photograph of one): the barrel is about 0.56 as wide as it is tall (from the middle of its top
+// face to the bottom of its foot), the stub on top is a little under half the barrel's width, and the film's own slot is
+// on the back of the barrel, so the film comes from behind it.
+//
+// It is seen from slightly above: a circle on it is an ellipse `K` times as tall as it is wide (K is the sine of the
+// angle, 0.3 is about 17 degrees; 0 would be straight on). That is the top face and the knob, and the curve of the bottom
+// edge and of the rings. Both ends are the same: a black ring the width of the barrel, with the flat end above the top one.
+//
+// The label is one flat artwork, drawn in *arc length* (how far round the can, 0 at the front), and the can's surface is
+// made of thin slices of it. Slice `i` covers the angles `a0..a1`: its piece of the artwork is moved to
+// `R + R sin(a0)`, stretched by the ratio of the projected distance to the arc length (about `cos(a)`), and dropped by
+// `R K cos(a)`. So everything on the label, the DX checkerboard included, narrows continuously toward the sides of the
+// can, its rows curve down at the front as lines round a barrel do seen from above, and the type keeps its proportions
+// in the middle. Nothing is placed as a rigid block at one angle.
+//
+// The light: one light, which the whole page agrees on. The backdrop is brightest up-left of the loader, and the shadows
+// (the film's, and this canister's own on what is behind it) fall down and to the right, so it comes from the upper left
+// and from in front, as `LIGHT` below (not strong: the page is a dim brown). Everything here is lit from that one
+// vector, rather than by gradients set by eye:
+//   - a vertical surface (the body, the stub, the rings) is lit by `LIGHT . normal`, which for a cylinder is a function of
+//     the angle round it: brightest left of the middle, and in shade over its right-hand edge. The left edge is still lit
+//     (a left light reaches it at a grazing angle); nothing is dark that the light reaches.
+//   - the top face is flat, and faces up, so it is lit evenly: no gradient across it.
+//   - a thing that stands out casts a shadow along the light, away from it, as long as it is tall: the stub's across the top
+//     face (its height over the tangent of the light's elevation, foreshortened by `K`). There is no fall-off toward the foot.
+//
+// What is on it is what a real canister carries: the DX code, a big black-and-white checkerboard that takes up a good
+// share of the label; a barcode beside it; the speed; and a line of type. Generic on purpose: no film brand, only a small
+// mark. The film in the page sits behind this drawing and comes out from behind the barrel's right edge, which is whole.
+//
+// The knob is the part that turns, so it is not in this drawing: it is its own element over the top, and it is a
+// flip-book. Rotating a bitmap of a circle and then squashing it to the tilt's ellipse, sixty times a second, resamples
+// a thin slot through a 3-to-1 minification at a different angle every frame, which shimmers. So nothing is rotated or
+// squashed at run time: the knob is drawn as `KNOB_FRAMES` frames of its face, each already an ellipse with the slot at
+// that frame's angle (a slot is the same every 180 degrees, so the frames cover half a turn in equal steps), in one
+// strip, rastered once at the size they are shown. A window shows one frame, and the page moves the strip behind it in
+// steps (`data-intro-disc`, `data-frames`), on the compositor. The turn it shows is a smooth function of time (the
+// film's plan: position, speed and acceleration continuous) read to the nearest frame, so there have to be enough of
+// them that the nearest is never visibly off: at one degree a frame it is within half a degree (a fifth of a pixel at
+// the rim) and the turn from one animation frame to the next is as even as the plan's, to a quarter of a pixel. (At
+// 24 frames it was not: 7 degrees, almost 2 pixels, a visible jitter.) The strip is the background of a plain HTML
+// element, so that it is certain to be a layer of its own that the compositor moves.
+const K = 0.3;
+const W = 82; // the barrel's width (units)
+const R = W / 2;
+const RY = R * K; // the half-height of a circle of the can's radius
+const TOP = 36; // y of the middle of the top face
+const BODY_H = 145.2; // from there to the lowest point of the bottom edge
+const SIDE_BOTTOM = TOP + BODY_H - RY; // where the straight sides end
+const FOOT = 12; // the foot ring's height
+const TOP_RING = 7.5; // the black ring at the top of the barrel
+const RING_TOP = SIDE_BOTTOM - FOOT; // the foot ring's top edge at the sides (it curves down by RY at the front)
+const SPOOL = 15; // the stub standing on the top face
+const KNOB_R = 0.457 * R; // the stub's radius: 0.457 of the barrel's width across, as on the real thing
+const LOWEST = TOP + BODY_H;
+const MARGIN = 4; // room each side of the barrel in the drawing, for the shadow's start and the antialiasing
+const MIN_Y = TOP - SPOOL - KNOB_R * K - 1; // the drawing's top edge (room for the knob's ellipse above the stub)
+const KNOB_FRAMES = 180; // the knob's face, in 1 degree steps (a half turn: its slot repeats every 180)
+const KNOB_W = KNOB_R * 2; // one frame's width, and (times K) its height
+const VIEW_W = W + 2 * MARGIN;
+const VIEW_H = LOWEST - MIN_Y;
+
+const rad = (deg: number) => (deg * Math.PI) / 180;
+
+// ---- the light: where it comes from, as the direction toward it (x right, y up, z toward the viewer), unit length
+const LIGHT = (() => {
+  const v = { x: -0.5, y: 0.6, z: 0.62 };
+  const n = Math.hypot(v.x, v.y, v.z);
+  return { x: v.x / n, y: v.y / n, z: v.z / n };
+})();
+const AMBIENT = 0.32; // what the shade still gets (light off the backdrop and the rest of the room)
+const SIDE_PEAK = Math.hypot(LIGHT.x, LIGHT.z); // the brightest a vertical surface gets: where its normal faces the light
+/** 0..1: how lit the side of a vertical cylinder is at the angle `deg` round it (0 facing the viewer, positive to the right). */
+const lit = (deg: number) => {
+  const d = LIGHT.x * Math.sin(rad(deg)) + LIGHT.z * Math.cos(rad(deg)); // light . normal (the up part does not matter)
+  return Math.min(1, AMBIENT + ((1 - AMBIENT) * Math.max(0, d)) / SIDE_PEAK);
+};
+/** The side's gradient across its width (offsets are where `R + R sin(angle)` falls), as stops: `colour` at full light. */
+const sideStops = (colour: [number, number, number]) =>
+  Array.from({ length: 19 }, (_, i) => {
+    const deg = -90 + (180 * i) / 18;
+    const k = lit(deg);
+    const rgb = colour.map((c) => Math.round(c * k));
+    return { offset: ((1 + Math.sin(rad(deg))) / 2).toFixed(4), color: `rgb(${rgb[0]} ${rgb[1]} ${rgb[2]})` };
+  });
+/** The same, for the label, as black over it: how much of its colour the shade takes away. */
+const labelShade = Array.from({ length: 19 }, (_, i) => {
+  const deg = -90 + (180 * i) / 18;
+  return { offset: ((1 + Math.sin(rad(deg))) / 2).toFixed(4), opacity: ((1 - lit(deg)) * 0.85).toFixed(3) };
+});
+const ringStops = sideStops([34, 31, 28]); // black metal, as lit: nearly the film's own black, a little light on it
+const stubStops = sideStops([40, 37, 33]);
+// the stub's shadow on the top face: along the light, away from it, its height over the tangent of the light's elevation
+const ELEVATION_TAN = LIGHT.y / SIDE_PEAK;
+const SHADOW_LEN = SPOOL / ELEVATION_TAN; // (in the plane of the face)
+const SHADOW_DX = (-LIGHT.x / SIDE_PEAK) * SHADOW_LEN; // away from the light: to the right...
+const SHADOW_DY = (LIGHT.z / SIDE_PEAK) * SHADOW_LEN * K; // ...and away from the viewer: up the drawing (foreshortened by K)
+const shadowSteps = Array.from({ length: 6 }, (_, i) => i / 5);
+
+// the label's slices: the can's visible half, -90 to +90 degrees, in `SLICES` pieces
+const SLICES = 56;
+const slices = Array.from({ length: SLICES }, (_, i) => {
+  const a0 = -90 + (180 * i) / SLICES;
+  const a1 = -90 + (180 * (i + 1)) / SLICES;
+  const u0 = R * rad(a0); // arc length at each side of it
+  const u1 = R * rad(a1);
+  const x0 = R + R * Math.sin(rad(a0)); // where they are seen
+  const x1 = R + R * Math.sin(rad(a1));
+  const mid = rad((a0 + a1) / 2);
+  return { id: `fc-s${i}`, u0, u1, x0, sx: (x1 - x0) / (u1 - u0), dy: RY * Math.cos(mid) };
+});
+
+// the DX code: 2 cells wide and 6 high, which of them are dark (an irregular pattern, as the real one is)
+const DX_ROWS = [
+  [1, 0],
+  [0, 1],
+  [1, 1],
+  [0, 0],
+  [1, 0],
+  [0, 1],
+];
+// It runs the whole height of the label, from the top ring to the foot ring (both edges of the label are curves that
+// drop by the same amount as the artwork does at each angle, so in the flat artwork they are straight lines): its border
+// goes in under the rings, and its rows share what is between them (so the cells are taller than they are wide, as a
+// real code's are: a tall column of them).
+const LABEL_TOP = TOP + TOP_RING; // where the label starts, under the top ring (flat artwork)
+const LABEL_BOTTOM = RING_TOP; // and ends, over the foot ring
+const DX_BORDER = 2; // the black border round the cells
+const CELL_W = 14; // (arc length)
+const CELL_H = (LABEL_BOTTOM - LABEL_TOP - 2 * DX_BORDER) / DX_ROWS.length;
+
+// the barcode: bar thicknesses, stacked with a gap between them
+const BARS = [3, 1.5, 4, 1.5, 1.5, 3, 1, 4, 2, 1.5, 3, 1, 2.5, 1.5, 4, 1, 2].map((h) => h * 0.82);
+const BAR_GAP = 1.6;
+let barY = 0;
+const bars = BARS.map((h) => {
+  const y = barY;
+  barY += h + BAR_GAP;
+  return { y, h };
+});
+
+const bodyPath = `M0 ${TOP} H${W} V${SIDE_BOTTOM} A${R} ${RY} 0 0 1 0 ${SIDE_BOTTOM} Z`;
+const ringPath = `M0 ${RING_TOP} A${R} ${RY} 0 0 0 ${W} ${RING_TOP} V${SIDE_BOTTOM} A${R} ${RY} 0 0 1 0 ${SIDE_BOTTOM} Z`;
+const ringEdge = `M0 ${RING_TOP} A${R} ${RY} 0 0 0 ${W} ${RING_TOP}`;
+// the top ring: between the top face's near edge and the same curve lower down (the sides are `TOP_RING` high)
+const topRingPath = `M0 ${TOP} A${R} ${RY} 0 0 0 ${W} ${TOP} V${TOP + TOP_RING} A${R} ${RY} 0 0 1 0 ${TOP + TOP_RING} Z`;
+const topRingEdge = `M0 ${TOP + TOP_RING} A${R} ${RY} 0 0 0 ${W} ${TOP + TOP_RING}`;
+const stubPath = `M${R - KNOB_R} ${TOP - SPOOL} V${TOP} A${KNOB_R} ${KNOB_R * K} 0 0 0 ${R + KNOB_R} ${TOP} V${TOP - SPOOL} Z`;
+
+// the knob's strip of frames: one face drawn once, and shown `KNOB_FRAMES` times, each turned by its step and squashed to the
+// tilt's ellipse (the squash is applied after the turn, here, in the drawing: the ellipse's edges are drawn at the size
+// they show)
+const knobStrip = (() => {
+  const w = KNOB_FRAMES * KNOB_W;
+  const h = KNOB_W * K;
+  const uses = Array.from(
+    { length: KNOB_FRAMES },
+    (_, i) => `<use href="#f" transform="translate(${((i + 0.5) * KNOB_W).toFixed(2)} ${(h / 2).toFixed(2)}) scale(1 ${K}) rotate(${((i * 180) / KNOB_FRAMES).toFixed(2)})"/>`
+  ).join("");
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">` +
+    `<defs><radialGradient id="g" cx="0.5" cy="0.5" r="0.75"><stop offset="0" stop-color="#2c2824"/><stop offset="1" stop-color="#1f1c19"/></radialGradient>` +
+    `<g id="f"><circle r="${(KNOB_R - 1.6).toFixed(2)}" fill="url(#g)" stroke="#161411" stroke-width="2"/>` +
+    `<rect x="${(-KNOB_R + 2.2).toFixed(2)}" y="-2.7" width="${(2 * KNOB_R - 4.4).toFixed(2)}" height="5.4" fill="#070605"/>` +
+    `<circle r="5" fill="#070605"/></g></defs>${uses}</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+})();
+
+// where the knob's centre is, as a share of the drawing (it sits on the stub's top)
+const knobTop = (((TOP - SPOOL - MIN_Y) / VIEW_H) * 100).toFixed(3);
+const knobWidth = (((KNOB_R * 2) / VIEW_W) * 100).toFixed(3);
+---
+
+<div class="intro-roll" data-intro-roll aria-hidden="true" style={`--k:${K}; --knob-top:${knobTop}%; --knob-w:${knobWidth}%; --aspect:${(VIEW_W / VIEW_H).toFixed(4)}; --knob-ar:${(1 / K).toFixed(4)}`}>
+  <svg class="can-art" viewBox={`${-MARGIN} ${MIN_Y} ${VIEW_W} ${VIEW_H}`} font-family="Figtree, system-ui, Arial, sans-serif" font-weight="600">
+    <defs>
+      <clipPath id="fc-body"><path d={bodyPath}></path></clipPath>
+      {
+        slices.map((sl) => (
+          <clipPath id={sl.id}>
+            <rect x={(sl.u0 - 0.2).toFixed(3)} y="0" width={(sl.u1 - sl.u0 + 0.4).toFixed(3)} height="230"></rect>
+          </clipPath>
+        ))
+      }
+      <!-- the artwork, flat, in arc length (0 is the front; the barrel's right edge is at +64) and y as in the drawing -->
+      <g id="fc-art">
+        <!-- the DX code: a large checkerboard with a border, on the left -->
+        <g transform="translate(-44 0)">
+          <!-- (its border reaches 1.5 units in under each ring, so no gap of label shows between it and them) -->
+          <rect x={-CELL_W - DX_BORDER} y={LABEL_TOP - 1.5} width={2 * CELL_W + 2 * DX_BORDER} height={LABEL_BOTTOM - LABEL_TOP + 3} fill="#0d0b09"></rect>
+          {
+            DX_ROWS.map((row, r) =>
+              row.map((dark, c) => (
+                <rect x={-CELL_W + c * CELL_W} y={LABEL_TOP + DX_BORDER + r * CELL_H} width={CELL_W} height={CELL_H} fill={dark ? "#0d0b09" : "#e6dfcc"}></rect>
+              ))
+            )
+          }
+        </g>
+        <text transform="translate(-18 99) rotate(90)" text-anchor="middle" dominant-baseline="central" font-size="7.4" fill="#0d0b09">35mm color print film</text>
+        <text transform="translate(6 98) rotate(90)" text-anchor="middle" dominant-baseline="central" font-size="46" font-weight="700" letter-spacing="1" fill="#0d0b09">200</text>
+        <!-- the small mark, and the barcode under it -->
+        <g transform="translate(38 0)">
+          <rect x="-6.5" y="48" width="13" height="13" rx="2.5" fill="#0d0b09"></rect>
+          <text x="0" y="57.6" font-size="7.4" font-weight="700" text-anchor="middle" fill="#cf9a1a">KD</text>
+          <g transform="translate(0 69)">
+            {bars.map((b) => <rect x="-8" y={b.y} width="16" height={b.h} fill="#0d0b09"></rect>)}
+          </g>
+        </g>
+      </g>
+      <!-- the shadow it casts on what is behind: the same silhouette, blurred, offset down and to the right (the light is
+           up-left and in front); soft and close, as for a wall just behind. Drawn once with the rest. -->
+      <filter id="fc-cast" x="-40%" y="-30%" width="190%" height="170%">
+        <feGaussianBlur stdDeviation="5.4"></feGaussianBlur>
+      </filter>
+      <radialGradient id="fc-shadow">
+        <stop offset="0" stop-color="#000" stop-opacity="0.6"></stop>
+        <stop offset="1" stop-color="#000" stop-opacity="0"></stop>
+      </radialGradient>
+      <!-- the rings and the stub: black metal, lit by `LIGHT` (computed above) -->
+      <linearGradient id="fc-ring" gradientUnits="userSpaceOnUse" x1="0" x2={W} y1="0" y2="0">
+        {ringStops.map((st) => <stop offset={st.offset} stop-color={st.color}></stop>)}
+      </linearGradient>
+      <linearGradient id="fc-stub" gradientUnits="userSpaceOnUse" x1={R - KNOB_R} x2={R + KNOB_R} y1="0" y2="0">
+        {stubStops.map((st) => <stop offset={st.offset} stop-color={st.color}></stop>)}
+      </linearGradient>
+      <!-- the shade on the label: black, as much as the light is missing there -->
+      <linearGradient id="fc-light" gradientUnits="userSpaceOnUse" x1="0" x2={W} y1="0" y2="0">
+        {labelShade.map((st) => <stop offset={st.offset} stop-color="#000" stop-opacity={st.opacity}></stop>)}
+      </linearGradient>
+      <!-- the soft edge of a cast shadow, drawn once with the rest -->
+      <filter id="fc-soft" x="-30%" y="-80%" width="160%" height="260%">
+        <feGaussianBlur stdDeviation="1.4"></feGaussianBlur>
+      </filter>
+      <clipPath id="fc-topface"><ellipse cx={R} cy={TOP} rx={R - 0.6} ry={RY - 0.6}></ellipse></clipPath>
+    </defs>
+
+    <g filter="url(#fc-cast)" opacity="0.5" transform="translate(5.5 7.5)">
+      <path d={bodyPath} fill="#000"></path>
+      <ellipse cx={R} cy={TOP} rx={R} ry={RY} fill="#000"></ellipse>
+      <path d={stubPath} fill="#000"></path>
+    </g>
+
+    <!-- where it stands -->
+    <ellipse cx={R} cy={LOWEST - 1.3} rx={W * 0.6} ry="6.4" fill="url(#fc-shadow)"></ellipse>
+
+    <!-- the body: the label, with its columns, and the rings, all cut to the body's curved bottom. It is whole: the film
+         comes from behind it. -->
+    <g clip-path="url(#fc-body)">
+      <rect x="0" y={TOP} width={W} height={BODY_H} fill="#e6ac1d"></rect>
+
+      <!-- the label: the same artwork, in thin slices (see the top of this file) -->
+      {
+        slices.map((sl) => (
+          <g transform={`translate(${sl.x0.toFixed(3)} ${sl.dy.toFixed(3)}) scale(${sl.sx.toFixed(4)} 1) translate(${(-sl.u0).toFixed(3)} 0)`} clip-path={`url(#${sl.id})`}>
+            <use href="#fc-art"></use>
+          </g>
+        ))
+      }
+
+      <!-- the light and shade on the label (the rings below have their own) -->
+      <rect x="0" y={TOP} width={W} height={BODY_H} fill="url(#fc-light)"></rect>
+
+      <!-- the rings: top and foot, the same, flush with the barrel; each edge is the same curve as the end it meets -->
+      <path d={topRingPath} fill="url(#fc-ring)"></path>
+      <path d={topRingEdge} fill="none" stroke="#fff" stroke-opacity="0.1" stroke-width="0.6"></path>
+      <path d={ringPath} fill="url(#fc-ring)"></path>
+      <path d={ringEdge} fill="none" stroke="#fff" stroke-opacity="0.1" stroke-width="0.6"></path>
+    </g>
+
+    <!-- the top: the end of the barrel, and the spool's stub standing on it -->
+    <!-- (the top face is flat and faces up, so it is lit evenly, and it is black metal like the rings; it is as wide as the
+         barrel, so nothing stands out past it) -->
+    <ellipse cx={R} cy={TOP} rx={R} ry={RY} fill="#1d1a17" stroke="#080706" stroke-width="0.6"></ellipse>
+    <!-- the stub's shadow across the top face: along the light, away from it (up and to the right), as long as the stub is
+         tall over the tangent of the light's elevation (computed above), soft; cut to the face -->
+    <g clip-path="url(#fc-topface)" opacity="0.62" filter="url(#fc-soft)">
+      {
+        shadowSteps.map((t) => (
+          <ellipse cx={(R + SHADOW_DX * t).toFixed(2)} cy={(TOP - SHADOW_DY * t).toFixed(2)} rx={KNOB_R} ry={KNOB_R * K} fill="#000"></ellipse>
+        ))
+      }
+    </g>
+    <path d={stubPath} fill="url(#fc-stub)"></path>
+  </svg>
+
+  <!-- the knob on the stub: a window onto a strip of its frames, each the face as it looks at that angle, already squashed
+       to the tilt's ellipse (see the top of this file) -->
+  <span class="can-knob" style={`--frames:${KNOB_FRAMES}`}>
+    <span class="can-disc" data-intro-disc data-frames={KNOB_FRAMES} style={`background-image:url("${knobStrip}")`}></span>
+  </span>
+</div>

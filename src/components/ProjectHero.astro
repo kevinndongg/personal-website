@@ -26,7 +26,7 @@ const metaParts = [role, organization, location, period].filter(
     <slot name="animation" />
   </div>
   <div class="hero-text container">
-    <a class="back" href={withBase("")}>← Back to all projects</a>
+    <a class="back" href={`${withBase("")}#${slug}`}>← Back to all projects</a>
     <h1 transition:name={`project-title-${slug}`}>{title}</h1>
     <p>{summary}</p>
     {metaParts.length > 0 && <p class="meta">{metaParts.join(" · ")}</p>}
