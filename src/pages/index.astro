@@ -1,190 +1,279 @@
 ---
 import { getCollection } from "astro:content";
+import { getImage } from "astro:assets";
+import sharp from "sharp";
+import { statSync } from "node:fs";
 import BaseLayout from "../layouts/BaseLayout.astro";
-import ProjectCard from "../components/ProjectCard.astro";
-import { pageSlide } from "../lib/pageTransition";
+import FilmCanister from "../components/FilmCanister.astro";
+import { withBase } from "../lib/url";
+import { contactLinks } from "../lib/contact";
+import { lightTableOrder, sortPhotos } from "../lib/photos";
+import "../styles/game.css";
+import "../styles/intro.css";
 
-const projects = (await getCollection("projects")).sort(
-  (a, b) => a.data.order - b.data.order
+const projects = (await getCollection("projects")).sort((a, b) => a.data.order - b.data.order);
+const photos = await getCollection("photos");
+
+// Every photo, in the order the light table reads them (see `lightTableOrder`: a page is read across, two landscape photos
+// and a portrait one a row). The light table lays them out a page at a time and the camera zooms
+// into one, and it has to work for any number of photos, so each one goes in as plain data: an image big enough to fill
+// the screen when zoomed into, and its aspect so that the layout is known before any image has loaded. The game loads
+// the images only for the page that is showing (and the next), so adding photos only adds a file under
+// src/content/photos.
+const fileOf = new Map<string, string>(); // a photo's url (below) -> the file it came from
+const reel = lightTableOrder(
+  await Promise.all(
+    sortPhotos(photos).map(async (p) => {
+      const { width, height } = p.data.image;
+      const src = (await getImage({ src: p.data.image, width: 1400 })).src;
+      fileOf.set(src, (p.data.image as { fsPath?: string }).fsPath ?? "");
+      return {
+        src,
+        aspect: width / height,
+        title: p.data.title,
+        location: p.data.location,
+      };
+    })
+  )
 );
 
-const skillGroups = [
+// The loading screen's strip has a frame for each photo of the light table's first two pages (PAGE_SLOTS * 2 in
+// src/game/scenery.ts): those are the photos the scene waits for before it is shown, however many the gallery grows to.
+// Each frame carries small copies of its photo, in the page itself, so the film comes out of the canister with its photos
+// on it from the first paint (the real photos are the slowest thing on the page: a loader cannot wait on what it is
+// loading). Two copies: black and white, which is what the frame shows while loading, and colour, which fades in over
+// it at the end. They are made here, so that the strip carries no CSS filter (each is an extra pass for the GPU every
+// frame it moves). A few KB each; "inside" keeps the photo's own proportions, whichever way it is.
+const INTRO_PHOTOS = 12;
+const THUMB = 112;
+interface Thumbs {
+  colour: string;
+  bw: string;
+}
+// kept between requests (the dev server renders this page each time it is loaded, and the sources are up to 15 MB each)
+const thumbCache: Map<string, Thumbs> = ((globalThis as { __introThumbs?: Map<string, Thumbs> }).__introThumbs ??= new Map());
+async function thumbnails(file: string | undefined): Promise<Thumbs | undefined> {
+  if (!file) return undefined;
+  try {
+    const key = `${file}:${statSync(file).mtimeMs}`;
+    const hit = thumbCache.get(key);
+    if (hit) return hit;
+    const base = sharp(file).rotate().resize({ width: THUMB, height: THUMB, fit: "inside" }); // (rotate: the photo's own orientation, as `getImage` does)
+    const [colour, bw] = await Promise.all([
+      base.clone().webp({ quality: 50 }).toBuffer(),
+      base.clone().grayscale().webp({ quality: 45 }).toBuffer(),
+    ]);
+    const uri = (data: Buffer) => `data:image/webp;base64,${data.toString("base64")}`;
+    const thumbs = { colour: uri(colour), bw: uri(bw) };
+    thumbCache.set(key, thumbs);
+    return thumbs;
+  } catch (error) {
+    console.warn(`loading screen: no thumbnail for ${file}`, error);
+    return undefined; // the frame is left dark until the real photo arrives
+  }
+}
+const introPhotos = await Promise.all(
+  reel.slice(0, INTRO_PHOTOS).map(async (p) => ({ ...p, thumb: await thumbnails(fileOf.get(p.src)) }))
+);
+
+/** The project's markdown body: the lead sentence(s), and the bullet list that carries the results. */
+function parseBody(body = "") {
+  const lines = body
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const isBullet = (l: string) => /^[-*]\s+/.test(l);
+  return {
+    lead: lines.filter((l) => !isBullet(l)).join(" "),
+    bullets: lines.filter(isBullet).map((l) => l.replace(/^[-*]\s+/, "")),
+  };
+}
+
+const zones = [
+  ...(await Promise.all(
+    projects.map(async (p) => {
+      const { lead, bullets } = parseBody(p.body);
+      const links = p.data.links ?? {};
+      return {
+        id: p.id,
+        kind: "project" as const,
+        label: p.data.title,
+        summary: lead || p.data.summary,
+        bullets,
+        variant: p.id === "cmu-racing" ? ("garage" as const) : undefined,
+        href: withBase(`projects/${p.id}`),
+        accent: p.data.accentColor,
+        role: p.data.role,
+        period: p.data.period ?? p.data.dateRange,
+        organization: p.data.organization,
+        techStack: p.data.techStack,
+        // a small logo chip beside the title
+        image: p.data.image ? (await getImage({ src: p.data.image, width: 160 })).src : undefined,
+        actions: [
+          links.paper && { label: "Read the paper", href: links.paper, external: true },
+          links.repo && { label: "Source code", href: links.repo, external: true },
+          links.demo && { label: "Live demo", href: links.demo, external: true },
+        ].filter(Boolean),
+      };
+    })
+  )),
   {
-    label: "Languages",
-    skills: ["Python", "C/C++", "Java", "JavaScript", "HTML/CSS"],
+    id: "gallery",
+    kind: "gallery" as const,
+    variant: "photodesk" as const,
+    label: "Photo Gallery",
+    summary: `${photos.length} photos I took just for fun — quiet streets, soft light, small moments.`,
+    // only the no-JS fallback list links out: in the diorama the gallery is the scene itself
+    href: withBase("photography"),
+    accent: "#8a4fd0",
+    photos: reel,
   },
   {
-    label: "Robotics & CV",
-    skills: ["ROS 2", "rqt", "Foxglove", "OpenCV", "Eigen", "Ultralytics"],
-  },
-  {
-    label: "ML & Data",
-    skills: ["PyTorch", "Hugging Face", "numpy", "scikit-learn", "matplotlib", "pyAgrum"],
-  },
-  {
-    label: "Developer Tools",
-    skills: ["Git", "CMake", "Docker", "tmux", "Linux/Ubuntu", "SLURM", "JUnit"],
+    id: "contact",
+    kind: "contact" as const,
+    label: "Contact",
+    summary: "Want to get in touch? Pick a way to reach me.",
+    actions: contactLinks.map((l) => ({ ...l, external: !l.href.startsWith("mailto:") })),
+    accent: "#2f74e0",
   },
 ];
 ---
 
-<BaseLayout title="Kevin Dong">
-  <main class="container" transition:name="page" transition:animate={pageSlide}>
-    <header class="hero">
-      <h1 class="name" data-hero-name>Kevin Dong</h1>
-      <p class="subtitle">Computer Science at CMU</p>
-      <p>
-        Robotics and machine learning software engineer, building autonomous systems. 
-      </p>
-    </header>
-
-    <section class="grid" aria-label="Projects">
-      {
-        projects.map((project) => (
-          <ProjectCard
-            slug={project.id}
-            title={project.data.title}
-            summary={project.data.summary}
-            image={project.data.image}
-            alt={project.data.alt}
-          />
-        ))
-      }
-    </section>
-
-    <section class="about" aria-label="Education">
-      <h2>Education</h2>
-      <div class="edu-header">
-        <span class="edu-school">Carnegie Mellon University</span>
-        <span class="edu-location">Pittsburgh, PA</span>
-      </div>
-      <p class="edu-degree">
-        B.S. in Computer Science, Concentration in Machine Learning · GPA
-        (QPA): 3.90/4.00 · May 2028
-      </p>
-      <p class="edu-courses">
-        Relevant Courses: Computer Vision, Probability, Data Structures &
-        Algorithms in C, Computer Systems
-      </p>
-    </section>
-
-    <section class="about" aria-label="Technical Skills">
-      <h2>Technical Skills</h2>
-      <div class="skill-groups">
-        {
-          skillGroups.map((group) => (
-            <div class="skill-group">
-              <h3>{group.label}</h3>
-              <ul class="tags">
-                {group.skills.map((skill) => (
-                  <li class="tag">{skill}</li>
-                ))}
-              </ul>
+<BaseLayout title="Kevin Dong" description="A tiny diorama that doubles as my portfolio." hideNav>
+  <div class="game" id="game" data-zones={JSON.stringify(zones)}>
+    <!--
+      The loading screen: a 35 mm film canister standing at the left of a bar, with its film pulled out to the right as
+      the world loads. It is plain markup so that it is painted before any script has run (the scene blocks the page while it
+      is built), and `src/game/intro.ts` moves it. Each frame holds one of the first photos, turned to fill the frame when
+      it is a portrait one.
+    -->
+    <div
+      class="intro"
+      data-intro
+      role="progressbar"
+      aria-label="Loading the workshop"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-valuenow="0"
+    >
+      <div class="intro-reel" data-intro-reel style={`--n:${introPhotos.length}`}>
+        <!-- everything inside is placed from the stage's bottom edge, where the canister stands -->
+        <div class="intro-stage">
+          <!-- the gate: the film comes out of a slit in the canister's side, and is cut off where it is still inside -->
+          <div class="intro-gate">
+            <!-- laid out as it comes out: the last frame next to the canister, frame 1 at the tongue, which leads -->
+            <div class="intro-strip" data-intro-strip>
+              {
+                introPhotos
+                  .map((p, i) => ({ p, i }))
+                  .reverse()
+                  .map(({ p, i }) => (
+                    <figure class:list={["intro-frame", p.aspect < 1 && "portrait"]} data-intro-frame data-src={p.src}>
+                      <span class="intro-window" data-intro-window>
+                        {p.thumb && <img class="bw" src={p.thumb.bw} alt="" />}
+                        {p.thumb && <img class="colour" src={p.thumb.colour} alt="" />}
+                      </span>
+                      <span class="intro-num" aria-hidden="true">{i + 1}</span>
+                    </figure>
+                  ))
+              }
+              <span class="intro-tongue" aria-hidden="true"></span>
+              <!-- the tongue's cut corners (painted in the backdrop colour: a clip-path would make the strip a mask) -->
+              <span class="intro-cut top" aria-hidden="true"></span>
+              <span class="intro-cut bottom" aria-hidden="true"></span>
             </div>
-          ))
-        }
+          </div>
+          <!-- where the film goes in: a lip over its start, in front of it, in the can's side -->
+          <span class="can-lip" aria-hidden="true"></span>
+          <div class="intro-bar" aria-hidden="true"><span class="intro-bar-fill" data-intro-fill></span></div>
+          <!-- the canister: it does not move, the film does; only the spool's knob turns, as the film goes out -->
+          <FilmCanister />
+        </div>
       </div>
-    </section>
-  </main>
+    </div>
+    <!-- seen already this session: gone before the first paint (`createIntro` does the same when the script runs) -->
+    <script is:inline>
+      try {
+        if (sessionStorage.getItem("loader-seen") === "1") document.querySelector("[data-intro]").hidden = true;
+      } catch (e) {}
+    </script>
+    <noscript><style>.intro { display: none; }</style></noscript>
+    <canvas data-canvas aria-label="A miniature diorama of my projects. Click a building to open its summary."></canvas>
+    <div data-labels class="labels" aria-hidden="true"></div>
+
+    <div class="banner" data-banner aria-hidden="true">Kevin's Workshop</div>
+    <p class="hint" data-hint>Pick an area to look inside</p>
+
+    <!-- announces the photo on the table (the title and place are drawn on the film, which a screen reader cannot read) -->
+    <p class="sr-only" data-live aria-live="polite"></p>
+
+    <div class="backdrop" data-backdrop hidden></div>
+    <aside class="panel" data-panel hidden role="dialog" aria-modal="true" aria-labelledby="panel-title">
+      <button class="grip" type="button" data-grip aria-label="Show more or less" aria-expanded="false"><span></span></button>
+      <button class="close" type="button" data-close aria-label="Close">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"></path></svg>
+      </button>
+      <div class="body">
+        <header class="head">
+          <img class="logo" data-logo alt="" hidden />
+          <div class="head-text">
+            <p class="kicker" data-kicker></p>
+            <h2 id="panel-title" data-title></h2>
+            <p class="role" data-role></p>
+          </div>
+        </header>
+        <p class="summary" data-summary></p>
+        <ul class="bullets" data-bullets></ul>
+        <ul class="tags" data-tags></ul>
+        <div class="actions" data-actions></div>
+      </div>
+    </aside>
+
+    <nav class="fallback" aria-label="Projects">
+      <h1>Kevin Dong</h1>
+      <ul>
+        {zones.map((z) => (z.href ? <li><a href={z.href}>{z.label}</a></li> : (z.actions ?? []).map((a) => <li><a href={a.href}>{z.label}: {a.label}</a></li>)))}
+      </ul>
+      <noscript><p>The interactive diorama needs JavaScript. These links go straight to each page.</p></noscript>
+    </nav>
+  </div>
 </BaseLayout>
 
-<style>
-  .hero {
-    padding: var(--space-8) 0 var(--space-12);
-    max-width: 640px;
-    margin: 0 auto;
-    text-align: center;
-  }
+<script>
+  import { createIntro } from "../game/intro";
+  import type { Intro } from "../game/intro";
 
-  .name {
-    font-family: var(--font-name);
-    font-weight: 400;
-    font-size: clamp(3rem, 8vw, 5rem);
-  }
+  let stop: (() => void) | undefined;
+  let intro: Intro | null = null;
+  let left = false; // the page was left while the scene's code was still arriving
 
-  @media (prefers-reduced-motion: no-preference) {
-    .name {
-      opacity: calc(1 - var(--scroll-progress, 0));
-      transform: scale(calc(1 - 0.08 * var(--scroll-progress, 0)))
-        translateY(calc(var(--scroll-progress, 0) * -12px));
-      transform-origin: center top;
+  document.addEventListener("astro:page-load", async () => {
+    const root = document.getElementById("game");
+    if (!root) return;
+    left = false;
+    // starts the loader (and the photos and fonts it measures) before the scene's code, which is the big download
+    intro = createIntro(root);
+    // loaded with import() so that the loader can say when the code has arrived
+    const { startGame } = await import("../game/main");
+    if (left) return;
+    intro?.stage("code", 1);
+    // The scene is built in one go, which blocks the page for a while: let the film's move reach the compositor first (two
+    // frames), so that it keeps going through the block.
+    if (intro) await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    if (left) return;
+    try {
+      stop = startGame(root, intro);
+    } catch (error) {
+      // no WebGL, say: the loader goes and the plain list of links (which is shown until the scene is ready) is there
+      console.error(error);
+      intro?.cancel();
     }
-  }
-
-  .subtitle {
-    font-family: var(--font-body);
-    font-weight: 500;
-    font-size: 0.95rem;
-    color: var(--color-accent);
-    margin: calc(-1 * var(--space-2)) 0 var(--space-4);
-  }
-
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-8);
-    padding-bottom: var(--space-16);
-  }
-
-  @media (max-width: 640px) {
-    .grid {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  .about {
-    max-width: 720px;
-    padding-bottom: var(--space-12);
-  }
-
-  .about h2 {
-    font-size: 1.3rem;
-    margin-bottom: var(--space-4);
-  }
-
-  .edu-header {
-    display: flex;
-    justify-content: space-between;
-    gap: var(--space-4);
-    flex-wrap: wrap;
-  }
-
-  .edu-school {
-    font-weight: 600;
-  }
-
-  .edu-location {
-    color: var(--color-text-muted);
-  }
-
-  .edu-degree {
-    font-style: italic;
-    margin: var(--space-1) 0 var(--space-2);
-  }
-
-  .edu-courses {
-    margin: 0;
-  }
-
-  .skill-groups {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-  }
-
-  .skill-group h3 {
-    font-family: var(--font-body);
-    font-weight: 600;
-    font-size: 0.9rem;
-    margin: 0 0 var(--space-2);
-  }
-
-  .tags {
-    list-style: none;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    margin: 0;
-    padding: 0;
-  }
-</style>
+  });
+  document.addEventListener("astro:before-swap", () => {
+    left = true;
+    stop?.();
+    stop = undefined;
+    intro?.cancel();
+    intro = null;
+  });
+</script>

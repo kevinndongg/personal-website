@@ -30,7 +30,7 @@ const { project } = Astro.props;
   </ProjectHero>
   <main class="container project-body">
     <slot />
-    <a class="back-link" href={withBase("")}>← Back to all projects</a>
+    <a class="back-link" href={`${withBase("")}#${project.id}`}>← Back to all projects</a>
   </main>
 </BaseLayout>
 

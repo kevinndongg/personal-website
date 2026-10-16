@@ -23,6 +23,7 @@ import {
   Scene,
   ShaderMaterial,
   ShadowMaterial,
+  Texture,
   UnsignedByteType,
   RGBAFormat,
   Vector2,
@@ -948,6 +949,29 @@ export class Renderer3D {
     renderer.render(this.scene, this.camera);
     renderer.setRenderTarget(null);
     renderer.render(this.quadScene, this.quadCamera);
+  }
+
+  /** Puts a texture on the GPU now, instead of in the first frame that draws with it. */
+  upload(texture: Texture) {
+    this.renderer.initTexture(texture);
+  }
+
+  /**
+   * Compiles the scene's shaders (in parallel, off the main thread, where the browser can) and then draws a frame, so that
+   * the first one the viewer sees does not have to. Asynchronous: the page keeps painting while it compiles.
+   */
+  async warm() {
+    try {
+      await this.renderer.compileAsync(this.scene, this.camera);
+    } catch {
+      this.renderer.compile(this.scene, this.camera);
+    }
+    // (a frame between the compile and the first draw: the draw allocates the shadow map and the render targets)
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+      setTimeout(resolve, 60);
+    });
+    this.draw(this.lastTime);
   }
 
   dispose() {

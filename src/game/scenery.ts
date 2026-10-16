@@ -223,6 +223,12 @@ export class FilmRig {
   hoverIndex: number | null = null;
   /** The four world-space corners of photo `index` on the table, for the view to frame (set by the table model). */
   photoCorners?: (index: number) => Vector3[];
+  /**
+   * Loads the photos of the first two pages and makes their full-size textures now (rather than when the table is first
+   * hovered), handing each to `upload` to put on the GPU. `onPhoto` hears as each is done (a photo that fails to load
+   * counts as done). Resolves when all have been. Set by the table model (the images and textures are its own).
+   */
+  warmUp?: (upload: (texture: Texture) => void, onPhoto?: (done: number, total: number) => void) => Promise<void>;
   /** Whether the gallery is open (set by the camera model): the idle pass is quicker then. */
   isOpen = false;
   /**
@@ -1112,6 +1118,11 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     canvas: HTMLCanvasElement;
     small: Texture;
     full?: Texture;
+    /**
+     * The photo decoded off the main thread, the right way up (a bitmap cannot be flipped as it is uploaded), when the
+     * warm-up made one: putting an `<img>` on the GPU is tens of milliseconds of the main thread each, a bitmap a few.
+     */
+    bitmap?: ImageBitmap;
   }
   const textures = new Map<string, PhotoTex>();
   /** The photo's textures, the small one made if it is not there yet (one `drawImage`, about a millisecond). */
@@ -1135,7 +1146,8 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
   const fullTex = (src: string, im: HTMLImageElement): Texture => {
     const e = photoTex(src, im);
     if (!e.full) {
-      const t = new Texture(im);
+      const t = new Texture(e.bitmap ?? im);
+      if (e.bitmap) t.flipY = false; // (it is already the right way up)
       t.generateMipmaps = true;
       t.minFilter = LinearMipmapLinearFilter;
       t.magFilter = LinearFilter;
@@ -1189,6 +1201,53 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
       new Vector3(hw, hh, 0).applyMatrix4(m.matrixWorld),
       new Vector3(-hw, hh, 0).applyMatrix4(m.matrixWorld),
     ];
+  };
+
+  // The first two pages' photos at their own resolution before anything is shown: the page that opens, and the one the lever
+  // turns to first. (Past those, photos are still brought in as the table is used: the gallery can have any number.)
+  rig.warmUp = async (upload, onPhoto) => {
+    const srcs = new Set<string>();
+    for (const page of [0, 1]) for (const i of rig.layout.pages[page] ?? []) if (i >= 0) srcs.add(photos[i].src);
+    const list = [...srcs];
+    // the images first: they arrive when they do (those already there do not wait), a failed one counts as there
+    await Promise.all(
+      list.map(
+        (src) =>
+          new Promise<void>((resolve) => {
+            if (images.get(src, () => resolve())) resolve();
+          })
+      )
+    );
+    // their pixels, decoded off the main thread and the right way up (all at once: it costs the page nothing)
+    const bitmaps = await Promise.all(
+      list.map(async (src) => {
+        const im = images.get(src);
+        if (!im?.naturalWidth || typeof createImageBitmap !== "function") return null;
+        try {
+          return await createImageBitmap(im, { imageOrientation: "flipY", premultiplyAlpha: "none", colorSpaceConversion: "none" });
+        } catch {
+          return null; // (the image itself is used instead)
+        }
+      })
+    );
+    // then their textures, one a frame: each upload is a copy to the GPU with its mipmaps made, and a page of them in one
+    // task is a stall that anything moving on the page (the loading screen) would show
+    let done = 0;
+    for (let n = 0; n < list.length; n++) {
+      const src = list[n];
+      const im = images.get(src);
+      if (im?.naturalWidth) {
+        const e = photoTex(src, im);
+        if (bitmaps[n] && !e.bitmap) e.bitmap = bitmaps[n]!;
+        else bitmaps[n]?.close();
+        upload(fullTex(src, im));
+      }
+      onPhoto?.(++done, list.length);
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+        setTimeout(resolve, 60); // (a hidden tab does not run animation frames)
+      });
+    }
   };
 
   // ---- painting a page
@@ -1259,6 +1318,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
       if (!keep.has(src)) {
         e.small.dispose();
         e.full?.dispose();
+        e.bitmap?.close();
         textures.delete(src);
       }
     }

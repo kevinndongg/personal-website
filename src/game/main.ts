@@ -1,4 +1,5 @@
 import { navigate } from "astro:transitions/client";
+import type { Intro } from "./intro";
 import { Panel } from "./panel";
 import type { PanelSide } from "./panel";
 import { Renderer3D } from "./render3d";
@@ -9,8 +10,14 @@ import type { Zone, ZoneInput } from "./world";
 
 let sceneCount = 0; // dev only: how many times a scene has been started in this page
 
-/** Boots the scene inside `root`. Returns a teardown function. */
-export function startGame(root: HTMLElement): () => void {
+/** The next paint: a frame the viewer can see has been drawn (so a change made before it, to the loader, is on screen). */
+const nextPaint = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+
+/**
+ * Boots the scene inside `root`. Returns a teardown function. With a loader (`intro`) the scene is built behind it, and the
+ * view is only handed over (the banner, a linked project) once the photos are on the GPU at their own resolution.
+ */
+export function startGame(root: HTMLElement, intro: Intro | null = null): () => void {
   const sceneId = ++sceneCount;
   if (import.meta.env.DEV) console.info(`[game] scene #${sceneId} started`);
   const canvas = root.querySelector<HTMLCanvasElement>("[data-canvas]")!;
@@ -80,11 +87,11 @@ export function startGame(root: HTMLElement): () => void {
     return world.zones.find((z) => rectContains(z.scene.area, x, y)) ?? null;
   }
 
-  // Deep links use the URL hash (/play#ftc), and the browser's Back button closes the panel again.
+  // Deep links use the URL hash (/#ftc), and the browser's Back button closes the panel again.
   //
   // The "#id" entry has to be pushed through Astro's router (`navigate`), not by assigning `location.hash`. The router
   // keeps its own idea of where the page is: if it was never told about "#id", then going back from it looks like a
-  // visit to /play from /play, so it re-fetches the page and swaps it in. That rebuilt the whole scene, and closing a
+  // visit to / from /, so it re-fetches the page and swaps it in. That rebuilt the whole scene, and closing a
   // project cut the zoom out off instead of easing it. (Keeping the router's popstate handler from running did not hold
   // up.) Told about the hash, the router treats going back from "#id" as the same-page move it is and does nothing.
   let ownEntry = false; // we pushed the "#id" history entry ourselves (so closing can pop it)
@@ -189,8 +196,9 @@ export function startGame(root: HTMLElement): () => void {
   );
 
   // a shared link opens its panel right away (the camera eases in from the full map)
+  // (behind the loader it waits for the reveal, so the camera is seen easing in)
   const linked = zoneById(location.hash.slice(1));
-  if (linked) open(linked, true);
+  if (linked && !intro) open(linked, true);
 
   type Hit = { zoneId?: string; propId?: string; partId?: string; slot?: number } | null;
 
@@ -516,7 +524,10 @@ export function startGame(root: HTMLElement): () => void {
       }
     }
   }
-  raf = requestAnimationFrame(frame);
+  // Behind a loading screen nothing is drawn each frame until it is gone: a render loop of the whole world (shadows, an
+  // MSAA target and a post pass) behind an opaque overlay is work the viewer cannot see, and it competes with the overlay
+  // for the main thread and the GPU, which shows as the loader's own jitter. The warm-up below draws what is needed once.
+  if (!intro) raf = requestAnimationFrame(frame);
 
   if (import.meta.env.DEV)
     Object.assign(window, {
@@ -575,13 +586,53 @@ export function startGame(root: HTMLElement): () => void {
       },
     });
 
-  banner?.classList.add("show");
-  const bannerTimer = setTimeout(() => banner?.classList.remove("show"), 3200);
+  let bannerTimer: ReturnType<typeof setTimeout> | undefined;
+  function showBanner() {
+    banner?.classList.add("show");
+    bannerTimer = setTimeout(() => banner?.classList.remove("show"), 3200);
+  }
+
+  if (!intro) {
+    showBanner();
+  } else {
+    // The loader is up and the scene is built behind it. What it waits for: the photos of the first two pages on the GPU at
+    // their own resolution (the table makes those lazily otherwise: on first hover), and the shaders compiled, so that
+    // what it reveals is finished and the first thing the viewer does is not a stall.
+    const rig = galleryZone ? filmRig(galleryZone) : null;
+    const prepare = async () => {
+      intro.stage("scene", 1);
+      await nextPaint(); // (so the loading screen has shown where it is before anything that blocks)
+      await rig?.warmUp?.(
+        (texture) => renderer.upload(texture),
+        (done, total) => intro.stage("gpu", 0.7 * (done / total))
+      );
+      intro.stage("gpu", 0.7);
+      await renderer.warm();
+      intro.stage("gpu", 1);
+      await nextPaint();
+    };
+    void (async () => {
+      try {
+        await Promise.race([prepare(), intro.timeout]);
+      } catch (error) {
+        console.error(error); // show the scene anyway: it works, it is just not fully warmed
+      }
+      if (signal.aborted) return;
+      await intro.finish();
+      if (signal.aborted) return;
+      // the world is on from here: its render loop starts (its clock from now, not from when it was built)
+      last = performance.now();
+      raf = requestAnimationFrame(frame);
+      if (linked) open(linked, true);
+      showBanner();
+    })();
+  }
 
   return () => {
     if (import.meta.env.DEV) console.info(`[game] scene #${sceneId} stopped`);
     cancelAnimationFrame(raf);
     clearTimeout(bannerTimer);
+    intro?.cancel();
     for (const zone of world.zones) if (zone.kind === "gallery") filmRig(zone).onFrame = undefined;
     panel.destroy();
     abort.abort();

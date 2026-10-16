@@ -1,0 +1,193 @@
+---
+// The 35 mm film canister of the loading screen (see pages/index.astro, styles/intro.css, game/intro.ts), as one vector
+// drawing, so that its ellipses, curves, type and shading are exact.
+//
+// It is drawn 100 units across the body (so the radius is 50), seen from slightly above: a circle on it is an ellipse
+// `K` times as tall as it is wide (K is the sine of the angle, 0.3 is about 17 degrees; 0 would be straight on). That is
+// the top rim and the knob, and the curve of the bottom edge and of the foot ring.
+//
+// The label is one flat artwork, drawn in *arc length* (how far round the can, 0 at the front), and the can's surface is
+// made of thin slices of it. Slice `i` covers the angles `a0..a1`: its piece of the artwork is moved to
+// `50 + 50 sin(a0)`, stretched by the ratio of the projected distance to the arc length (about `cos(a)`), and dropped by
+// `50 K cos(a)`. So everything on the label, the DX checkerboard included, narrows continuously toward the sides of the
+// can, its rows curve down at the front as lines round a barrel do seen from above, and the type keeps its proportions
+// in the middle. Nothing is placed as a rigid block at one angle.
+//
+// What is on it is what a real canister carries (compare a photograph of one): the DX code, a big black-and-white
+// checkerboard that takes up a good share of the label; a barcode beside it; the speed; and a line of type. Generic on
+// purpose: no film brand, only a small mark. The film leaves through a slit at the can's right edge (a lip over it, in
+// the page's CSS), so nothing is put on the label there.
+//
+// The knob is the part that turns, so it is not in this drawing: it is its own element over the top (`data-intro-disc`,
+// an animation of an HTML element, which runs on the compositor), and the drawing is never repainted by it.
+const K = 0.3;
+const R = 50;
+const RY = R * K; // the half-height of a circle of the can's radius
+const TOP = 36; // y of the middle of the top edge (the rim's ellipse is centred on it)
+const BODY_H = 145.2; // from there to the lowest point of the bottom edge
+const SIDE_BOTTOM = TOP + BODY_H - RY; // where the straight sides end
+const FOOT = 10.7; // the foot ring's height
+const RING_TOP = SIDE_BOTTOM - FOOT; // its top edge at the sides (it curves down by RY at the front)
+const SPOOL = 19; // the stub standing on the rim
+const KNOB_R = 23;
+const LOWEST = TOP + BODY_H;
+const MIN_Y = TOP - SPOOL - KNOB_R * K - 1; // the drawing's top edge (room for the knob's ellipse above the stub)
+const VIEW_H = LOWEST - MIN_Y;
+
+const rad = (deg: number) => (deg * Math.PI) / 180;
+
+// the label's slices: the can's visible half, -90 to +90 degrees, in `SLICES` pieces
+const SLICES = 56;
+const slices = Array.from({ length: SLICES }, (_, i) => {
+  const a0 = -90 + (180 * i) / SLICES;
+  const a1 = -90 + (180 * (i + 1)) / SLICES;
+  const u0 = R * rad(a0); // arc length at each side of it
+  const u1 = R * rad(a1);
+  const x0 = R + R * Math.sin(rad(a0)); // where they are seen
+  const x1 = R + R * Math.sin(rad(a1));
+  const mid = rad((a0 + a1) / 2);
+  return { id: `fc-s${i}`, u0, u1, x0, sx: (x1 - x0) / (u1 - u0), dy: RY * Math.cos(mid) };
+});
+
+// the DX code: 2 cells wide and 6 high, which of them are dark (an irregular pattern, as the real one is)
+const DX_ROWS = [
+  [1, 0],
+  [0, 1],
+  [1, 1],
+  [0, 0],
+  [1, 0],
+  [0, 1],
+];
+const CELL = 15; // (arc length)
+
+// the barcode: bar thicknesses, stacked with a gap between them
+const BARS = [3, 1.5, 4, 1.5, 1.5, 3, 1, 4, 2, 1.5, 3, 1, 2.5, 1.5, 4, 1, 2];
+const BAR_GAP = 2;
+let barY = 0;
+const bars = BARS.map((h) => {
+  const y = barY;
+  barY += h + BAR_GAP;
+  return { y, h };
+});
+
+const bodyPath = `M0 ${TOP} H100 V${SIDE_BOTTOM} A${R} ${RY} 0 0 1 0 ${SIDE_BOTTOM} Z`;
+const ringPath = `M0 ${RING_TOP} A${R} ${RY} 0 0 0 100 ${RING_TOP} V${SIDE_BOTTOM} A${R} ${RY} 0 0 1 0 ${SIDE_BOTTOM} Z`;
+const ringEdge = `M0 ${RING_TOP} A${R} ${RY} 0 0 0 100 ${RING_TOP}`;
+const stubPath = `M${R - KNOB_R} ${TOP - SPOOL} V${TOP} A${KNOB_R} ${KNOB_R * K} 0 0 0 ${R + KNOB_R} ${TOP} V${TOP - SPOOL} Z`;
+
+// where the knob's centre is, as a share of the drawing (it sits on the stub's top)
+const knobTop = (((TOP - SPOOL - MIN_Y) / VIEW_H) * 100).toFixed(3);
+const knobWidth = (((KNOB_R * 2) / 108) * 100).toFixed(3);
+---
+
+<div class="intro-roll" data-intro-roll aria-hidden="true" style={`--k:${K}; --knob-top:${knobTop}%; --knob-w:${knobWidth}%; --aspect:${(108 / VIEW_H).toFixed(4)}`}>
+  <svg class="can-art" viewBox={`-4 ${MIN_Y} 108 ${VIEW_H}`} font-family="Figtree, system-ui, Arial, sans-serif" font-weight="600">
+    <defs>
+      <clipPath id="fc-body"><path d={bodyPath}></path></clipPath>
+      {
+        slices.map((sl) => (
+          <clipPath id={sl.id}>
+            <rect x={(sl.u0 - 0.2).toFixed(3)} y="0" width={(sl.u1 - sl.u0 + 0.4).toFixed(3)} height="230"></rect>
+          </clipPath>
+        ))
+      }
+      <!-- the artwork, flat, in arc length (0 is the front; the lip of the slit is past +62) and y as in the drawing -->
+      <g id="fc-art">
+        <!-- the DX code: a large checkerboard with a border, on the left -->
+        <g transform="translate(-44 0)">
+          <rect x={-CELL - 2.5} y="49.5" width={2 * CELL + 5} height={6 * CELL + 5} fill="#17130f"></rect>
+          {
+            DX_ROWS.map((row, r) =>
+              row.map((dark, c) => (
+                <rect x={-CELL + c * CELL} y={52 + r * CELL} width={CELL} height={CELL} fill={dark ? "#17130f" : "#efe9d8"}></rect>
+              ))
+            )
+          }
+        </g>
+        <text transform="translate(-14 100) rotate(90)" text-anchor="middle" dominant-baseline="central" font-size="8.8" fill="#17130f">35mm color print film</text>
+        <text transform="translate(14 99) rotate(90)" text-anchor="middle" dominant-baseline="central" font-size="55" font-weight="700" letter-spacing="1" fill="#17130f">200</text>
+        <!-- the small mark, and the barcode under it -->
+        <g transform="translate(48 0)">
+          <rect x="-8" y="48" width="16" height="16" rx="3" fill="#17130f"></rect>
+          <text x="0" y="60" font-size="9" font-weight="700" text-anchor="middle" fill="#f2b61e">KD</text>
+          <g transform="translate(0 74)">
+            {bars.map((b) => <rect x="-10" y={b.y} width="20" height={b.h} fill="#17130f"></rect>)}
+          </g>
+        </g>
+      </g>
+      <radialGradient id="fc-shadow">
+        <stop offset="0" stop-color="#000" stop-opacity="0.6"></stop>
+        <stop offset="1" stop-color="#000" stop-opacity="0"></stop>
+      </radialGradient>
+      <linearGradient id="fc-ring" gradientUnits="userSpaceOnUse" x1="0" x2="100" y1="0" y2="0">
+        <stop offset="0" stop-color="#0a0908"></stop>
+        <stop offset="0.3" stop-color="#4a4640"></stop>
+        <stop offset="0.75" stop-color="#1b1917"></stop>
+        <stop offset="1" stop-color="#0a0908"></stop>
+      </linearGradient>
+      <!-- the light on the label: dark at the sides, a highlight just left of the middle -->
+      <linearGradient id="fc-light" gradientUnits="userSpaceOnUse" x1="0" x2="100" y1="0" y2="0">
+        <stop offset="0" stop-color="#000" stop-opacity="0.62"></stop>
+        <stop offset="0.14" stop-color="#000" stop-opacity="0.18"></stop>
+        <stop offset="0.3" stop-color="#fff" stop-opacity="0"></stop>
+        <stop offset="0.38" stop-color="#fff" stop-opacity="0.26"></stop>
+        <stop offset="0.52" stop-color="#fff" stop-opacity="0"></stop>
+        <stop offset="0.78" stop-color="#000" stop-opacity="0.18"></stop>
+        <stop offset="1" stop-color="#000" stop-opacity="0.6"></stop>
+      </linearGradient>
+      <linearGradient id="fc-stub" gradientUnits="userSpaceOnUse" x1={R - KNOB_R} x2={R + KNOB_R} y1="0" y2="0">
+        <stop offset="0" stop-color="#0d0c0b"></stop>
+        <stop offset="0.35" stop-color="#3f3b36"></stop>
+        <stop offset="0.72" stop-color="#1a1816"></stop>
+        <stop offset="1" stop-color="#090908"></stop>
+      </linearGradient>
+      <radialGradient id="fc-top" cx="0.5" cy="0.38" r="0.7">
+        <stop offset="0" stop-color="#6a655d"></stop>
+        <stop offset="0.7" stop-color="#1f1d1a"></stop>
+        <stop offset="1" stop-color="#0d0c0b"></stop>
+      </radialGradient>
+    </defs>
+
+    <!-- where it stands -->
+    <ellipse cx="50" cy={LOWEST - 1.5} rx="60" ry="7.5" fill="url(#fc-shadow)"></ellipse>
+
+    <!-- the body: the label, with its columns, and the foot ring, both cut to the body's curved bottom -->
+    <g clip-path="url(#fc-body)">
+      <rect x="0" y={TOP} width="100" height={BODY_H} fill="#f2b61e"></rect>
+
+      <!-- the label: the same artwork, in thin slices (see the top of this file) -->
+      {
+        slices.map((sl) => (
+          <g transform={`translate(${sl.x0.toFixed(3)} ${sl.dy.toFixed(3)}) scale(${sl.sx.toFixed(4)} 1) translate(${(-sl.u0).toFixed(3)} 0)`} clip-path={`url(#${sl.id})`}>
+            <use href="#fc-art"></use>
+          </g>
+        ))
+      }
+
+      <!-- the foot ring: its top edge is the same curve as the bottom's -->
+      <path d={ringPath} fill="url(#fc-ring)"></path>
+      <path d={ringEdge} fill="none" stroke="#fff" stroke-opacity="0.16" stroke-width="0.7"></path>
+
+      <rect x="0" y={TOP} width="100" height={BODY_H} fill="url(#fc-light)"></rect>
+    </g>
+
+    <!-- the top: the rim as an ellipse a little wider than the body, and the spool's stub standing on it -->
+    <ellipse cx="50" cy={TOP} rx="53" ry={RY * 1.06} fill="url(#fc-top)" stroke="#0a0908" stroke-width="0.8"></ellipse>
+    <path d={stubPath} fill="url(#fc-stub)"></path>
+  </svg>
+
+  <!-- the knob on the stub: a disc that turns in its own plane (the inner svg), squashed by the angle (the outer) -->
+  <span class="can-knob">
+    <svg class="can-disc" data-intro-disc viewBox={`${-KNOB_R} ${-KNOB_R} ${KNOB_R * 2} ${KNOB_R * 2}`}>
+      <defs>
+        <radialGradient id="fc-knob" cx="0.4" cy="0.4" r="0.8">
+          <stop offset="0" stop-color="#58544d"></stop>
+          <stop offset="1" stop-color="#1c1a17"></stop>
+        </radialGradient>
+      </defs>
+      <circle r={KNOB_R - 1.2} fill="url(#fc-knob)" stroke="#1b1917" stroke-width="2.4"></circle>
+      <rect x={-KNOB_R + 1.6} y="-3.2" width={2 * KNOB_R - 3.2} height="6.4" fill="#070605"></rect>
+      <circle r="6" fill="#070605"></circle>
+    </svg>
+  </span>
+</div>

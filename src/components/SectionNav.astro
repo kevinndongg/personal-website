@@ -4,6 +4,7 @@ import { contactLinks } from "../lib/contact";
 
 const path = Astro.url.pathname;
 const homeHref = withBase("");
+const roboticsHref = withBase("robotics");
 const photographyHref = withBase("photography");
 const isPhotography = path.startsWith(photographyHref);
 
@@ -12,7 +13,7 @@ const isPhotography = path.startsWith(photographyHref);
 <nav class="section-nav" aria-label="Site navigation">
   <div class="container">
     <div class="toggle">
-      <a class="toggle-option" href={homeHref} aria-current={isPhotography ? undefined : "page"}>
+      <a class="toggle-option" href={roboticsHref} aria-current={isPhotography ? undefined : "page"}>
         Robotics
       </a>
       <a
