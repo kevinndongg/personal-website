@@ -18,7 +18,7 @@
 // `?introdebug` (or `localStorage.introdebug = "1"`) prints a table at the end: frame gaps, long tasks, and how evenly the
 // film moved, with the stages in flight at the worst moments.
 
-import { Film, keyframes } from "./motion";
+import { Film, keyframes, steppedKeyframes } from "./motion";
 import type { Plan } from "./motion";
 
 export type Stage = "fonts" | "code" | "photos" | "scene" | "gpu";
@@ -44,7 +44,12 @@ const HOLD_MS = 300;
 const LEAVE_MS = 600;
 const FADE_MS = 400;
 
-const SEEN_KEY = "loader-seen";
+/**
+ * Whether the loading screen has played in this page. It is kept on `window`: that lasts while the visitor moves about the
+ * site (the router swaps pages without reloading, so coming back from a project does not play it again) and is gone with a
+ * reload or a new visit, which play it. (It was once per tab session, in `sessionStorage`: a reload then skipped it.)
+ */
+const PLAYED = "__introPlayed";
 
 export interface Intro {
   /** How far a stage has got, 0..1. */
@@ -58,19 +63,11 @@ export interface Intro {
 }
 
 function seen(): boolean {
-  try {
-    return sessionStorage.getItem(SEEN_KEY) === "1";
-  } catch {
-    return false;
-  }
+  return (window as unknown as Record<string, unknown>)[PLAYED] === true;
 }
 
 function markSeen() {
-  try {
-    sessionStorage.setItem(SEEN_KEY, "1");
-  } catch {
-    /* private mode: the loader will just be shown again */
-  }
+  (window as unknown as Record<string, unknown>)[PLAYED] = true;
 }
 
 function debugging(): boolean {
@@ -87,12 +84,13 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  * Records what the loader's frames did, for `?introdebug`: how long each took, what blocked the main thread, and how
  * evenly the film moved (its position as the page computes it each frame). Costs nothing when it is not asked for.
  */
-function startProbe(strip: HTMLElement | null, reelWidth: () => number) {
+function startProbe(strip: HTMLElement | null, reelWidth: () => number, knob: { disc: HTMLElement | null; window: HTMLElement | null } = { disc: null, window: null }) {
   const t0 = performance.now();
   const gaps: { t: number; gap: number }[] = [];
   const tasks: { t: number; ms: number }[] = [];
   const marks: { t: number; what: string }[] = [];
   const positions: number[] = []; // px
+  const knobPoses: number[] = []; // which frame of the knob's strip shows
   let last = t0;
   let raf = 0;
   const loop = (now: number) => {
@@ -101,6 +99,10 @@ function startProbe(strip: HTMLElement | null, reelWidth: () => number) {
     if (strip) {
       const m = new DOMMatrix(getComputedStyle(strip).transform);
       positions.push(m.m41);
+    }
+    if (knob.disc && knob.window) {
+      const w = knob.window.getBoundingClientRect().width || 1;
+      knobPoses.push(Math.round(-new DOMMatrix(getComputedStyle(knob.disc).transform).m41 / w));
     }
     raf = requestAnimationFrame(loop);
   };
@@ -129,9 +131,12 @@ function startProbe(strip: HTMLElement | null, reelWidth: () => number) {
       // how much the film's step from one frame to the next changed (px per frame): a smooth pull changes it a little
       const steps = positions.slice(1).map((p, i) => p - positions[i]);
       const change = steps.slice(1).map((s, i) => Math.abs(s - steps[i]));
+      // the knob: how many frames of its strip it moved on by each animation frame (it should be steady, and never back)
+      const frames = Number(knob.disc?.dataset.frames) || 180;
+      const advance = knobPoses.slice(1).map((p, i) => (((p - knobPoses[i]) % frames) + frames) % frames);
       const rows = worst.map((w) => ({ at_ms: Math.round(w.t), frame_ms: +w.gap.toFixed(1), stage: near(w.t) }));
       console.group("[intro] frame report");
-      console.log({
+      console.table({
         frames: g.length,
         meanFrameMs: +(g.reduce((a, b) => a + b.gap, 0) / Math.max(1, g.length)).toFixed(1),
         framesOver25ms: g.filter((x) => x.gap > 25).length,
@@ -141,6 +146,9 @@ function startProbe(strip: HTMLElement | null, reelWidth: () => number) {
         filmWidthPx: Math.round(reelWidth()),
         biggestChangeInStepPx: +Math.max(0, ...change).toFixed(2),
         stepChangesOver1px: change.filter((c) => c > 1).length,
+        knobFramesPerFrameMax: Math.max(0, ...advance),
+        knobFramesPerFrameBiggestChange: Math.max(0, ...advance.slice(1).map((a, i) => Math.abs(a - advance[i]))),
+        knobStillWhileFilmMoved: advance.filter((a, i) => a === 0 && Math.abs((positions[i + 1] ?? 0) - (positions[i] ?? 0)) > 1).length,
       });
       console.table(rows);
       if (tasks.length) console.table(tasks.map((x) => ({ at_ms: Math.round(x.t), ms: Math.round(x.ms), stage: near(x.t) })));
@@ -175,15 +183,39 @@ export function createIntro(root: HTMLElement): Intro | null {
   let over = false; // finished or cancelled: nothing more to do
 
   // ---- moving the film. Three things move with how far it has been pulled (x, 0..1): the strip (out of the canister), the
-  // bar's fill, and the knob (and the film's shadow, with the strip). Each plays the plan's positions as `transform` keyframes.
+  // bar's fill, and the knob (and the film's shadow, with the strip). Each plays the plan's positions as `transform` keyframes
+  // (the knob's are steps: it is a flip-book).
   const strip = el.querySelector<HTMLElement>("[data-intro-strip]");
   const spin = parseFloat(getComputedStyle(el).getPropertyValue("--spin")) || 0; // degrees over the whole pull
-  const parts: [HTMLElement | null, (x: number) => string][] = [
+  const disc = el.querySelector<HTMLElement>("[data-intro-disc]");
+  const knob = el.querySelector<HTMLElement>(".can-knob");
+  // The knob is a flip-book (FilmCanister.astro): a strip of `frames` faces, a half turn in equal steps, behind a window.
+  // Which one shows is the turn so far, `x * spin` degrees (a smooth function of time, as the film's position is), to the
+  // nearest frame of `180 / frames` degrees: no resampling as it turns, and the nearest frame is never visibly off.
+  const frames_ = Number(disc?.dataset.frames) || 180;
+  const knobPose = (x: number) => ((Math.round((x * spin) / (180 / frames_)) % frames_) + frames_) % frames_;
+  const knobAt = (pose: number) => `translateX(${(-pose / frames_) * 100}%)`;
+  type Part = [HTMLElement | null, (x: number) => string, ((plan: Plan) => Keyframe[])?];
+  const parts: Part[] = [
     [strip, (x) => `translateX(${(x - 1) * 100}%)`],
     [el.querySelector("[data-intro-shadow]"), (x) => `translateX(${(x - 1) * 100}%)`], // (the film's shadow: same width, same move)
     [el.querySelector("[data-intro-fill]"), (x) => `scaleX(${x})`],
-    [el.querySelector("[data-intro-disc]"), (x) => `rotate(${x * spin}deg)`],
+    [disc, (x) => knobAt(knobPose(x)), (plan) => steppedKeyframes(plan, knobPose, knobAt)],
   ];
+  // The knob's window is a whole number of device pixels, so that every frame of it is on the pixel grid and equally sharp.
+  const snapKnob = () => {
+    if (!knob) return;
+    knob.style.width = "";
+    knob.style.height = "";
+    const box = knob.getBoundingClientRect();
+    if (!box.width) return;
+    const dpr = devicePixelRatio || 1;
+    knob.style.width = `${Math.round(box.width * dpr) / dpr}px`;
+    knob.style.height = `${Math.max(1, Math.round(box.height * dpr)) / dpr}px`;
+  };
+  snapKnob();
+  addEventListener("resize", snapKnob);
+
   const film = new Film(reduceMotion ? FILM_REDUCED : FILM);
   const canAnimate = typeof HTMLElement.prototype.animate === "function";
   let playing: Animation[] = [];
@@ -191,7 +223,7 @@ export function createIntro(root: HTMLElement): Intro | null {
   let finishing = false; // everything is ready: the gate is open
   let arrived: (() => void) | null = null; // resolves `finish` once the film is at the end
 
-  const probe = debugging() ? startProbe(strip, () => el.querySelector<HTMLElement>("[data-intro-reel]")?.offsetWidth ?? 0) : null;
+  const probe = debugging() ? startProbe(strip, () => el.querySelector<HTMLElement>("[data-intro-reel]")?.offsetWidth ?? 0, { disc, window: knob }) : null;
 
   const place = (x: number) => {
     for (const [part, transform] of parts) if (part) part.style.transform = transform(x);
@@ -203,9 +235,9 @@ export function createIntro(root: HTMLElement): Intro | null {
     // (fill both: a new animation holds its first pose from the moment it is made, never showing the one under it)
     const timing: KeyframeAnimationOptions = { duration: plan.seconds * 1000, easing: "linear", fill: "both" };
     const next: Animation[] = [];
-    for (const [part, transform] of parts) {
+    for (const [part, transform, custom] of parts) {
       if (!part) continue;
-      const a = part.animate(keyframes(plan, transform), timing);
+      const a = part.animate(custom ? custom(plan) : keyframes(plan, transform), timing);
       a.startTime = plan.t0; // the instant the plan took its state at: the frame's time, which is the compositor's
       next.push(a);
     }
@@ -307,6 +339,7 @@ export function createIntro(root: HTMLElement): Intro | null {
     over = true;
     clearTimeout(giveUp);
     cancelAnimationFrame(frameId);
+    removeEventListener("resize", snapKnob);
     probe?.report();
     el.classList.add("leaving");
     await sleep(reduceMotion ? FADE_MS : LEAVE_MS + FADE_MS);
@@ -345,6 +378,7 @@ export function createIntro(root: HTMLElement): Intro | null {
       over = true;
       clearTimeout(giveUp);
       cancelAnimationFrame(frameId);
+      removeEventListener("resize", snapKnob);
       for (const a of playing) a.cancel();
       probe?.report();
       el.hidden = true;

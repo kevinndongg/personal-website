@@ -190,13 +190,12 @@ const zones = [
         </div>
       </div>
     </div>
-    <!-- seen already this session: gone before the first paint (`createIntro` does the same when the script runs) -->
+    <!-- already played in this page (the visitor has moved about the site since: a reload or a new visit plays it again): gone
+         before the first paint (`createIntro` does the same when the script runs) -->
     <script is:inline>
-      try {
-        if (sessionStorage.getItem("loader-seen") === "1") document.querySelector("[data-intro]").hidden = true;
-      } catch (e) {}
+      if (window.__introPlayed) document.querySelector("[data-intro]").hidden = true;
     </script>
-    <noscript><style>.intro { display: none; }</style></noscript>
+    <noscript><style>.intro { display: none; } .fallback { display: grid; }</style></noscript>
     <canvas data-canvas aria-label="A miniature diorama of my projects. Click a building to open its summary."></canvas>
     <div data-labels class="labels" aria-hidden="true"></div>
 
@@ -263,8 +262,9 @@ const zones = [
     try {
       stop = startGame(root, intro);
     } catch (error) {
-      // no WebGL, say: the loader goes and the plain list of links (which is shown until the scene is ready) is there
+      // no WebGL, say: the loader goes and the plain list of links takes its place
       console.error(error);
+      root.classList.add("no-webgl");
       intro?.cancel();
     }
   });

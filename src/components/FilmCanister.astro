@@ -33,8 +33,18 @@
 // share of the label; a barcode beside it; the speed; and a line of type. Generic on purpose: no film brand, only a small
 // mark. The film in the page sits behind this drawing and comes out from behind the barrel's right edge, which is whole.
 //
-// The knob is the part that turns, so it is not in this drawing: it is its own element over the top (`data-intro-disc`,
-// an animation of an HTML element, which runs on the compositor), and the drawing is never repainted by it.
+// The knob is the part that turns, so it is not in this drawing: it is its own element over the top, and it is a
+// flip-book. Rotating a bitmap of a circle and then squashing it to the tilt's ellipse, sixty times a second, resamples
+// a thin slot through a 3-to-1 minification at a different angle every frame, which shimmers. So nothing is rotated or
+// squashed at run time: the knob is drawn as `KNOB_FRAMES` frames of its face, each already an ellipse with the slot at
+// that frame's angle (a slot is the same every 180 degrees, so the frames cover half a turn in equal steps), in one
+// strip, rastered once at the size they are shown. A window shows one frame, and the page moves the strip behind it in
+// steps (`data-intro-disc`, `data-frames`), on the compositor. The turn it shows is a smooth function of time (the
+// film's plan: position, speed and acceleration continuous) read to the nearest frame, so there have to be enough of
+// them that the nearest is never visibly off: at one degree a frame it is within half a degree (a fifth of a pixel at
+// the rim) and the turn from one animation frame to the next is as even as the plan's, to a quarter of a pixel. (At
+// 24 frames it was not: 7 degrees, almost 2 pixels, a visible jitter.) The strip is the background of a plain HTML
+// element, so that it is certain to be a layer of its own that the compositor moves.
 const K = 0.3;
 const W = 82; // the barrel's width (units)
 const R = W / 2;
@@ -50,6 +60,8 @@ const KNOB_R = 0.457 * R; // the stub's radius: 0.457 of the barrel's width acro
 const LOWEST = TOP + BODY_H;
 const MARGIN = 4; // room each side of the barrel in the drawing, for the shadow's start and the antialiasing
 const MIN_Y = TOP - SPOOL - KNOB_R * K - 1; // the drawing's top edge (room for the knob's ellipse above the stub)
+const KNOB_FRAMES = 180; // the knob's face, in 1 degree steps (a half turn: its slot repeats every 180)
+const KNOB_W = KNOB_R * 2; // one frame's width, and (times K) its height
 const VIEW_W = W + 2 * MARGIN;
 const VIEW_H = LOWEST - MIN_Y;
 
@@ -140,12 +152,31 @@ const topRingPath = `M0 ${TOP} A${R} ${RY} 0 0 0 ${W} ${TOP} V${TOP + TOP_RING} 
 const topRingEdge = `M0 ${TOP + TOP_RING} A${R} ${RY} 0 0 0 ${W} ${TOP + TOP_RING}`;
 const stubPath = `M${R - KNOB_R} ${TOP - SPOOL} V${TOP} A${KNOB_R} ${KNOB_R * K} 0 0 0 ${R + KNOB_R} ${TOP} V${TOP - SPOOL} Z`;
 
+// the knob's strip of frames: one face drawn once, and shown `KNOB_FRAMES` times, each turned by its step and squashed to the
+// tilt's ellipse (the squash is applied after the turn, here, in the drawing: the ellipse's edges are drawn at the size
+// they show)
+const knobStrip = (() => {
+  const w = KNOB_FRAMES * KNOB_W;
+  const h = KNOB_W * K;
+  const uses = Array.from(
+    { length: KNOB_FRAMES },
+    (_, i) => `<use href="#f" transform="translate(${((i + 0.5) * KNOB_W).toFixed(2)} ${(h / 2).toFixed(2)}) scale(1 ${K}) rotate(${((i * 180) / KNOB_FRAMES).toFixed(2)})"/>`
+  ).join("");
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">` +
+    `<defs><radialGradient id="g" cx="0.5" cy="0.5" r="0.75"><stop offset="0" stop-color="#2c2824"/><stop offset="1" stop-color="#1f1c19"/></radialGradient>` +
+    `<g id="f"><circle r="${(KNOB_R - 1.6).toFixed(2)}" fill="url(#g)" stroke="#161411" stroke-width="2"/>` +
+    `<rect x="${(-KNOB_R + 2.2).toFixed(2)}" y="-2.7" width="${(2 * KNOB_R - 4.4).toFixed(2)}" height="5.4" fill="#070605"/>` +
+    `<circle r="5" fill="#070605"/></g></defs>${uses}</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+})();
+
 // where the knob's centre is, as a share of the drawing (it sits on the stub's top)
 const knobTop = (((TOP - SPOOL - MIN_Y) / VIEW_H) * 100).toFixed(3);
 const knobWidth = (((KNOB_R * 2) / VIEW_W) * 100).toFixed(3);
 ---
 
-<div class="intro-roll" data-intro-roll aria-hidden="true" style={`--k:${K}; --knob-top:${knobTop}%; --knob-w:${knobWidth}%; --aspect:${(VIEW_W / VIEW_H).toFixed(4)}`}>
+<div class="intro-roll" data-intro-roll aria-hidden="true" style={`--k:${K}; --knob-top:${knobTop}%; --knob-w:${knobWidth}%; --aspect:${(VIEW_W / VIEW_H).toFixed(4)}; --knob-ar:${(1 / K).toFixed(4)}`}>
   <svg class="can-art" viewBox={`${-MARGIN} ${MIN_Y} ${VIEW_W} ${VIEW_H}`} font-family="Figtree, system-ui, Arial, sans-serif" font-weight="600">
     <defs>
       <clipPath id="fc-body"><path d={bodyPath}></path></clipPath>
@@ -257,18 +288,9 @@ const knobWidth = (((KNOB_R * 2) / VIEW_W) * 100).toFixed(3);
     <path d={stubPath} fill="url(#fc-stub)"></path>
   </svg>
 
-  <!-- the knob on the stub: a disc that turns in its own plane (the inner svg), squashed by the angle (the outer) -->
-  <span class="can-knob">
-    <svg class="can-disc" data-intro-disc viewBox={`${-KNOB_R} ${-KNOB_R} ${KNOB_R * 2} ${KNOB_R * 2}`}>
-      <defs>
-        <radialGradient id="fc-knob" cx="0.5" cy="0.5" r="0.75">
-          <stop offset="0" stop-color="#2c2824"></stop>
-          <stop offset="1" stop-color="#1f1c19"></stop>
-        </radialGradient>
-      </defs>
-      <circle r={KNOB_R - 1} fill="url(#fc-knob)" stroke="#161411" stroke-width="2"></circle>
-      <rect x={-KNOB_R + 1.4} y="-2.7" width={2 * KNOB_R - 2.8} height="5.4" fill="#070605"></rect>
-      <circle r="5" fill="#070605"></circle>
-    </svg>
+  <!-- the knob on the stub: a window onto a strip of its frames, each the face as it looks at that angle, already squashed
+       to the tilt's ellipse (see the top of this file) -->
+  <span class="can-knob" style={`--frames:${KNOB_FRAMES}`}>
+    <span class="can-disc" data-intro-disc data-frames={KNOB_FRAMES} style={`background-image:url("${knobStrip}")`}></span>
   </span>
 </div>

@@ -233,3 +233,25 @@ export function keyframes(plan: Plan, build: (x: number) => string): { transform
   }
   return frames;
 }
+
+/**
+ * Keyframes for something that takes one of a few discrete poses (a flip-book): `pose(x)` is which pose the position `x`
+ * is at, and `build(pose)` the transform that shows it. Only the changes are keyframes, each held until the next
+ * (`steps(1, end)`), so two poses are never shown blended, and the animation is one a compositor takes. Sampled every
+ * 2 ms, so a change is placed to within that.
+ */
+export function steppedKeyframes(plan: Plan, pose: (x: number) => number, build: (pose: number) => string): Keyframe[] {
+  const n = Math.round(plan.seconds / 0.002);
+  const frames: Keyframe[] = [];
+  let last = Number.NaN;
+  for (let i = 0; i <= n; i++) {
+    const p = pose(i === n ? plan.xEnd : Film.positionAt(plan, (i / n) * plan.seconds));
+    if (p !== last) {
+      frames.push({ transform: build(p), offset: i / n, easing: "steps(1, end)" });
+      last = p;
+    }
+  }
+  const end = frames[frames.length - 1];
+  if ((end.offset as number) < 1) frames.push({ transform: end.transform, offset: 1 });
+  return frames;
+}

@@ -37,8 +37,9 @@
   background-size:
     160px 160px,
     100% 100%;
-  /* how far the spool's knob turns over the whole pull (the real spool is small and turns far more: that would be a blur) */
-  --spin: 1080deg;
+  /* how far the spool's knob turns over the whole pull (the real spool is small and turns far more: that would be a blur; this is
+     at most about 1.8 turns a second) */
+  --spin: 720deg;
 }
 
 .intro[hidden] {
@@ -281,19 +282,27 @@
   overflow: visible;
 }
 
+/*
+  The knob: a window onto a strip of its frames (FilmCanister.astro): each frame is the face already squashed to the tilt's
+  ellipse, so nothing is rotated or squashed as it turns, and the page moves the strip behind the window a frame at a time.
+  The window's size is snapped to whole device pixels by `intro.ts`, so that every frame is on the pixel grid.
+*/
 .can-knob {
   position: absolute;
   left: 50%;
   top: var(--knob-top);
   width: var(--knob-w);
-  aspect-ratio: 1;
-  transform: translate(-50%, -50%) scaleY(var(--k)); /* (the disc inside turns first, and is squashed after) */
+  aspect-ratio: var(--knob-ar);
+  transform: translate(-50%, -50%);
+  overflow: hidden;
 }
 
 .can-disc {
   display: block;
-  width: 100%;
+  width: calc(var(--frames) * 100%); /* as many windows wide as it has frames */
   height: 100%;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
   will-change: transform;
 }
 
