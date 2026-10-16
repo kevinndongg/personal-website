@@ -15,16 +15,28 @@
 */
 
 .intro {
-  --film: #14110e; /* the film base, the sprocket holes and the frame numbers: as on the light table (scenery.ts) */
-  --hole: #0b0a09;
+  --film: #0c0a09; /* the film base, as on the light table (scenery.ts), a little darker so that it stays distinct from the backdrop */
+  --hole: #080706;
   --amber: #e8a33d;
-  --backdrop: #1c1713;
+  --backdrop: #18130f;
   position: absolute;
   inset: 0;
   z-index: 50; /* above the canvas, labels, panel and the link list */
   display: grid;
   place-items: center;
-  background: var(--backdrop);
+  /*
+    The light the canister is drawn in (FilmCanister.astro: its highlight is left of its middle, and its rim brightest at the
+    front) comes from up-left and in front, so the backdrop is brightest up-left of the loader, falling away to a darker
+    edge, with the shadows (below) falling the other way. Over it, a fine static noise at about 4% (the dither): a dark
+    gradient bands on many screens, and a little grain suits film. All of it is rastered once.
+  */
+  background-color: var(--backdrop);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 85% 78% at 42% 38%, #251e18 0%, #1e1914 28%, #18130f 58%, #100d0a 100%);
+  background-size:
+    160px 160px,
+    100% 100%;
   /* how far the spool's knob turns over the whole pull (the real spool is small and turns far more: that would be a blur) */
   --spin: 1080deg;
 }
@@ -34,7 +46,7 @@
 }
 
 .intro-reel {
-  --band: 2.2cqw; /* film above and below the frames, with the holes (and the numbers) */
+  --band: 2.5cqw; /* film above and below the frames, with the holes (and the numbers) */
   --gap: 0.8cqw;
   --tongue: 4cqw; /* the leader's end, which leads */
   --r: 4.2cqw; /* the canister's radius: FilmCanister.astro is drawn 100 units across, one unit being `--r / 50` */
@@ -46,8 +58,9 @@
   --film-w: calc(100cqw - var(--slit));
   --frame-w: calc((var(--film-w) - var(--gap) - 0.6cqw - var(--tongue) - var(--n) * var(--gap)) / var(--n));
   --film-h: calc(2 * var(--band) + var(--frame-w) * 0.75);
+  --far: 120cqw; /* (the film's shadow: its box is parked this far to the left, out of sight, and only its shadow is drawn) */
   position: relative;
-  width: clamp(min(300px, 100vw - 32px), 60vw, 640px);
+  width: clamp(min(300px, 100vw - 32px), 90vw, 960px);
   container-type: inline-size;
 }
 
@@ -81,10 +94,53 @@
   align-items: center;
   width: 100%;
   padding: var(--band) 0 var(--band) calc(var(--gap) + 0.6cqw);
-  background: var(--film);
-  /* (no clip-path, no filter, no container anywhere in the strip: a plain stack of boxes, images and gradients, which the
-     browser keeps as one texture and only moves) */
-  transform: translateX(-100%); /* inside the canister, until the pull begins */
+  /*
+    The film base, in pieces, so that what is not film is not painted: the part between the bands, the bands' inner 60%, and
+    their outer 40% as film with the sprocket holes cut out of it (the holes are openings: the lit backdrop, and the film's
+    shadow, show through). All of it stops before the leader's tip, which paints its own (cut) shape.
+    (No clip-path, no filter, no container anywhere in the strip: a plain stack of boxes, images and gradients, which the
+    browser keeps as one texture and only moves.)
+  */
+  --tip: 2.4cqw;
+  --m: 0.25cqw; /* film outside a row of holes, at the strip's edge: a hole is enclosed, not a notch */
+  --h: 0.7cqw; /* a hole's height (it is 1.1 wide, a rectangle, at a pitch of 1.9) */
+  --solid: linear-gradient(var(--film), var(--film));
+  --holes: repeating-linear-gradient(90deg, var(--film) 0 0.4cqw, transparent 0.4cqw 1.5cqw, var(--film) 1.5cqw 1.9cqw);
+  background:
+    var(--solid) 0 calc(var(--m) + var(--h)) / calc(100% - var(--tip)) calc(100% - 2 * (var(--m) + var(--h))) no-repeat,
+    var(--solid) 0 0 / calc(100% - var(--tip)) var(--m) no-repeat,
+    var(--holes) 0 var(--m) / calc(100% - var(--tip)) var(--h) no-repeat,
+    var(--solid) 0 100% / calc(100% - var(--tip)) var(--m) no-repeat,
+    var(--holes) 0 calc(100% - var(--m)) / calc(100% - var(--tip)) var(--h) no-repeat;
+  will-change: transform;
+}
+
+/*
+  The film's shadow: the light is up-left and in front, so it falls down and to the right, soft and close (a wall just
+  behind). It comes out of the slit as the film does (its gate starts there, a little bigger all round for the blur), and
+  is moved by `intro.ts` with the strip, as a fourth part, so it travels with it exactly. It is drawn once: a `box-shadow`
+  on a box that sits out of sight (`--far` to the left) with the shadow offset by the same, so there is no filter on
+  anything that moves.
+*/
+.intro-shadow-gate {
+  position: absolute;
+  z-index: 2;
+  left: var(--slit);
+  bottom: calc(var(--foot) - 3cqw);
+  width: calc(var(--film-w) + 3cqw);
+  height: calc(var(--film-h) + 6cqw);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.intro-film-shadow {
+  position: absolute;
+  top: 3cqw;
+  left: calc(var(--far) * -1);
+  width: var(--film-w);
+  height: var(--film-h);
+  box-shadow: calc(var(--far) + 0.55cqw) 0.75cqw 1.1cqw rgba(0, 0, 0, 0.5);
+  transform: translateX(-100%);
   will-change: transform;
 }
 
@@ -102,51 +158,20 @@
   pointer-events: none;
 }
 
-/* the sprocket holes: the same pitch the whole length, along the top and bottom bands */
-.intro-strip::before,
-.intro-strip::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: var(--band);
-  z-index: 1;
-  background: repeating-linear-gradient(90deg, transparent 0 0.5cqw, var(--hole) 0.5cqw 1.2cqw, transparent 1.2cqw 1.9cqw);
-  background-size: 100% 40%; /* (at the outer edge of the band: the number goes between the holes and the frame) */
-  background-repeat: no-repeat;
-}
-
-.intro-strip::before {
-  top: 0;
-  background-position: 0 0;
-}
-
-.intro-strip::after {
-  bottom: 0;
-  background-position: 0 100%;
-}
-
 .intro-tongue {
   align-self: stretch;
 }
 
-/* the leader's end is cut at the corners, as film is: two triangles in the backdrop colour over its corners */
-.intro-cut {
+/* the leader's end, cut at the corners as film is: a trapezoid painted in the film colour (kept in step with --film), so
+   that outside it the strip is truly transparent */
+.intro-tip {
   position: absolute;
   right: 0;
-  width: 2.4cqw;
-  height: calc(var(--film-h) * 0.2);
-  z-index: 2;
-}
-
-.intro-cut.top {
   top: 0;
-  background: linear-gradient(to bottom left, var(--backdrop) 50%, transparent 50%);
-}
-
-.intro-cut.bottom {
   bottom: 0;
-  background: linear-gradient(to top left, var(--backdrop) 50%, transparent 50%);
+  width: var(--tip);
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' preserveAspectRatio='none'%3E%3Cpolygon points='0,0 10,2 10,8 0,10' fill='%230c0a09'/%3E%3C/svg%3E")
+    0 0 / 100% 100% no-repeat;
 }
 
 .intro-frame {
@@ -199,14 +224,15 @@
   position: absolute;
   left: 0.2cqw;
   top: 100%;
-  margin-top: 0.3cqw;
+  margin-top: 0.2cqw;
   z-index: 0;
-  font: 600 1.15cqw/1 system-ui, sans-serif;
+  font: 600 1.1cqw/1 system-ui, sans-serif;
   color: var(--amber);
   opacity: 0.85;
 }
 
-/* ---- the bar under it all, which the canister stands on, filling as the film is pulled */
+/* ---- the bar under it all, which the canister stands on, filling as the film is pulled. A groove in the surface, lit
+   from above like the rest: dark along its top inside edge, a light lip along its lower edge, and a sheen on the fill */
 .intro-bar {
   position: absolute;
   left: 0;
@@ -215,7 +241,10 @@
   height: 0.6cqw;
   margin-top: -0.1cqw;
   border-radius: 99px;
-  background: rgba(245, 241, 234, 0.12);
+  background: rgba(0, 0, 0, 0.32);
+  box-shadow:
+    inset 0 0.1cqw 0.15cqw rgba(0, 0, 0, 0.55),
+    0 0.1cqw 0 rgba(255, 238, 210, 0.12);
   overflow: hidden;
 }
 
@@ -223,7 +252,8 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: var(--amber);
+  background: linear-gradient(#f6b957, var(--amber) 55%, #cc8828);
+  box-shadow: inset 0 0.08cqw 0 rgba(255, 244, 214, 0.6);
   transform-origin: left center;
   transform: scaleX(0);
   will-change: transform;

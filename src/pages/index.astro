@@ -159,6 +159,8 @@ const zones = [
       <div class="intro-reel" data-intro-reel style={`--n:${introPhotos.length}`}>
         <!-- everything inside is placed from the stage's bottom edge, where the canister stands -->
         <div class="intro-stage">
+          <!-- the film's shadow: it comes out of the slit as the film does, and moves with it -->
+          <div class="intro-shadow-gate" aria-hidden="true"><span class="intro-film-shadow" data-intro-shadow></span></div>
           <!-- the gate: the film comes out of a slit in the canister's side, and is cut off where it is still inside -->
           <div class="intro-gate">
             <!-- laid out as it comes out: the last frame next to the canister, frame 1 at the tongue, which leads -->
@@ -178,9 +180,8 @@ const zones = [
                   ))
               }
               <span class="intro-tongue" aria-hidden="true"></span>
-              <!-- the tongue's cut corners (painted in the backdrop colour: a clip-path would make the strip a mask) -->
-              <span class="intro-cut top" aria-hidden="true"></span>
-              <span class="intro-cut bottom" aria-hidden="true"></span>
+              <!-- the tongue's end, cut at the corners: its own shape, transparent outside it (a clip-path would make the strip a mask) -->
+              <span class="intro-tip" aria-hidden="true"></span>
             </div>
           </div>
           <!-- where the film goes in: a lip over its start, in front of it, in the can's side -->

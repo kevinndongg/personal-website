@@ -175,11 +175,12 @@ export function createIntro(root: HTMLElement): Intro | null {
   let over = false; // finished or cancelled: nothing more to do
 
   // ---- moving the film. Three things move with how far it has been pulled (x, 0..1): the strip (out of the canister), the
-  // bar's fill, and the knob. Each plays the plan's positions as `transform` keyframes.
+  // bar's fill, and the knob (and the film's shadow, with the strip). Each plays the plan's positions as `transform` keyframes.
   const strip = el.querySelector<HTMLElement>("[data-intro-strip]");
   const spin = parseFloat(getComputedStyle(el).getPropertyValue("--spin")) || 0; // degrees over the whole pull
   const parts: [HTMLElement | null, (x: number) => string][] = [
     [strip, (x) => `translateX(${(x - 1) * 100}%)`],
+    [el.querySelector("[data-intro-shadow]"), (x) => `translateX(${(x - 1) * 100}%)`], // (the film's shadow: same width, same move)
     [el.querySelector("[data-intro-fill]"), (x) => `scaleX(${x})`],
     [el.querySelector("[data-intro-disc]"), (x) => `rotate(${x * spin}deg)`],
   ];
