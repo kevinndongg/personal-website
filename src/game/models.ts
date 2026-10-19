@@ -12,7 +12,6 @@ import {
   NearestFilter,
   PlaneGeometry,
   RedFormat,
-  SphereGeometry,
 } from "three";
 import type { BufferGeometry, Material } from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
@@ -375,14 +374,8 @@ export function formulaModel(): Group {
   // engine cover and rear bodywork: closes the tail between the sidepods and the rear wing
   car.add(box(10, 3.8, 4.4, RED, -10.5, 1.4, 0));
   car.add(box(8, 0.3, 1.2, BLACK, -10.5, 5.2, 0)); // black stripe on the engine cover
-  car.add(box(3, 2.4, 2.8, BLACK, -7.8, 5.2, 0)); // airbox behind the driver
+  car.add(box(3, 2.4, 2.8, BLACK, -7.8, 5.2, 0)); // airbox behind the cockpit
   car.add(box(4, 2.6, 3.4, BLACK, -15.5, 1.2, 0)); // crash structure under the rear wing
-
-  // driver: red suit, bright helmet with a dark visor
-  car.add(box(3.8, 3.4, 4.2, RED, -1, 4.2, 0));
-  car.add(mesh(new SphereGeometry(2.5, 8, 6), toon("#f0f2f5"), -1, 8.6, 0));
-  car.add(box(1.4, 1.1, 3, BLACK, 0.9, 8.7, 0));
-  car.add(box(0.8, 0.8, 3.4, BLACK, 5, 5.4, 0)); // steering wheel
 
   // roll hoop
   car.add(box(0.8, 6.4, 0.8, BLACK, -5, 4.4, -2.5));
