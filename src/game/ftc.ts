@@ -109,14 +109,19 @@ export function ftcScene(ox: number, oy: number): Scene {
   props.push({ sprite: "laptop", ...at(36, 190), elevation: 7 }); // open on the pit table, screen towards the viewer
   props.push(block("toolchest", at(98, 190), 18, 12));
 
-  // ---- game pieces left of the driver station, laid out in three tidy rows by kind, all facing the same way:
-  // cones, then pixels, then samples
-  const row = (y: number, xs: number[], sprites: string[]) =>
-    sprites.map((sprite, i) => turned(sprite, at(xs[i], y), 0, 2.5));
+  // ---- the stored game pieces: a tight grid of stacks up against the field's south wall (its outer face is y 145), left
+  // of the driver station. Tallest at the back, so every row shows over the one in front of it.
+  const COLS = [11, 17.5, 24, 30.5];
+  const stacks = (y: number, sprites: string[], make: (sprite: string, c: { x: number; y: number }) => Prop) =>
+    sprites.map((sprite, i) => make(sprite, at(COLS[i], y)));
   props.push(
-    ...row(153, [12, 24, 36], ["ftc-cone-red", "ftc-cone-blue", "ftc-cone-red"]),
-    ...row(163, [11, 20, 29, 38], ["ftc-pixel-y", "ftc-pixel-p", "ftc-pixel-w", "ftc-pixel-g"]),
-    ...row(173, [12, 24, 36], ["ftc-sample-red", "ftc-sample-yellow", "ftc-sample-blue"])
+    ...stacks(148, ["ftc-cone-stack-red", "ftc-cone-stack-red", "ftc-cone-stack-blue", "ftc-cone-stack-blue"], (s, c) => round(s, c, 3)),
+    ...stacks(
+      154,
+      ["ftc-sample-pile-red", "ftc-sample-pile-yellow", "ftc-sample-pile-yellow", "ftc-sample-pile-blue"],
+      (s, c) => block(s, c, 4, 4)
+    ),
+    ...stacks(160, ["ftc-pixel-stack-y", "ftc-pixel-stack-p", "ftc-pixel-stack-w", "ftc-pixel-stack-g"], (s, c) => round(s, c, 2.7))
   );
 
   // ---- the floor

@@ -1,6 +1,5 @@
 import {
   BoxGeometry,
-  ConeGeometry,
   CylinderGeometry,
   DoubleSide,
   Group,
@@ -40,8 +39,13 @@ function strut(a: [number, number, number], b: [number, number, number], thick: 
   return m;
 }
 
-function cone(r: number, h: number, color: string, x: number, y: number, z: number): Mesh {
-  return mesh(new ConeGeometry(r, h, 10), toon(color), x, y + h / 2, z);
+/** A Power Play cone, standing: a truncated cone with a flat top (the opening a pole passes through) and a flared base ring. */
+function ppCone(color: string, x: number, y: number, z: number, scale = 1): Group {
+  const g = new Group();
+  g.add(mesh(new CylinderGeometry(1.1 * scale, 2.5 * scale, 5.5 * scale, 14), toon(color), 0, 2.75 * scale, 0));
+  g.add(cyl(2.9 * scale, 2.9 * scale, 0.5 * scale, color, 0, 0, 0, 14));
+  g.position.set(x, y, z);
+  return g;
 }
 
 // ---------------------------------------------------------------- pixel text
@@ -140,13 +144,32 @@ function ppJunction(level: "g" | "l" | "m" | "h", scoredCone?: string): Group {
     g.add(cyl(1.7, 1.7, 0.9, DARK, 0, 1 + h, 0, 8));
   }
   // the cone stands round the foot of the pole, the pole coming out through its tip
-  if (scoredCone) g.add(cone(2.5, 5.2, scoredCone, 0, 1, 0));
+  if (scoredCone) g.add(ppCone(scoredCone, 0, 1, 0));
   return g;
 }
 
-function coneStack(color: string, n = 3): Group {
+/** Cones nested one inside the next, each `pitch` higher than the last, so only their base rings show. */
+function coneStack(color: string, n = 3, pitch = 1.2): Group {
   const g = new Group();
-  for (let i = 0; i < n; i++) g.add(cone(2.4, 5.2, color, 0, i * 1.9, 0));
+  for (let i = 0; i < n; i++) g.add(ppCone(color, 0, i * pitch, 0));
+  return g;
+}
+
+/** A neat stack of hexagonal pixels lying flat on one another. */
+function pixelStack(color: string, n = 8): Group {
+  const g = new Group();
+  for (let i = 0; i < n; i++) g.add(cyl(2.6, 2.6, 0.9, color, 0, i * 0.9, 0, 6));
+  return g;
+}
+
+/** Samples piled log-cabin style: two side by side in each layer, every layer turned across the one below. */
+function samplePile(color: string, layers = 6): Group {
+  const g = new Group();
+  for (let l = 0; l < layers; l++)
+    for (const s of [-1, 1]) {
+      const along = l % 2 === 0;
+      g.add(box(along ? 3.8 : 1.6, 1.6, along ? 1.6 : 3.8, color, along ? 0 : s * 0.85, l * 1.6, along ? s * 0.85 : 0));
+    }
   return g;
 }
 
@@ -319,23 +342,6 @@ function basketModel(stripe: string): Group {
   return g;
 }
 
-/** One cone lying on its side. */
-function lyingCone(color: string): Group {
-  const g = new Group();
-  const c = cone(2.4, 5.2, color, 0, 0, 0);
-  c.rotation.z = Math.PI / 2;
-  c.position.set(0, 2.4, 0);
-  g.add(c);
-  return g;
-}
-
-/** One sample lying on the floor. */
-function sampleModel(color: string): Group {
-  const g = new Group();
-  g.add(box(3.8, 1.6, 1.6, color, 0, 0, 0));
-  return g;
-}
-
 /** Three samples side by side, each a little askew. */
 function samplesModel(color: string): Group {
   const g = new Group();
@@ -486,8 +492,8 @@ function binModel(w: number, d: number): Group {
   }
   g.add(box(w - 3, 4.6, d - 3, "#2b2e38", 0, 1, 0)); // the heap, as far as the rim
   const top = 5.6;
-  g.add(cone(1.7, 5, RED, -7, top, -2));
-  g.add(cone(1.7, 5, BLUE, -3.5, top, 2.4));
+  g.add(ppCone(RED, -7, top, -2, 0.7));
+  g.add(ppCone(BLUE, -3.5, top, 2.4, 0.7));
   g.add(cyl(2.2, 2.2, 0.9, PIXEL.y, 1.5, top, -2.4, 6));
   g.add(cyl(2.2, 2.2, 0.9, PIXEL.p, 4.5, top, 2.6, 6));
   g.add(cyl(2.2, 2.2, 0.9, PIXEL.w, 7, top, -1, 6));
@@ -623,16 +629,25 @@ export function ftcModel(id: string, w: number, d: number): Group | null {
       return basketModel(RED);
     case "basket-blue":
       return basketModel(BLUE);
-    case "cone-red":
-      return lyingCone(RED);
-    case "cone-blue":
-      return lyingCone(BLUE);
-    case "sample-red":
-      return sampleModel(RED);
-    case "sample-yellow":
-      return sampleModel(GOLD);
-    case "sample-blue":
-      return sampleModel(BLUE);
+    // the stored pieces: stacks of cones and pixels, piles of samples
+    case "cone-stack-red":
+      return coneStack(RED, 6);
+    case "cone-stack-blue":
+      return coneStack(BLUE, 6);
+    case "pixel-stack-y":
+      return pixelStack(PIXEL.y);
+    case "pixel-stack-p":
+      return pixelStack(PIXEL.p);
+    case "pixel-stack-w":
+      return pixelStack(PIXEL.w);
+    case "pixel-stack-g":
+      return pixelStack(PIXEL.g);
+    case "sample-pile-red":
+      return samplePile(RED);
+    case "sample-pile-yellow":
+      return samplePile(GOLD);
+    case "sample-pile-blue":
+      return samplePile(BLUE);
     case "samples-red":
       return samplesModel(RED);
     case "samples-yellow":
