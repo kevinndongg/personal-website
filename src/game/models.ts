@@ -403,12 +403,21 @@ export function typistModel(): Group {
   g.add(box(1.5, 4.5, 1.5, "#2a3a6a", 0, 0, 1.1));
   g.add(box(2.6, 5, 4.4, SHIRT, 0, 4.5, 0));
 
+  // two arms (side -1 is his left, the far one from the camera), each with an elbow: the upper arm hangs from the shoulder
+  // and rotation.z swings it forward (+x); the forearm hangs from the elbow and bends further forward the same way
   const arms = [-1, 1].map((side) => {
-    const arm = new Group(); // hangs from the shoulder; rotation.z swings it forward (+x)
-    arm.position.set(0, 9, side * 2.7);
-    arm.add(box(1.2, 4, 1, SHIRT, 0, -4, 0));
-    g.add(arm);
-    return arm;
+    const upper = new Group();
+    upper.name = side < 0 ? "upper-left" : "upper-right";
+    upper.position.set(0, 9, side * 2.7);
+    upper.add(box(1.2, 2.4, 1, SHIRT, 0, -2.4, 0));
+    const forearm = new Group();
+    forearm.name = side < 0 ? "forearm-left" : "forearm-right";
+    forearm.position.set(0, -2.4, 0);
+    forearm.add(box(1.2, 1.8, 1, SHIRT, 0, -1.8, 0));
+    forearm.add(box(1.2, 0.8, 1, "#e8b890", 0, -2.6, 0)); // hand
+    upper.add(forearm);
+    g.add(upper);
+    return { side, upper, forearm };
   });
 
   const head = new Group(); // pivots at the neck; rotation.z nods it forward
@@ -419,14 +428,19 @@ export function typistModel(): Group {
   for (const z of [-0.8, 0.8]) head.add(box(0.3, 0.6, 0.6, "#16161d", 1.6, 1.3, z));
   g.add(head);
 
-  const REST = 0.08; // arms down at his sides
-  const TYPING = 1.05; // forearms out to the keys
+  const REST = 0.06; // arms down at his sides
+  const UPPER = 0.5; // typing: upper arms a little forward and out to the sides (so the far one clears his body)...
+  const SPLAY = 0.18;
+  const FOREARM = 0.95; // ...and forearms bent forward to the keys
   const pose = (work: number, t: number) => {
-    // typing comes in bursts: each hand taps at its own pace, and the head dips toward the keys
+    // typing comes in bursts: the hands tap in turns (never quite in a regular rhythm), and the head dips toward the keys
     const burst = Math.min(1, Math.max(0, 0.5 + 1.4 * Math.sin(t * 1.1)));
-    const tap = work * (0.04 + 0.1 * burst);
-    arms[0].rotation.z = REST + (TYPING - REST) * work + tap * Math.sin(t * 15);
-    arms[1].rotation.z = REST + (TYPING - REST) * work + tap * Math.sin(t * 12 + 1.7);
+    for (const { side, upper, forearm } of arms) {
+      const wob = 0.6 * Math.sin(t * 13 + (side < 0 ? 0 : Math.PI)) + 0.4 * Math.sin(t * 7.1 + side * 1.2);
+      upper.rotation.z = REST + (UPPER - REST) * work + work * burst * 0.08 * wob;
+      upper.rotation.x = -side * SPLAY * work; // (tilts the arm's lower end away from his body)
+      forearm.rotation.z = REST + (FOREARM - REST) * work + work * (0.1 + 0.25 * burst) * wob;
+    }
     head.rotation.z = -work * (0.22 + 0.05 * Math.sin(t * 2.1));
   };
   pose(1, 0); // (stays like this when motion is reduced)

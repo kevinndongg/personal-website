@@ -117,6 +117,7 @@ function racingScene(ox: number, oy: number): Scene {
   const bay = along(C, 42, 0); // center of the bay: the car parks here
   const building = { x: C.x - 77, y: C.y - 68, w: 154, h: 136 }; // bounding box of the rotated garage
 
+  const laptopAt = along(M, 24, 36);
   const props: Prop[] = [
     { sprite: "garage", ...C, angle: ANGLE, solid: rect(GARAGE_W, GARAGE_H) },
     // parked inside the bay, nose toward the opening (the garage footprint already blocks the space)
@@ -129,7 +130,9 @@ function racingScene(ox: number, oy: number): Scene {
     { sprite: "typist", ...along(M, 14, 42), solid: circle(3) }, // at the laptop; watches the car when it drives
     { sprite: "person-w", ...along(M, 10, -50), solid: circle(3) },
     { sprite: "person-b", ...along(M, -8, -46), solid: circle(3) },
-    { sprite: "laptop", ...along(M, 24, 36), ground: true },
+    // turned toward the typist, who stands to its west (0: screen faces south, PI / 2: faces him square-on, which turns
+    // the lid edge-on to the camera). A prop with an angle is placed by its centre, 2 px further down than one without.
+    { sprite: "laptop", x: laptopAt.x, y: laptopAt.y - 2, angle: Math.PI / 4 },
   ];
 
   // team dressing around the garage (all positions area-relative, bottom-center anchors)
@@ -231,7 +234,7 @@ function racingScene(ox: number, oy: number): Scene {
     at(164, 243),
     { x: lane + 40, y: 230 },
     { x: lane + 30, y: 205 },
-    { x: lane + 20, y: 170 },
+    { x: lane + 14, y: 170 },
     { x: lane, y: 140 },
     ...arc,
   ];
