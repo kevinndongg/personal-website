@@ -1,4 +1,4 @@
-import type { Decal, Footprint, Prop, Rect, Scene } from "./scenes";
+import type { Decal, Footprint, Prop, Scene } from "./scenes";
 
 // The FTC area: one square competition field split into three wedges, one per season, with the duck mascot, the driver
 // station and the pit crew's things set around it. Positions are relative to the area's top-left corner, then shifted by
@@ -15,6 +15,30 @@ export const H = 204;
 
 /** The field's top-left corner (area-local) and side. */
 const FIELD = { x: 8, y: 22, size: 120 };
+
+/**
+ * The field's floor, relative to the field's centre (x east, y south): six by six foam tiles, a tape line from the centre
+ * to each of the three wedge boundaries (the 30 degree rays meet the side walls at `K`), and the taped square where each
+ * season's robot will start, on a tile that has no pole or element in it.
+ */
+const HALF = FIELD.size / 2;
+const K = HALF * Math.tan(Math.PI / 6);
+export const FLOOR = {
+  size: FIELD.size,
+  tiles: 6,
+  tape: [
+    [{ x: 0, y: 0 }, { x: 0, y: -HALF }],
+    [{ x: 0, y: 0 }, { x: HALF, y: K }],
+    [{ x: 0, y: 0 }, { x: -HALF, y: K }],
+  ],
+  marks: (
+    [
+      [-50, -30],
+      [30, -30],
+      [0, 16],
+    ] as const
+  ).map(([x, y]) => ({ x: x - 9, y: y - 9, w: 18, h: 18 })),
+};
 
 const circle = (r: number): Footprint => ({ kind: "circle", r });
 const rect = (w: number, h: number): Footprint => ({ kind: "rect", w, h });
@@ -124,14 +148,11 @@ export function ftcScene(ox: number, oy: number): Scene {
     ...stacks(160, ["ftc-pixel-stack-y", "ftc-pixel-stack-p", "ftc-pixel-stack-w", "ftc-pixel-stack-g"], (s, c) => round(s, c, 2.7))
   );
 
-  // ---- the floor
-  const k = half * Math.tan(Math.PI / 6); // where the 30 degree rays meet the side walls
+  // ---- the floor: the tiles, tape and start squares are a model of their own (`FLOOR`) so that they rise with the rest of
+  // the field when the project is hovered; ground paint would stay put. It has no footprint, so it never blocks anything,
+  // and without one its model stands 2 px behind the y given here.
   const centre = f(0, 0);
-  // the taped square where each season's robot will start, on a tile that has no pole or element in it
-  const robot = (x: number, y: number): Rect => {
-    const p = f(x, y);
-    return { x: p.x - 9, y: p.y - 9, w: 18, h: 18 };
-  };
+  props.push({ sprite: "ftc-floor", x: centre.x, y: centre.y + 2 });
   const decals: Decal[] = [
     // a dark carpet under the whole area, a little inside the box border
     {
@@ -139,18 +160,6 @@ export function ftcScene(ox: number, oy: number): Scene {
       points: [at(6, 6), at(W - 6, 6), at(W - 6, H - 6), at(6, H - 6)],
       fill: "#2b3040",
       speckle: ["#353b4d", "#232733"],
-    },
-    {
-      kind: "field",
-      ...at(FIELD.x, FIELD.y),
-      size: FIELD.size,
-      tiles: 6,
-      tape: [
-        [centre, f(0, -half)],
-        [centre, f(half, k)],
-        [centre, f(-half, k)],
-      ],
-      marks: [robot(-50, -30), robot(30, -30), robot(0, 16)],
     },
   ];
 

@@ -1,15 +1,17 @@
 import {
   BoxGeometry,
+  CanvasTexture,
   CylinderGeometry,
   DoubleSide,
   Group,
+  LinearFilter,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
   PlaneGeometry,
   Vector3,
 } from "three";
-import type { CanvasTexture } from "three";
+import { FLOOR } from "./ftc";
 import { box, canvasOf, cyl, fillRect, mesh, nearestTexture, toon } from "./models";
 import type { AnimCtx } from "./models";
 
@@ -119,6 +121,45 @@ function picture(w: number, h: number, canvas: HTMLCanvasElement, twoSided = fal
 }
 
 // ---------------------------------------------------------------- the field
+
+/**
+ * The field's floor: foam tiles, the tape between the wedges and the taped robot start squares, as a flat sheet just above
+ * the ground (below the shadow catcher and the leaf shade, so shadows and dapple still fall over it), on a thin slab that
+ * only shows once the floor has risen. It is not flagged `flat`, so it lifts with the rest of the field when hovered.
+ */
+function floorModel(): Group {
+  const g = new Group();
+  const { size, tiles, tape, marks } = FLOOR;
+  const S = 2; // texels per px
+  const [c, ctx] = canvasOf(size * S, size * S);
+  ctx.scale(S, S);
+  const t = size / tiles;
+  for (let j = 0; j < tiles; j++) for (let i = 0; i < tiles; i++) fillRect(ctx, i * t, j * t, t, t, (i + j) & 1 ? "#8a8f9d" : "#7f8492");
+  for (let k = 1; k < tiles; k++) {
+    fillRect(ctx, Math.round(k * t), 0, 1, size, "#4d515e"); // the seams between tiles
+    fillRect(ctx, 0, Math.round(k * t), size, 1, "#4d515e");
+  }
+  const h = size / 2; // the data is relative to the centre, the canvas to its corner
+  ctx.strokeStyle = "#f4f4f4";
+  ctx.lineWidth = 1;
+  for (const line of tape) {
+    ctx.beginPath();
+    line.forEach((p, i) => (i ? ctx.lineTo(p.x + h, p.y + h) : ctx.moveTo(p.x + h, p.y + h)));
+    ctx.stroke();
+  }
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([3, 2]);
+  for (const m of marks) ctx.strokeRect(m.x + h + 0.75, m.y + h + 0.75, m.w - 1.5, m.h - 1.5);
+  const tex = new CanvasTexture(c);
+  tex.minFilter = LinearFilter;
+  tex.generateMipmaps = false;
+  const sheet = new Mesh(new PlaneGeometry(size, size), new MeshBasicMaterial({ map: tex }));
+  sheet.rotation.x = -Math.PI / 2;
+  sheet.position.y = 0.03;
+  g.add(sheet);
+  g.add(box(size, 3, size, "#6d717e", 0, -3.02, 0));
+  return g;
+}
 
 /** One run of the field's wall: a pale rail with a darker cap. */
 function wallModel(w: number, d: number): Group {
@@ -595,6 +636,8 @@ export function ftcModel(id: string, w: number, d: number): Group | null {
   if (!id.startsWith("ftc-")) return null;
   const key = id.slice(4);
   switch (key) {
+    case "floor":
+      return floorModel();
     case "wall":
       return wallModel(w, d);
     case "pp-g":

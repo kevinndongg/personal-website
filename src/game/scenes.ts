@@ -17,20 +17,7 @@ export type Decal =
   | { kind: "frame"; x: number; y: number; w: number; h: number; angle: number; color: string; fill: string } // painted pit box, x,y = center
   | { kind: "pad"; x: number; y: number; w: number; h: number; color: string }
   /** A filled polygon on the ground (a desk mat, water, a gravel patch) with an optional border and speckle. */
-  | { kind: "pool"; points: { x: number; y: number }[]; fill: string; border?: string; speckle?: string[] }
-  /**
-   * A competition field: `tiles` x `tiles` grey foam tiles over a square of side `size` (x,y = its top-left corner),
-   * thin white tape lines (`tape` polylines) and taped squares (`marks`).
-   */
-  | {
-      kind: "field";
-      x: number;
-      y: number;
-      size: number;
-      tiles: number;
-      tape: { x: number; y: number }[][];
-      marks: Rect[];
-    };
+  | { kind: "pool"; points: { x: number; y: number }[]; fill: string; border?: string; speckle?: string[] };
 
 /** Collision shape, anchored at the prop's bottom-center (x, y). */
 export type Footprint = { kind: "rect"; w: number; h: number } | { kind: "circle"; r: number };
