@@ -109,17 +109,14 @@ export function ftcScene(ox: number, oy: number): Scene {
   props.push({ sprite: "laptop", ...at(36, 190), elevation: 7 }); // open on the pit table, screen towards the viewer
   props.push(block("toolchest", at(98, 190), 18, 12));
 
-  // ---- game pieces in one cluster left of the driver station, each lying its own way
+  // ---- game pieces left of the driver station, laid out in three tidy rows by kind, all facing the same way:
+  // cones, then pixels, then samples
+  const row = (y: number, xs: number[], sprites: string[]) =>
+    sprites.map((sprite, i) => turned(sprite, at(xs[i], y), 0, 2.5));
   props.push(
-    turned("ftc-pixel-y", at(14, 153), 0.4, 2.5),
-    turned("ftc-cone-red", at(26, 151), 1.2, 2.5),
-    turned("ftc-cone-blue", at(34, 151), 2.4, 2.5),
-    turned("ftc-sample-yellow", at(37, 158), 0.3, 2.5),
-    turned("ftc-cone-blue", at(18, 162), 0.5, 2.5),
-    turned("ftc-pixel-p", at(30, 164), 1.1, 2.5),
-    turned("ftc-sample-red", at(12, 171), 2.0, 2.5),
-    turned("ftc-pixel-w", at(24, 172), 0.7, 2.5),
-    turned("ftc-pixel-g", at(37, 173), 1.9, 2.5)
+    ...row(153, [12, 24, 36], ["ftc-cone-red", "ftc-cone-blue", "ftc-cone-red"]),
+    ...row(163, [11, 20, 29, 38], ["ftc-pixel-y", "ftc-pixel-p", "ftc-pixel-w", "ftc-pixel-g"]),
+    ...row(173, [12, 24, 36], ["ftc-sample-red", "ftc-sample-yellow", "ftc-sample-blue"])
   );
 
   // ---- the floor
