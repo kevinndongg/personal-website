@@ -16,6 +16,7 @@ import {
 } from "three";
 import type { BufferGeometry, Material } from "three";
 import { CMR_LOGO } from "./cmr-logo";
+import { carWatch } from "./drive";
 import { shade } from "./ground";
 import type { Footprint } from "./scenes";
 import type { Zone } from "./world";
@@ -388,6 +389,64 @@ export function personModel(key: string): Group {
   g.add(box(1, 4, 1.2, shirt, 2.7, 5, 0));
   g.add(box(3.2, 3, 3.2, "#e8b890", 0, 9.5, 0));
   g.add(box(3.6, 1.2, 3.6, cap, 0, 12, 0));
+  return g;
+}
+
+/**
+ * The crew member at the laptop (red shirt), facing +x, where the laptop is: he types, nodding at the screen now and then.
+ * While the car is out on a lap he stops, lowers his arms and turns to follow it round, then goes back to work.
+ */
+export function typistModel(): Group {
+  const SHIRT = "#d8322c";
+  const g = new Group();
+  g.add(box(1.5, 4.5, 1.5, "#2a3a6a", 0, 0, -1.1));
+  g.add(box(1.5, 4.5, 1.5, "#2a3a6a", 0, 0, 1.1));
+  g.add(box(2.6, 5, 4.4, SHIRT, 0, 4.5, 0));
+
+  const arms = [-1, 1].map((side) => {
+    const arm = new Group(); // hangs from the shoulder; rotation.z swings it forward (+x)
+    arm.position.set(0, 9, side * 2.7);
+    arm.add(box(1.2, 4, 1, SHIRT, 0, -4, 0));
+    g.add(arm);
+    return arm;
+  });
+
+  const head = new Group(); // pivots at the neck; rotation.z nods it forward
+  head.position.set(0, 9.5, 0);
+  head.add(box(3.2, 3, 3.2, "#e8b890", 0, 0, 0));
+  head.add(box(3.6, 1.2, 3.6, "#f4f4f4", 0, 2.5, 0)); // cap
+  head.add(box(1.6, 0.4, 3.2, "#f4f4f4", 2.4, 2.5, 0)); // its brim, which shows which way he faces
+  for (const z of [-0.8, 0.8]) head.add(box(0.3, 0.6, 0.6, "#16161d", 1.6, 1.3, z));
+  g.add(head);
+
+  const REST = 0.08; // arms down at his sides
+  const TYPING = 1.05; // forearms out to the keys
+  const pose = (work: number, t: number) => {
+    // typing comes in bursts: each hand taps at its own pace, and the head dips toward the keys
+    const burst = Math.min(1, Math.max(0, 0.5 + 1.4 * Math.sin(t * 1.1)));
+    const tap = work * (0.04 + 0.1 * burst);
+    arms[0].rotation.z = REST + (TYPING - REST) * work + tap * Math.sin(t * 15);
+    arms[1].rotation.z = REST + (TYPING - REST) * work + tap * Math.sin(t * 12 + 1.7);
+    head.rotation.z = -work * (0.22 + 0.05 * Math.sin(t * 2.1));
+  };
+  pose(1, 0); // (stays like this when motion is reduced)
+
+  let heading = 0; // the way he faces: 0 is +x, toward the laptop
+  let work = 1; // 1 typing, 0 watching the car
+  let last = -1;
+  g.userData.animate = ({ t }: AnimCtx) => {
+    if (t <= 0) return;
+    const dt = last < 0 ? 0 : Math.min(0.1, Math.max(0, t - last));
+    last = t;
+    const watching = carWatch.driving;
+    const goal = watching ? Math.atan2(carWatch.z - g.position.z, carWatch.x - g.position.x) : 0;
+    const turn = Math.atan2(Math.sin(goal - heading), Math.cos(goal - heading)); // the short way round
+    heading += turn * (1 - Math.exp(-dt * (watching ? 9 : 4)));
+    heading = Math.atan2(Math.sin(heading), Math.cos(heading)); // (keeps it from winding up over many laps)
+    g.rotation.y = -heading;
+    work += ((watching ? 0 : 1) - work) * (1 - Math.exp(-dt * 6));
+    pose(work, t);
+  };
   return g;
 }
 
@@ -782,6 +841,8 @@ export function createModel(id: string, footprint: Footprint | undefined, zones:
       return tireStackModel();
     case "laptop":
       return laptopModel();
+    case "typist":
+      return typistModel();
   }
   throw new Error(`Unknown model: ${id}`);
 }

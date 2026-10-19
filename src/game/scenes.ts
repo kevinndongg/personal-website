@@ -126,7 +126,7 @@ function racingScene(ox: number, oy: number): Scene {
     { sprite: "battery", ...along(M, 18, -34), angle: ANGLE, solid: rect(8, 5) },
     { sprite: "tirestack", ...along(C, -10, 36), solid: circle(4.5) },
     { sprite: "extinguisher", ...along(C, 0, 29.4), elevation: 3 }, // mounted on the wall, on the bay side of the tire stack
-    { sprite: "person-r", ...along(M, 14, 42), solid: circle(3) },
+    { sprite: "typist", ...along(M, 14, 42), solid: circle(3) }, // at the laptop; watches the car when it drives
     { sprite: "person-w", ...along(M, 10, -50), solid: circle(3) },
     { sprite: "person-b", ...along(M, -8, -46), solid: circle(3) },
     { sprite: "laptop", ...along(M, 24, 36), ground: true },
@@ -227,14 +227,11 @@ function racingScene(ox: number, oy: number): Scene {
     M,
     ...center.filter((_, i) => i % 20 === 0 && i > 0 && i < center.length - 10),
     finish,
-    at(193, 228),
     at(185, 240),
     at(164, 243),
-    { x: lane + 46, y: 257 },
-    { x: lane + 17, y: 248 },
-    { x: lane + 3, y: 230 },
-    { x: lane, y: 205 },
-    { x: lane, y: 170 },
+    { x: lane + 40, y: 230 },
+    { x: lane + 30, y: 205 },
+    { x: lane + 20, y: 170 },
     { x: lane, y: 140 },
     ...arc,
   ];

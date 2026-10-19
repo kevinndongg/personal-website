@@ -145,6 +145,7 @@ function resolveFocus(f: PropFocus): ResolvedFocus {
 const VISUAL_SCALE: Record<string, number> = {
   cone: 1.3,
   person: 1.5,
+  typist: 1.5,
   battery: 1.5,
   laptop: 1.6,
   tirestack: 1.4,

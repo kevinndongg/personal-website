@@ -7,7 +7,10 @@ const FIRST = [8, 14]; // seconds after the scene starts to the first lap
 const GAP = [20, 30]; // seconds from the end of one lap to the next
 const SETTLE = 0.08; // the last part of the lap (as a fraction of it) over which the heading eases to the parked one
 
-const between = ([a, b]: number[]) => a + Math.random() * (b - a);
+/** Where the car is while it is out on a lap, for anyone who watches it go by (the typist at the laptop). */
+export const carWatch = { driving: false, x: 0, z: 0 };
+
+const between =([a, b]: number[]) => a + Math.random() * (b - a);
 const smooth = (u: number) => u * u * (3 - 2 * u);
 
 /**
@@ -36,11 +39,13 @@ export function attachLap(model: Group, path: { x: number; y: number }[]) {
   };
   model.userData.lapState = () => ({ start, next, requested, duration });
 
-  model.userData.animate = ({ t, focus }: AnimCtx) => {
+  carWatch.driving = false;
+
+  model.userData.animate = ({ t }: AnimCtx) => {
     if (t <= 0) return; // reduced motion: the car stays put
     if (next < 0) next = t + between(FIRST);
     if (start < 0) {
-      if (!requested && !(t >= next && focus < 0.01)) return;
+      if (!requested && t < next) return;
       start = t;
       requested = false;
     }
@@ -51,8 +56,10 @@ export function attachLap(model: Group, path: { x: number; y: number }[]) {
       model.rotation.y = home.ry;
       start = -1;
       next = t + between(GAP);
+      carWatch.driving = false;
       return;
     }
+    carWatch.driving = true;
     const u = smooth(elapsed / duration);
     const p = curve.getPointAt(u);
     const d = curve.getTangentAt(u);
@@ -64,5 +71,7 @@ export function attachLap(model: Group, path: { x: number; y: number }[]) {
     model.position.x = p.x;
     model.position.z = p.z;
     model.rotation.y = -heading;
+    carWatch.x = p.x;
+    carWatch.z = p.z;
   };
 }
