@@ -18,7 +18,10 @@ import type { BufferGeometry, Material } from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import cmrLogo from "../content/projects/CMR_Logo.png";
 import { carWatch } from "./drive";
+import { crewDoor } from "./errand";
+import type { WalkerPose } from "./errand";
 import { shade } from "./ground";
+import { GARAGE_DOOR } from "./scenes";
 import type { Footprint } from "./scenes";
 import type { Zone } from "./world";
 
@@ -195,7 +198,12 @@ export function garageModel(w: number, d: number): Group {
 
   // roofed block: closed walls, dark inside
   g.add(rbox(roofW, H, t, WALL, cx, 0, -hz + t / 2)); // north
-  g.add(rbox(roofW, H, t, WALL, cx, 0, hz - t / 2)); // south
+  // south, the wall that faces the tent: a side door (at GARAGE_DOOR.x) with a lintel over it
+  const dl = GARAGE_DOOR.x - GARAGE_DOOR.w / 2; // the door's west and east edges
+  const dr = GARAGE_DOOR.x + GARAGE_DOOR.w / 2;
+  g.add(rbox(dl - x0, H, t, WALL, (x0 + dl) / 2, 0, hz - t / 2));
+  g.add(rbox(x0 + roofW - dr, H, t, WALL, (dr + x0 + roofW) / 2, 0, hz - t / 2));
+  g.add(rbox(GARAGE_DOOR.w, H - GARAGE_DOOR.h, t, WALL, GARAGE_DOOR.x, GARAGE_DOOR.h, hz - t / 2));
   g.add(rbox(t, H, d - 2 * t, WALL, x0 + t / 2, 0, 0)); // west
   const doorW = 22;
   const doorH = 17;
@@ -209,14 +217,35 @@ export function garageModel(w: number, d: number): Group {
   g.add(interior);
 
   // a dark plinth round the foot of the block and a team-red band near the top (a hair proud of the walls)
-  const dressing = (h: number, y: number, color: string) => {
+  const dressing = (h: number, y: number, color: string, aroundDoor: boolean) => {
     g.add(rbox(roofW + 0.4, h, t + 0.5, color, cx, y, -hz + t / 2));
-    g.add(rbox(roofW + 0.4, h, t + 0.5, color, cx, y, hz - t / 2));
+    if (aroundDoor) {
+      g.add(rbox(dl - x0 + 0.2, h, t + 0.5, color, (x0 - 0.2 + dl) / 2, y, hz - t / 2));
+      g.add(rbox(x0 + roofW - dr + 0.2, h, t + 0.5, color, (dr + x0 + roofW + 0.2) / 2, y, hz - t / 2));
+    } else g.add(rbox(roofW + 0.4, h, t + 0.5, color, cx, y, hz - t / 2));
     g.add(rbox(t + 0.5, h, d - 2 * t + 0.4, color, x0 + t / 2, y, 0));
     g.add(rbox(t + 0.5, h, d - 2 * t + 0.4, color, ex, y, 0));
   };
-  dressing(1.6, 0, PLINTH);
-  dressing(2.2, H - 5.4, TEAM_RED);
+  dressing(1.6, 0, PLINTH, true); // (the plinth stops at the door)
+  dressing(2.2, H - 4.4, TEAM_RED, false); // (the band runs on across the lintel, above the door)
+
+  // the side door: light jambs, and a leaf on a hinge at the east jamb that swings out when the crew come through
+  for (const x of [dl + 0.5, dr - 0.5]) g.add(rbox(1, GARAGE_DOOR.h, t + 0.6, "#b8bcc4", x, 0, hz - t / 2, 0.3));
+  const hinge = new Group();
+  hinge.position.set(dr - 1, 0, hz - t / 2);
+  const leafW = GARAGE_DOOR.w - 2;
+  hinge.add(rbox(leafW, GARAGE_DOOR.h - 0.6, 0.8, "#aeb4bf", -leafW / 2, 0, 0, 0.3));
+  hinge.add(rbox(0.8, 1.6, 1.4, PLINTH, -leafW + 1, 8, 0, 0.3)); // handle
+  g.add(hinge);
+  let doorOpen = 0;
+  let lastT = -1;
+  g.userData.animate = ({ t }: AnimCtx) => {
+    if (t <= 0) return;
+    const dt = lastT < 0 ? 0 : Math.min(0.1, Math.max(0, t - lastT));
+    lastT = t;
+    doorOpen += (crewDoor.open - doorOpen) * (1 - Math.exp(-dt * 8));
+    hinge.rotation.y = 1.7 * doorOpen; // (about +z: the free edge swings outward)
+  };
 
   // roll-up door: a light frame, a dark housing above it on the bay side, and a slatted shutter part way down
   const bayFace = ex + t / 2; // the wall's face toward the bay
@@ -490,6 +519,55 @@ export function typistModel(): Group {
     work += ((watching ? 0 : 1) - work) * (1 - Math.exp(-dt * 6));
     pose(work, t);
   };
+  return g;
+}
+
+/**
+ * The crew member who walks to the grill for a burger (yellow shirt, dark cap), facing +x. `errand.ts` moves and turns him
+ * and calls `userData.pose` with the stride, a reach toward the table and whether he holds the burger.
+ */
+export function walkerModel(): Group {
+  const SHIRT = "#f6d02a";
+  const DARK_CAP = "#2a2d38";
+  const g = new Group();
+  const figure = new Group(); // everything but the placement, so that the stride's bob can lift it
+  g.add(figure);
+  const limb = (z: number, y: number, len: number, color: string, w: number) => {
+    const pivot = new Group(); // rotation.z swings it forward (+x)
+    pivot.position.set(0, y, z);
+    pivot.add(box(w, len, w, color, 0, -len, 0));
+    figure.add(pivot);
+    return pivot;
+  };
+  const legL = limb(-1.1, 4.5, 4.5, "#2a3a6a", 1.5);
+  const legR = limb(1.1, 4.5, 4.5, "#2a3a6a", 1.5);
+  const armL = limb(-2.7, 9.2, 4, SHIRT, 1.1);
+  const armR = limb(2.7, 9.2, 4, SHIRT, 1.1);
+  figure.add(box(2.6, 5, 4.4, SHIRT, 0, 4.5, 0));
+  figure.add(box(3.2, 3, 3.2, "#e8b890", 0, 9.5, 0));
+  figure.add(box(3.6, 1.2, 3.6, DARK_CAP, 0, 12, 0));
+  figure.add(box(1.6, 0.4, 3.2, DARK_CAP, 2.4, 12, 0)); // brim: shows which way he faces
+  for (const z of [-0.8, 0.8]) figure.add(box(0.3, 0.6, 0.6, "#16161d", 1.6, 10.8, z));
+
+  const burger = new Group(); // in his right hand
+  burger.position.set(3.9, 7.2, 2.7);
+  burger.add(box(3, 0.8, 3, "#e0b060", 0, 0, 0));
+  burger.add(box(3.2, 0.7, 3.2, "#5a3418", 0, 0.8, 0));
+  burger.add(box(3.4, 0.3, 3.4, "#5fae4a", 0, 1.5, 0));
+  burger.add(box(3, 1, 3, "#e0b060", 0, 1.8, 0));
+  burger.visible = false;
+  figure.add(burger);
+
+  g.userData.pose = ({ phase, swing, reach, burger: holding }: WalkerPose) => {
+    const step = Math.sin(phase) * 0.6 * swing;
+    legL.rotation.z = step;
+    legR.rotation.z = -step;
+    figure.position.y = 0.05 + Math.abs(Math.sin(phase)) * 0.25 * swing; // (a stepping foot just clears the ground)
+    armL.rotation.z = -step * 0.8;
+    armR.rotation.z = holding ? 1.2 : step * 0.8 + reach * 1.35;
+    burger.visible = holding;
+  };
+  g.userData.pose({ phase: 0, swing: 0, reach: 0, burger: false });
   return g;
 }
 
@@ -886,6 +964,8 @@ export function createModel(id: string, footprint: Footprint | undefined, zones:
       return laptopModel();
     case "typist":
       return typistModel();
+    case "walker":
+      return walkerModel();
   }
   throw new Error(`Unknown model: ${id}`);
 }

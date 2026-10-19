@@ -41,6 +41,8 @@ export interface Prop {
   focus?: PropFocus & { tall?: PropFocus };
   /** A lap the prop drives now and then (world px; the first and last points are its parked pose). See drive.ts. */
   drive?: { x: number; y: number }[];
+  /** A trip the prop makes now and then, one way (world px, from where it starts out of sight to where it stops). See errand.ts. */
+  errand?: { x: number; y: number }[];
 }
 
 export interface PropFocus {
@@ -84,6 +86,8 @@ export type ZoneVariant = "garage" | "building" | "office" | "photodesk" | "plaq
 
 export const GARAGE_W = 150; // roofed workshop + a 66 px open bay big enough for the formula car
 export const GARAGE_H = 56;
+/** The side door in the garage's south wall (the one facing the tent): its centre (x from the garage centre), width and height. */
+export const GARAGE_DOOR = { x: -52, w: 9, h: 19 };
 
 const BUILDING = { building: { w: 128, h: 80 }, office: { w: 96, h: 80 } } as const;
 
@@ -239,6 +243,19 @@ function racingScene(ox: number, oy: number): Scene {
     ...arc,
   ];
   props.find((p) => p.sprite === "formula")!.drive = lap;
+
+  // The burger run: out of the garage's side door (the long wall facing the tent, at its back end), down to the grill's
+  // side table. Clear of the tent and of the car's lane.
+  const doorX = GARAGE_DOOR.x;
+  const errand = [
+    along(C, doorX, 22), // just inside the door
+    along(C, doorX, 31), // the doorstep
+    along(C, doorX + 4, 40),
+    at(17, 84),
+    at(24, 124),
+    at(37, 158), // beside the side table, north of the grill (it faces south, toward it)
+  ];
+  props.push({ sprite: "walker", ...errand[0], errand });
   const prev = center[center.length - 3];
   const endT = { x: finish.x - prev.x, y: finish.y - prev.y };
   const endLen = Math.hypot(endT.x, endT.y) || 1;

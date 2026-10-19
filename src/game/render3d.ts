@@ -33,6 +33,7 @@ import {
   WebGLRenderer,
 } from "three";
 import { attachLap } from "./drive";
+import { attachErrand } from "./errand";
 import { GROUND_MARGIN, buildGroundLayer } from "./ground";
 import { createModel, tireModel, woodTexture } from "./models";
 import type { AnimCtx } from "./models";
@@ -146,6 +147,7 @@ const VISUAL_SCALE: Record<string, number> = {
   cone: 1.3,
   person: 1.5,
   typist: 1.5,
+  walker: 1.5,
   battery: 1.5,
   laptop: 1.6,
   tirestack: 1.4,
@@ -435,6 +437,7 @@ export class Renderer3D {
         model.userData.zoneId = zone.id;
         model.userData.sprite = p.sprite;
         if (p.drive) attachLap(model, p.drive);
+        if (p.errand) attachErrand(model, p.errand, Math.PI / 2); // (he stops facing south, toward the grill)
         model.traverse((o) => {
           if (typeof o.userData.animate === "function") this.animators.push({ fn: o.userData.animate, zoneId: zone.id });
         });
