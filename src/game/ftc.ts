@@ -10,11 +10,11 @@ import type { Decal, Footprint, Prop, Rect, Scene } from "./scenes";
 // The floor is plain grey with a white tape line between the wedges. No robots yet: each wedge only has a taped square
 // where its robot will start.
 
-export const W = 176;
-export const H = 240;
+export const W = 168;
+export const H = 204;
 
 /** The field's top-left corner (area-local) and side. */
-const FIELD = { x: 14, y: 38, size: 120 };
+const FIELD = { x: 8, y: 22, size: 120 };
 
 const circle = (r: number): Footprint => ({ kind: "circle", r });
 const rect = (w: number, h: number): Footprint => ({ kind: "rect", w, h });
@@ -75,13 +75,13 @@ export function ftcScene(ox: number, oy: number): Scene {
 
   // ---- Center Stage (top right wedge): the backdrop against the wall, the truss, the drone, loose pixels
   props.push(block("ftc-backdrop", f(30, -55), 12, 8));
-  props.push(block("ftc-truss", f(50, -38), 4, 20));
+  props.push(block("ftc-truss", f(52, -44), 12, 20));
   props.push(round("ftc-drone", f(38, -46), 3));
   props.push(
     round("ftc-pixel-y", f(10, -24), 3),
     round("ftc-pixel-p", f(14, -42), 3),
     round("ftc-pixel-w", f(6, -34), 3),
-    round("ftc-pixel-g", f(44, -34), 3)
+    round("ftc-pixel-g", f(41, -54), 3)
   );
 
   // ---- Into the Deep (front wedge): the submersible in the middle, a basket in each front corner, samples along the front
@@ -94,34 +94,32 @@ export function ftcScene(ox: number, oy: number): Scene {
     block("ftc-samples-blue", f(26, 52), 20, 4)
   );
 
-  // ---- beside the field, east: the match clock, the team banner, the trophy shelf
+  // ---- above the field: the match clock, centred, just behind the north wall
+  props.push(block("ftc-scoreboard", at(cx, 10), 32, 8));
+
+  // ---- beside the field, east: the mascot in the top right corner in its chair (turned towards the field and the
+  // viewer), then the team banner and the trophy shelf below it
+  props.push(turned("ftc-duck", at(150, 24), 2.1, 9));
+  props.push(block("ftc-banner", at(150, 70), 10, 6), block("ftc-trophies", at(150, 112), 28, 10));
+
+  // ---- below the field: the driver station, the tote of game pieces flush with the field's east wall, and the pit
+  props.push(block("ftc-station", at(cx, 156), 44, 12));
+  props.push(block("ftc-bin-pieces", at(120, 156), 22, 14)); // its right edge is the wall's outer face (x 131)
+  props.push(block("ftc-pit", at(50, 188), 56, 14));
+  props.push({ sprite: "laptop", ...at(36, 190), elevation: 7 }); // open on the pit table, screen towards the viewer
+  props.push(block("toolchest", at(98, 190), 18, 12));
+
+  // ---- game pieces in one cluster left of the driver station, each lying its own way
   props.push(
-    block("ftc-scoreboard", at(156, 50), 32, 8),
-    block("ftc-banner", at(158, 86), 10, 6),
-    block("ftc-trophies", at(156, 126), 28, 10)
-  );
-
-  // ---- the mascot in the top left corner of the area, in its chair, turned towards the field and the viewer
-  props.push(turned("ftc-duck", at(20, 20), 1, 9));
-
-  // ---- in front of the field: the driver station, the pit table and the spares
-  props.push(block("ftc-station", at(cx, 172), 44, 12));
-  props.push(block("ftc-pit", at(50, 224), 56, 14));
-  props.push({ sprite: "laptop", ...at(36, 226), elevation: 7 }); // open on the pit table, screen towards the viewer
-  props.push(block("toolchest", at(98, 226), 18, 12));
-  props.push(block("ftc-bin-pieces", at(148, 186), 22, 14)); // the one tote, with game pieces of every season in it
-
-  // ---- game pieces dropped outside the walls, each lying its own way: west, north (right of the duck), south
-  props.push(
-    turned("ftc-pixel-y", f(-68, -25), 0.4, 2.5),
-    turned("ftc-cone-red", f(-68, 15), 1.2, 2.5),
-    turned("ftc-cone-blue", f(-20, -78), 2.4, 2.5),
-    turned("ftc-sample-yellow", f(10, -77), 0.3, 2.5),
-    turned("ftc-pixel-p", f(40, -76), 1.1, 2.5),
-    turned("ftc-sample-red", f(-56, 74), 2.0, 2.5),
-    turned("ftc-pixel-w", f(-38, 84), 0.7, 2.5),
-    turned("ftc-pixel-g", f(34, 72), 1.9, 2.5),
-    turned("ftc-cone-blue", f(50, 78), 0.5, 2.5)
+    turned("ftc-pixel-y", at(14, 153), 0.4, 2.5),
+    turned("ftc-cone-red", at(26, 151), 1.2, 2.5),
+    turned("ftc-cone-blue", at(34, 151), 2.4, 2.5),
+    turned("ftc-sample-yellow", at(37, 158), 0.3, 2.5),
+    turned("ftc-cone-blue", at(18, 162), 0.5, 2.5),
+    turned("ftc-pixel-p", at(30, 164), 1.1, 2.5),
+    turned("ftc-sample-red", at(12, 171), 2.0, 2.5),
+    turned("ftc-pixel-w", at(24, 172), 0.7, 2.5),
+    turned("ftc-pixel-g", at(37, 173), 1.9, 2.5)
   );
 
   // ---- the floor
@@ -158,8 +156,8 @@ export function ftcScene(ox: number, oy: number): Scene {
   return {
     area: { x: ox, y: oy, w: W, h: H },
     building: fieldBox,
-    labelAt: { x: ox + W / 2, y: oy + 22 },
-    labelHeight: 34,
+    labelAt: { x: ox + W / 2, y: oy + 14 },
+    labelHeight: 40, // clear of the scoreboard under it
     height: 44, // the banner
     props,
     decals,

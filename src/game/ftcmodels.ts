@@ -124,25 +124,23 @@ function wallModel(w: number, d: number): Group {
   return g;
 }
 
-// ---- Power Play: a cup or pole standing on a base plate, optionally with a cone put over its top
+// ---- Power Play: a cup or pole standing on a base plate; a scored cone is dropped over the pole and rests on the floor
 
 const PP_HEIGHT = { l: 8, m: 14, h: 20 };
 
-function ppJunction(level: "g" | "l" | "m" | "h", topCone?: string): Group {
+function ppJunction(level: "g" | "l" | "m" | "h", scoredCone?: string): Group {
   const g = new Group();
   g.add(cyl(3, 3.4, 1, DARK, 0, 0, 0, 10));
-  let top: number;
   if (level === "g") {
     g.add(cyl(2.3, 2.3, 3, POLE, 0, 1, 0, 10)); // a ground junction is just a short cup
     g.add(cyl(1.5, 1.5, 0.2, BLACK, 0, 4, 0, 10));
-    top = 4;
   } else {
     const h = PP_HEIGHT[level];
     g.add(cyl(0.95, 0.95, h, POLE, 0, 1, 0, 8));
     g.add(cyl(1.7, 1.7, 0.9, DARK, 0, 1 + h, 0, 8));
-    top = 1.9 + h;
   }
-  if (topCone) g.add(cone(2.3, 5, topCone, 0, top, 0));
+  // the cone stands round the foot of the pole, the pole coming out through its tip
+  if (scoredCone) g.add(cone(2.5, 5.2, scoredCone, 0, 1, 0));
   return g;
 }
 
@@ -192,21 +190,28 @@ function backdropModel(w: number, d: number): Group {
   return g;
 }
 
+/**
+ * The truss: a triangular rig, two A-frames joined by a bar along the apex, and a gold bar on each sloping side
+ * about 60% of the way up for the robots to hang from. The triangle is 12 wide at its base and 22 high; the rig is 20 long (z).
+ */
 function trussModel(): Group {
   const g = new Group();
-  const R = 8.5;
+  const R = 8.5; // the A-frames stand this far either side of the middle
+  const BASE = 5.5; // half the width of the triangle at the floor
+  const TOP = 21.4; // the apex bar's centre
   for (const s of [-1, 1]) {
-    g.add(box(4, 0.8, 4, DARK, 0, 0, s * R));
-    g.add(box(1.4, 22, 1.4, STEEL, 0, 0.8, s * R));
+    for (const sx of [-1, 1]) {
+      g.add(box(2, 0.6, 2, DARK, sx * BASE, 0, s * R)); // feet
+      g.add(strut([sx * BASE, 0.9, s * R], [0, TOP, s * R], 0.8, STEEL)); // the two legs of the A-frame
+    }
+    g.add(box(2 * BASE, 0.8, 0.8, STEEL, 0, 0.6, s * R)); // the tie across its base
   }
-  g.add(box(1.2, 1.2, 2 * R + 1.4, STEEL, 0, 21, 0)); // the top bar
-  g.add(box(1, 1, 2 * R, STEEL, 0, 11, 0));
-  for (const s of [-1, 1]) {
-    g.add(strut([0, 1, s * R], [0, 11, 0], 0.5, STEEL));
-    g.add(strut([0, 11, 0], [0, 21, s * R], 0.5, STEEL));
-  }
-  g.add(box(0.8, 0.8, 8, GOLD, 0, 15, 0)); // the bar the robots hang from, on two cables
-  for (const z of [-3, 3]) g.add(box(0.3, 6, 0.3, DARK, 0, 15.8, z));
+  g.add(box(1.2, 1.2, 2 * R + 1.4, STEEL, 0, TOP - 0.6, 0)); // the bar along the top
+  for (const sx of [-1, 1]) g.add(box(0.8, 0.8, 2 * R, STEEL, sx * BASE, 0.6, 0)); // runners along the base
+  // the hang bars: 60% up, which on a leg is 40% of the way in from the foot
+  const hangY = 22 * 0.6;
+  const hangX = BASE * 0.4;
+  for (const sx of [-1, 1]) g.add(box(0.9, 0.9, 2 * R + 1, GOLD, sx * hangX, hangY - 0.45, 0));
   return g;
 }
 
@@ -241,16 +246,50 @@ function pixelModel(color: string): Group {
 
 // ---- Into the Deep: the submersible, the baskets and the samples
 
+/** A small repeatable generator (mulberry32): the same seed always gives the same run of numbers in 0..1. */
+function seeded(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * The submersible: an open box of four posts and two rectangles of rails, a gold bar at the back and a silver one at the
+ * front, standing on a dark floor that is covered in samples of all three colours lying every which way.
+ */
 function submersibleModel(w: number, d: number): Group {
   const g = new Group();
-  g.add(box(w, 1.2, d, DARK, 0, 0, 0)); // the floor plate, red and blue halves on it
-  g.add(box(w / 2 - 1.5, 0.4, d - 2, RED, -w / 4, 1.2, 0));
-  g.add(box(w / 2 - 1.5, 0.4, d - 2, BLUE, w / 4, 1.2, 0));
-  const x = w / 2 - 3;
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(box(1.4, 16, 1.4, STEEL, sx * x, 1.6, sz * 5)); // four posts
-  g.add(box(2 * x, 1, 1, GOLD, 0, 15, -5)); // the high bar at the back, the low one in front
-  g.add(box(2 * x, 1, 1, "#c8ccd6", 0, 8, 5));
-  for (const sx of [-1, 1]) g.add(box(1, 1, 10, STEEL, sx * x, 15, 0)); // the end rails
+  const hx = w / 2 - 1.5;
+  const hz = d / 2 - 1.5;
+  const TOP = 16.2; // the bottom of the top rails
+  g.add(box(w, 1.2, d, DARK, 0, 0, 0)); // the floor
+
+  // a jittered grid of samples, the same on every load
+  const rand = seeded(2025);
+  const colors = [RED, BLUE, GOLD];
+  const cols = 6;
+  const rows = 4;
+  for (let i = 0; i < cols; i++)
+    for (let j = 0; j < rows; j++) {
+      const x = ((i - (cols - 1) / 2) * (2 * (hx - 4))) / (cols - 1) + (rand() - 0.5) * 1.8;
+      const z = ((j - (rows - 1) / 2) * (2 * (hz - 2))) / (rows - 1) + (rand() - 0.5) * 0.8;
+      const s = box(3.8, 1.6, 1.6, colors[Math.floor(rand() * colors.length)], x, 1.2, z);
+      s.rotation.y = (rand() - 0.5) * 1.3;
+      g.add(s);
+    }
+
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(box(1.4, TOP + 1 - 1.2, 1.4, STEEL, sx * hx, 1.2, sz * hz)); // posts
+  for (const y of [1.2, TOP]) {
+    for (const sz of [-1, 1]) g.add(box(2 * hx, 1, 1, STEEL, 0, y, sz * hz)); // rails along the length
+    for (const sx of [-1, 1]) g.add(box(1, 1, 2 * hz, STEEL, sx * hx, y, 0)); // and across each end
+  }
+  g.add(box(2 * hx, 1, 1, GOLD, 0, 11.5, -hz)); // the high bar at the back, the low one at the front
+  g.add(box(2 * hx, 1, 1, "#c8ccd6", 0, 6.5, hz));
   return g;
 }
 
