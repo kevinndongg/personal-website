@@ -100,7 +100,7 @@ const zones = [
         label: p.data.title,
         summary: lead || p.data.summary,
         bullets,
-        variant: p.id === "cmu-racing" ? ("garage" as const) : undefined,
+        variant: p.id === "cmu-racing" ? ("garage" as const) : p.id === "ftc" ? ("ftc" as const) : undefined,
         href: withBase(`projects/${p.id}`),
         accent: p.data.accentColor,
         role: p.data.role,

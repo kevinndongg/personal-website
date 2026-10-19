@@ -1,6 +1,7 @@
 // Free-form project areas. Everything here is positioned in world pixels, not tiles.
 import { constructionScene } from "./construction";
 import { contactScene } from "./contact";
+import { ftcScene, H as FTC_H, W as FTC_W } from "./ftc";
 import { photoDeskScene } from "./photodesk";
 
 export interface Rect {
@@ -16,7 +17,21 @@ export type Decal =
   | { kind: "frame"; x: number; y: number; w: number; h: number; angle: number; color: string; fill: string } // painted pit box, x,y = center
   | { kind: "pad"; x: number; y: number; w: number; h: number; color: string }
   /** A filled polygon on the ground (a desk mat, water, a gravel patch) with an optional border and speckle. */
-  | { kind: "pool"; points: { x: number; y: number }[]; fill: string; border?: string; speckle?: string[] };
+  | { kind: "pool"; points: { x: number; y: number }[]; fill: string; border?: string; speckle?: string[] }
+  /**
+   * A competition field: `tiles` x `tiles` foam tiles over a square of side `size` (x,y = its top-left corner), each wedge
+   * tinted its own colour, white tape lines between them (`tape` polylines) and taped squares (`marks`).
+   */
+  | {
+      kind: "field";
+      x: number;
+      y: number;
+      size: number;
+      tiles: number;
+      wedges: { points: { x: number; y: number }[]; tint: string }[];
+      tape: { x: number; y: number }[][];
+      marks: Rect[];
+    };
 
 /** Collision shape, anchored at the prop's bottom-center (x, y). */
 export type Footprint = { kind: "rect"; w: number; h: number } | { kind: "circle"; r: number };
@@ -78,7 +93,7 @@ export interface Scene {
   decals: Decal[];
 }
 
-export type ZoneVariant = "garage" | "building" | "office" | "photodesk" | "plaques" | "construction";
+export type ZoneVariant = "garage" | "building" | "office" | "photodesk" | "plaques" | "construction" | "ftc";
 
 export const GARAGE_W = 150; // roofed workshop + a 66 px open bay big enough for the formula car
 export const GARAGE_H = 56;
@@ -91,6 +106,7 @@ export function sceneSize(variant: ZoneVariant): { w: number; h: number } {
   if (variant === "photodesk") return { w: 256, h: 144 };
   if (variant === "plaques") return { w: 128, h: 144 };
   if (variant === "construction") return { w: 160, h: 144 }; // the same footprint as the generic building
+  if (variant === "ftc") return { w: FTC_W, h: FTC_H };
   return { w: BUILDING[variant].w + 32, h: 144 };
 }
 
@@ -253,5 +269,6 @@ export function buildScene(id: string, variant: ZoneVariant, ox: number, oy: num
   if (variant === "photodesk") return photoDeskScene(ox, oy);
   if (variant === "plaques") return contactScene(ox, oy);
   if (variant === "construction") return constructionScene(ox, oy, id);
+  if (variant === "ftc") return ftcScene(ox, oy);
   return defaultScene(ox, oy, id, variant);
 }

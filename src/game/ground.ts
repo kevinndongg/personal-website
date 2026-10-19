@@ -61,6 +61,42 @@ function drawDecal(ctx: CanvasRenderingContext2D, d: Decal, accent: string) {
       for (let k = 0; k <= steps; k++)
         ctx.fillRect(Math.round(a.x + ((b.x - a.x) * k) / steps), Math.round(a.y + ((b.y - a.y) * k) / steps), 2, 2);
     }
+  } else if (d.kind === "field") {
+    // foam tiles in two greys, a tint over each wedge, the seams between tiles, then the tape on top
+    const t = d.size / d.tiles;
+    for (let j = 0; j < d.tiles; j++)
+      for (let i = 0; i < d.tiles; i++) {
+        ctx.fillStyle = (i + j) & 1 ? "#8a8f9d" : "#7f8492";
+        ctx.fillRect(d.x + i * t, d.y + j * t, t, t);
+      }
+    for (const w of d.wedges) {
+      ctx.save();
+      ctx.beginPath();
+      w.points.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+      ctx.closePath();
+      ctx.clip();
+      ctx.globalAlpha = 0.34;
+      ctx.fillStyle = w.tint;
+      ctx.fillRect(d.x, d.y, d.size, d.size);
+      ctx.restore();
+    }
+    ctx.fillStyle = "#4d515e";
+    for (let k = 1; k < d.tiles; k++) {
+      ctx.fillRect(Math.round(d.x + k * t), d.y, 1, d.size);
+      ctx.fillRect(d.x, Math.round(d.y + k * t), d.size, 1);
+    }
+    ctx.strokeStyle = "#f4f4f4";
+    ctx.lineWidth = 2;
+    ctx.lineCap = "butt";
+    for (const line of d.tape) {
+      ctx.beginPath();
+      line.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+      ctx.stroke();
+    }
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 2]);
+    for (const m of d.marks) ctx.strokeRect(m.x + 0.75, m.y + 0.75, m.w - 1.5, m.h - 1.5);
+    ctx.setLineDash([]);
   } else if (d.kind === "pool") {
     ctx.beginPath();
     d.points.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
