@@ -15,7 +15,8 @@ import {
   SphereGeometry,
 } from "three";
 import type { BufferGeometry, Material } from "three";
-import { CMR_LOGO } from "./cmr-logo";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+import cmrLogo from "../content/projects/CMR_Logo.png";
 import { carWatch } from "./drive";
 import { shade } from "./ground";
 import type { Footprint } from "./scenes";
@@ -56,6 +57,12 @@ export function mesh(geo: BufferGeometry, mat: Material, x = 0, y = 0, z = 0): M
 export function box(w: number, h: number, d: number, color: string | Material, x: number, y: number, z: number): Mesh {
   const mat = typeof color === "string" ? toon(color) : color;
   return mesh(new BoxGeometry(w, h, d), mat, x, y + h / 2, z);
+}
+
+/** Like `box()`, with softly rounded edges (radius `r`) so it catches the light the way the car and cones do. */
+function rbox(w: number, h: number, d: number, color: string, x: number, y: number, z: number, r = 0.5): Mesh {
+  const rr = Math.min(r, w / 2, h / 2, d / 2);
+  return mesh(new RoundedBoxGeometry(w, h, d, 2, rr), toon(color), x, y + h / 2, z);
 }
 
 export function cyl(rTop: number, rBottom: number, h: number, color: string, x: number, y: number, z: number, seg = 10): Mesh {
@@ -107,35 +114,6 @@ function withTop(side: Material, top: Material): Material[] {
 
 // ---------------------------------------------------------------- roofs
 
-function garageRoofTexture(w: number, d: number): CanvasTexture {
-  const [c, ctx] = canvasOf(w, d);
-  fillRect(ctx, 0, 0, w, d, "#b4b8c0");
-  for (let x = 6; x < w - 2; x += 8) {
-    fillRect(ctx, x, 0, 1, d, "#9a9ea8");
-    fillRect(ctx, x + 1, 0, 1, d, "#c8ccd4");
-  }
-  for (let i = 0; i < 220; i++) {
-    const px = (i * 53) % w;
-    const py = (i * 29 + ((i * i) % 7)) % d;
-    fillRect(ctx, px, py, 1, 1, i % 3 ? "#a2a6b0" : "#c0c4cc");
-  }
-  fillRect(ctx, 0, 0, w, 2, "#d6d9e0");
-  fillRect(ctx, 0, d - 2, w, 2, "#8b909a");
-  // CMR logo: only the black and red parts, straight onto the roof
-  const lw = CMR_LOGO[0].length;
-  const lh = CMR_LOGO.length;
-  const lx = Math.floor((w - lw) / 2);
-  const ly = Math.floor((d - lh) / 2);
-  CMR_LOGO.forEach((row, y) => {
-    for (let x = 0; x < lw; x++) {
-      const key = row[x];
-      if (key === "k") fillRect(ctx, lx + x, ly + y, 1, 1, "#16161d");
-      else if (key === "r") fillRect(ctx, lx + x, ly + y, 1, 1, "#a51c30");
-    }
-  });
-  return nearestTexture(c);
-}
-
 function zoneRoofTexture(w: number, d: number, zone: Zone): CanvasTexture {
   const accent = zone.accent;
   const dark = shade(accent, -0.35);
@@ -178,7 +156,31 @@ const DARK = new MeshBasicMaterial({ color: "#14161c" });
 
 const CURB_GAP = [18, 52]; // see garageModel
 
-/** CMR garage: grey box with the logo roof and one wide opening in its east (+x) wall. */
+const TEAM_RED = "#a51c30"; // the red of the CMR logo
+const LOGO_ASPECT = 1571 / 4215; // of CMR_Logo.png
+
+let logoTexture: CanvasTexture | undefined;
+/** The team logo, from the real artwork: drawn at 2048 px wide (the original is wider than some GPUs allow), smooth and mipmapped. */
+function cmrLogoTexture(): CanvasTexture {
+  if (logoTexture) return logoTexture;
+  const w = 2048;
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = Math.round(w * LOGO_ASPECT);
+  const tex = new CanvasTexture(c);
+  tex.anisotropy = 8;
+  const img = new Image();
+  img.onload = () => {
+    const ctx = c.getContext("2d")!;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    tex.needsUpdate = true;
+  };
+  img.src = cmrLogo.src;
+  return (logoTexture = tex);
+}
+
+/** CMR garage: a roofed workshop with the logo on its roof and a roll-up door, opening onto an open pit bay to the east (+x). */
 export function garageModel(w: number, d: number): Group {
   const g = new Group();
   const H = 24;
@@ -189,48 +191,75 @@ export function garageModel(w: number, d: number): Group {
   const cx = x0 + roofW / 2;
   const bayW = w - roofW;
   const bayX = x0 + roofW + bayW / 2;
+  const PLINTH = "#3a3d47";
 
   // roofed block: closed walls, dark inside
-  g.add(box(roofW, H, t, WALL, cx, 0, -hz + t / 2)); // north
-  g.add(box(roofW, H, t, WALL, cx, 0, hz - t / 2)); // south
-  g.add(box(t, H, d - 2 * t, WALL, x0 + t / 2, 0, 0)); // west
+  g.add(rbox(roofW, H, t, WALL, cx, 0, -hz + t / 2)); // north
+  g.add(rbox(roofW, H, t, WALL, cx, 0, hz - t / 2)); // south
+  g.add(rbox(t, H, d - 2 * t, WALL, x0 + t / 2, 0, 0)); // west
   const doorW = 22;
   const doorH = 17;
   const side = (d - doorW) / 2 - t;
   const ex = x0 + roofW - t / 2; // east wall of the block, facing the bay
-  g.add(box(t, H, side, WALL, ex, 0, -(doorW / 2 + side / 2)));
-  g.add(box(t, H, side, WALL, ex, 0, doorW / 2 + side / 2));
-  g.add(box(t, H - doorH, doorW, WALL, ex, doorH, 0));
+  g.add(rbox(t, H, side, WALL, ex, 0, -(doorW / 2 + side / 2)));
+  g.add(rbox(t, H, side, WALL, ex, 0, doorW / 2 + side / 2));
+  g.add(rbox(t, H - doorH, doorW, WALL, ex, doorH, 0));
   const interior = mesh(new BoxGeometry(roofW - 2 * t - 1, H - 1, d - 2 * t), DARK, cx, (H - 1) / 2, 0);
   interior.castShadow = false;
   g.add(interior);
-  const roll = cyl(2, 2, doorW, "#b8bcc4", ex + 1, doorH - 0.5, 0, 10); // rolled-up door
-  roll.rotation.x = Math.PI / 2;
-  roll.position.y = doorH - 0.5;
-  g.add(roll);
 
-  // open bay: floor and a low front curb; no back wall, so the crew can reach the car from either side
-  g.add(box(bayW, 1, d, "#30333c", bayX, 0, 0));
+  // a dark plinth round the foot of the block and a team-red band near the top (a hair proud of the walls)
+  const dressing = (h: number, y: number, color: string) => {
+    g.add(rbox(roofW + 0.4, h, t + 0.5, color, cx, y, -hz + t / 2));
+    g.add(rbox(roofW + 0.4, h, t + 0.5, color, cx, y, hz - t / 2));
+    g.add(rbox(t + 0.5, h, d - 2 * t + 0.4, color, x0 + t / 2, y, 0));
+    g.add(rbox(t + 0.5, h, d - 2 * t + 0.4, color, ex, y, 0));
+  };
+  dressing(1.6, 0, PLINTH);
+  dressing(2.2, H - 5.4, TEAM_RED);
+
+  // roll-up door: a light frame, a dark housing above it on the bay side, and a slatted shutter part way down
+  const bayFace = ex + t / 2; // the wall's face toward the bay
+  for (const z of [-1, 1]) g.add(rbox(t + 0.6, doorH, 1.2, "#b8bcc4", ex, 0, z * (doorW / 2 - 0.6)));
+  g.add(rbox(t + 0.6, 1.4, doorW, "#b8bcc4", ex, doorH - 1.4, 0));
+  g.add(rbox(2.4, 3.2, doorW + 3, PLINTH, bayFace + 1.2, doorH - 0.4, 0, 0.8));
+  for (let i = 0; i < 4; i++) g.add(rbox(0.8, 1.5, doorW - 2.4, "#c8ccd4", ex + 0.2, doorH - 3.4 - i * 1.8, 0, 0.3));
+
+  // open bay: smooth floor and a low front curb; no back wall, so the crew can reach the car from either side
+  g.add(rbox(bayW, 1, d, "#2c2f37", bayX, 0, 0, 0.4));
   // the curb has a gap (x from CURB_GAP[0] to CURB_GAP[1], from the garage's centre) where the car drives in after a lap
   for (const [a, b] of [
     [x0 + roofW, CURB_GAP[0]],
     [CURB_GAP[1], x0 + roofW + bayW],
   ]) {
-    g.add(box(b - a, 4, t, "#d9b21f", (a + b) / 2, 1, hz - t / 2));
+    g.add(rbox(b - a, 4, t, "#d9b21f", (a + b) / 2, 1, hz - t / 2, 0.6));
   }
-  g.add(box(7, 8, 5, "#d8322c", bayX - 7, 1, -hz + t + 3)); // toolbox
-  g.add(box(2, 14, 12, "#4a4d57", bayX + 6, 1, -hz + t + 7)); // shelf
-  g.add(box(2.4, 2, 3, "#f6d02a", bayX + 6, 9, -hz + t + 6));
-  g.add(box(6, 0.6, 6, "#f4f4f4", bayX - 6, 1, 4)); // painted pad mark
-  g.add(box(1, 0.6, 14, "#f6d02a", bayX + bayW / 2 - 2, 1, 0)); // threshold stripe
+  g.add(rbox(7, 8, 5, "#d8322c", bayX - 7, 1, -hz + t + 3, 0.6)); // toolbox
+  // painted lines: a parking box round the car's place, and a stripe across the mouth of the bay
+  const line = (lw: number, ld: number, x: number, z: number, color: string) => g.add(box(lw, 0.12, ld, color, x, 1, z));
+  const BOX_L = 46;
+  const BOX_W = 22;
+  for (const z of [-1, 1]) line(BOX_L, 0.8, bayX, z * BOX_W / 2, "#f4f4f4");
+  for (const x of [-1, 1]) line(0.8, BOX_W + 0.8, bayX + x * BOX_L / 2, 0, "#f4f4f4");
+  line(1, d - 8, bayX + bayW / 2 - 2, 0, "#f6d02a");
 
-  // roof slab over the block with a slight overhang; the logo is painted on its top face
+  // roof: a clean light slab with a slight overhang, a red lip along the bay side, and the logo lying on top, lit like the rest
   const rw = roofW + 4;
   const rd = d + 4;
-  const top = new MeshToonMaterial({ map: garageRoofTexture(rw, rd), gradientMap: gradient });
-  const roof = mesh(new BoxGeometry(rw, 3, rd), top, cx, H + 1.5, 0);
-  roof.material = withTop(toon("#9a9ea8"), top);
-  g.add(roof);
+  g.add(rbox(rw, 3, rd, "#e6e8ee", cx, H, 0, 0.9));
+  g.add(rbox(1.4, 3.1, rd, TEAM_RED, cx + rw / 2 - 0.7, H - 0.05, 0, 0.5));
+  const lw = 74;
+  const logo = mesh(
+    new PlaneGeometry(lw, lw * LOGO_ASPECT),
+    new MeshToonMaterial({ map: cmrLogoTexture(), gradientMap: gradient, transparent: true, depthWrite: false }),
+    cx - 0.7,
+    H + 3.06,
+    0
+  );
+  logo.rotation.x = -Math.PI / 2;
+  logo.castShadow = false;
+  logo.renderOrder = 1;
+  g.add(logo);
   return g;
 }
 
