@@ -39,6 +39,8 @@ export interface Prop {
    * world px, easing in with the zoom and back out again on the map. `tall` replaces it on portrait screens.
    */
   focus?: PropFocus & { tall?: PropFocus };
+  /** A lap the prop drives now and then (world px; the first and last points are its parked pose). See drive.ts. */
+  drive?: { x: number; y: number }[];
 }
 
 export interface PropFocus {
@@ -124,15 +126,14 @@ function racingScene(ox: number, oy: number): Scene {
     { sprite: "battery", ...along(M, 18, -34), angle: ANGLE, solid: rect(8, 5) },
     { sprite: "tirestack", ...along(C, -10, 36), solid: circle(4.5) },
     { sprite: "extinguisher", ...along(C, 0, 29.4), elevation: 3 }, // mounted on the wall, on the bay side of the tire stack
-    { sprite: "person-r", ...along(M, 14, 42), solid: circle(3) },
+    { sprite: "person-r", ...along(M, -2, 44), solid: circle(3) }, // beside the garage wall, clear of the car's way home
     { sprite: "person-w", ...along(M, 10, -50), solid: circle(3) },
     { sprite: "person-b", ...along(M, -8, -46), solid: circle(3) },
-    { sprite: "laptop", ...along(M, 24, 36), ground: true },
+    { sprite: "laptop", ...along(M, -12, 38), ground: true },
   ];
 
   // team dressing around the garage (all positions area-relative, bottom-center anchors)
   props.push(
-    { sprite: "pitwall", ...at(114, 208), solid: rect(8, 44) },
     { sprite: "lidar", ...at(204, 44), solid: circle(5) },
     { sprite: "estop", ...at(184, 48), solid: rect(10, 8) },
     { sprite: "cart", ...at(160, 44), solid: rect(18, 12) },
@@ -143,7 +144,6 @@ function racingScene(ox: number, oy: number): Scene {
     { sprite: "sit-r", ...at(42, 190), angle: 0.5, solid: circle(3.5) },
     { sprite: "sit-w", ...at(56, 193), angle: 0.9, solid: circle(3.5) },
     { sprite: "sit-b", ...at(70, 190), angle: 0.3, solid: circle(3.5) },
-    { sprite: "tirerack", ...at(92, 176), solid: rect(32, 14) },
     { sprite: "toolchest", ...at(22, 208), solid: rect(18, 12) },
   );
 
@@ -205,10 +205,36 @@ function racingScene(ox: number, oy: number): Scene {
     }
     return out;
   };
-  for (const p of evenly(offset(half), GAP)) props.push({ sprite: "cone-b", ...p, solid: circle(3) });
+  // the first few blue cones are left out: that gap is the car's way back into the bay after a lap
+  const OPEN_BLUE = 3;
+  for (const p of evenly(offset(half), GAP).slice(OPEN_BLUE)) props.push({ sprite: "cone-b", ...p, solid: circle(3) });
   for (const p of evenly(offset(-half), GAP)) props.push({ sprite: "cone-y", ...p, solid: circle(3) });
 
   const finish = center[center.length - 1];
+
+  // the car's lap: out of the bay and down the track, a loop past the finish through the open ground to the south-west,
+  // then in through the gap in the blue cones, a left turn onto the bay axis, and home
+  const lap = [
+    bay,
+    M,
+    ...center.filter((_, i) => i % 20 === 0 && i > 0 && i < center.length - 10),
+    finish,
+    at(193, 228),
+    at(185, 240),
+    at(164, 243),
+    at(142, 236),
+    at(129, 218),
+    at(130, 196),
+    at(139, 174),
+    at(149, 154),
+    along(M, 33, 24),
+    along(M, 30, 10),
+    along(M, 20, 1),
+    along(M, 8, 0),
+    M,
+    bay,
+  ];
+  props.find((p) => p.sprite === "formula")!.drive = lap;
   const prev = center[center.length - 3];
   const endT = { x: finish.x - prev.x, y: finish.y - prev.y };
   const endLen = Math.hypot(endT.x, endT.y) || 1;

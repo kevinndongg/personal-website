@@ -32,6 +32,7 @@ import {
   WebGLRenderTarget,
   WebGLRenderer,
 } from "three";
+import { attachLap } from "./drive";
 import { GROUND_MARGIN, buildGroundLayer } from "./ground";
 import { createModel, tireModel, woodTexture } from "./models";
 import type { AnimCtx } from "./models";
@@ -432,6 +433,7 @@ export class Renderer3D {
         }
         model.userData.zoneId = zone.id;
         model.userData.sprite = p.sprite;
+        if (p.drive) attachLap(model, p.drive);
         model.traverse((o) => {
           if (typeof o.userData.animate === "function") this.animators.push({ fn: o.userData.animate, zoneId: zone.id });
         });
@@ -740,6 +742,15 @@ export class Renderer3D {
     const { x, z, scale } = this.zoomOf(zone);
     if (scale === 1) return r;
     return { x: x + (r.x - x) / scale, y: z + (r.y - z) / scale, w: r.w / scale, h: r.h / scale };
+  }
+
+  /** Sends the zone's car round its lap. False when it is already out, or there is none (or motion is reduced). */
+  driveCar(zoneId: string): boolean {
+    if (this.reduceMotion) return false;
+    for (const m of this.zoneModels.get(zoneId) ?? []) {
+      if (typeof m.userData.drive === "function" && m.userData.drive()) return true;
+    }
+    return false;
   }
 
   /** Hover effect for one project box, `amount` 0..1: its props rise and its ground brightens. Works for any zone. */

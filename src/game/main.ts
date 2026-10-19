@@ -346,6 +346,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
       }
       const hit = renderer.pick(e.clientX, e.clientY);
       if (!hit) return;
+      if (hit.propId === "formula" && hit.zoneId && renderer.driveCar(hit.zoneId)) return; // the parked car drives instead
       const zone = world.zones.find((z) => z.id === hit.zoneId) ?? zoneAt(hit.x, hit.y);
       if (zone) open(zone);
     },
