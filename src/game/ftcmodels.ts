@@ -158,6 +158,7 @@ function floorModel(): Group {
   sheet.position.y = 0.03;
   g.add(sheet);
   g.add(box(size, 3, size, "#6d717e", 0, -3.02, 0));
+  g.userData.liftOverlay = { w: size, d: size }; // see Renderer3D.addLiftOverlay: keeps shadows and leaf shade on it as it rises
   return g;
 }
 

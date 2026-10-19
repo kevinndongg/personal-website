@@ -432,6 +432,7 @@ export class Renderer3D {
         }
         model.userData.zoneId = zone.id;
         model.userData.sprite = p.sprite;
+        if (model.userData.liftOverlay) this.addLiftOverlay(model, model.userData.liftOverlay);
         model.traverse((o) => {
           if (typeof o.userData.animate === "function") this.animators.push({ fn: o.userData.animate, zoneId: zone.id });
         });
@@ -496,6 +497,36 @@ export class Renderer3D {
     this.slab = slab;
 
     this.edgeMask = fadeMaskTexture(mapSize + 2 * GROUND_MARGIN, mapSize);
+  }
+
+  /**
+   * A floor that rises with its project (a model with `userData.liftOverlay = { w, d }`) lifts off the ground's own shadow
+   * catcher and leaf shade, which then lie hidden under it. This gives it a catcher and a leaf shade of its own, covering
+   * the same patch of the map, shown only while it is up (`setHover`), so shadows and dapple stay on it as it rises.
+   */
+  private addLiftOverlay(model: Object3D, { w, d }: { w: number; d: number }) {
+    const { mapSize } = this;
+    const catcher = new Mesh(new PlaneGeometry(w, d), new ShadowMaterial({ color: "#0b1220", opacity: 0.4 }));
+    catcher.rotation.x = -Math.PI / 2;
+    catcher.position.y = 0.05;
+    catcher.receiveShadow = true;
+    // the leaf shade takes the texture coordinates of this patch of the ground's, so it carries on from it
+    const geo = new PlaneGeometry(w, d);
+    const uv = geo.attributes.uv;
+    for (let i = 0; i < uv.count; i++) {
+      const x = model.position.x + (uv.getX(i) - 0.5) * w;
+      const z = model.position.z - (uv.getY(i) - 0.5) * d;
+      uv.setXY(i, x / mapSize, 1 - z / mapSize);
+    }
+    const leaves = new Mesh(geo, new MeshBasicMaterial({ map: this.dapple, transparent: true, opacity: 0.34, depthWrite: false }));
+    leaves.rotation.x = -Math.PI / 2;
+    leaves.position.y = 0.08;
+    leaves.renderOrder = 0.5;
+    for (const o of [catcher, leaves]) {
+      o.visible = false;
+      model.add(o);
+    }
+    model.userData.overlays = [catcher, leaves];
   }
 
   /** Switch how the map ends (see EdgeMode). Safe to call at any time. */
@@ -750,6 +781,9 @@ export class Renderer3D {
     for (const m of this.zoneModels.get(zoneId) ?? []) {
       if (m.userData.flat) continue; // a mat lying on the ground does not rise with the rest
       m.position.y = (m.userData.baseY ?? 0) + amount * lift;
+      // a rising floor shows its own shadow catcher and leaf shade, once it is clear of the ground's
+      const overlays: Object3D[] | undefined = m.userData.overlays;
+      if (overlays) for (const o of overlays) o.visible = amount > 0.002;
     }
     const glow = this.zoneGlow.get(zoneId);
     if (glow) {
