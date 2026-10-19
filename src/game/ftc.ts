@@ -99,7 +99,9 @@ export function ftcScene(ox: number, oy: number): Scene {
 
   // ---- Center Stage (top right wedge): the backdrop against the wall, the truss, the drone, loose pixels
   props.push(block("ftc-backdrop", f(30, -55), 12, 8));
-  props.push(block("ftc-truss", f(52, -44), 12, 20));
+  // the truss lies across the middle of the third tile down in the right-hand column, its bars running left to right on
+  // screen: the model is 12 wide and 20 long, turned a quarter so the length runs east-west
+  props.push({ sprite: "ftc-truss", ...f(50, -10), angle: Math.PI / 2, solid: rect(12, 20) });
   props.push(round("ftc-drone", f(38, -46), 3));
   props.push(
     round("ftc-pixel-y", f(10, -24), 3),
