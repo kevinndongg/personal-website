@@ -175,6 +175,8 @@ function zoneRoofTexture(w: number, d: number, zone: Zone): CanvasTexture {
 const WALL = "#d8dbe2";
 const DARK = new MeshBasicMaterial({ color: "#14161c" });
 
+const CURB_GAP = [18, 52]; // see garageModel
+
 /** CMR garage: grey box with the logo roof and one wide opening in its east (+x) wall. */
 export function garageModel(w: number, d: number): Group {
   const g = new Group();
@@ -208,7 +210,13 @@ export function garageModel(w: number, d: number): Group {
 
   // open bay: floor and a low front curb; no back wall, so the crew can reach the car from either side
   g.add(box(bayW, 1, d, "#30333c", bayX, 0, 0));
-  g.add(box(bayW, 4, t, "#d9b21f", bayX, 1, hz - t / 2));
+  // the curb has a gap (x from CURB_GAP[0] to CURB_GAP[1], from the garage's centre) where the car drives in after a lap
+  for (const [a, b] of [
+    [x0 + roofW, CURB_GAP[0]],
+    [CURB_GAP[1], x0 + roofW + bayW],
+  ]) {
+    g.add(box(b - a, 4, t, "#d9b21f", (a + b) / 2, 1, hz - t / 2));
+  }
   g.add(box(7, 8, 5, "#d8322c", bayX - 7, 1, -hz + t + 3)); // toolbox
   g.add(box(2, 14, 12, "#4a4d57", bayX + 6, 1, -hz + t + 7)); // shelf
   g.add(box(2.4, 2, 3, "#f6d02a", bayX + 6, 9, -hz + t + 6));

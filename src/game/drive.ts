@@ -3,9 +3,9 @@ import { CatmullRomCurve3, Vector3, type Group } from "three";
 import type { AnimCtx } from "./models";
 
 const SPEED = 60; // average px/s over a lap (it eases out of and into the parking spot, so it peaks at 1.5x)
-const SPIN = 0.9; // seconds to turn round in the bay once it is back: it drives in nose first and parks facing out again
 const FIRST = [8, 14]; // seconds after the scene starts to the first lap
 const GAP = [20, 30]; // seconds from the end of one lap to the next
+const SETTLE = 0.08; // the last part of the lap (as a fraction of it) over which the heading eases to the parked one
 
 const between = ([a, b]: number[]) => a + Math.random() * (b - a);
 const smooth = (u: number) => u * u * (3 - 2 * u);
@@ -24,10 +24,6 @@ export function attachLap(model: Group, path: { x: number; y: number }[]) {
   curve.arcLengthDivisions = 1500;
   const duration = curve.getLength() / SPEED;
   const home = { x: model.position.x, z: model.position.z, ry: model.rotation.y };
-  const endHeading = (() => {
-    const t = curve.getTangentAt(1);
-    return Math.atan2(t.z, t.x);
-  })();
 
   let start = -1; // when the lap in progress began (-1: parked)
   let next = -1; // when the next lap starts by itself
@@ -38,6 +34,7 @@ export function attachLap(model: Group, path: { x: number; y: number }[]) {
     requested = true;
     return true;
   };
+  model.userData.lapState = () => ({ start, next, requested, duration });
 
   model.userData.animate = ({ t, focus }: AnimCtx) => {
     if (t <= 0) return; // reduced motion: the car stays put
@@ -48,7 +45,7 @@ export function attachLap(model: Group, path: { x: number; y: number }[]) {
       requested = false;
     }
     const elapsed = t - start;
-    if (elapsed >= duration + SPIN) {
+    if (elapsed >= duration) {
       model.position.x = home.x;
       model.position.z = home.z;
       model.rotation.y = home.ry;
@@ -56,18 +53,16 @@ export function attachLap(model: Group, path: { x: number; y: number }[]) {
       next = t + between(GAP);
       return;
     }
-    if (elapsed < duration) {
-      const u = smooth(elapsed / duration);
-      const p = curve.getPointAt(u);
-      const d = curve.getTangentAt(u);
-      model.position.x = p.x;
-      model.position.z = p.z;
-      model.rotation.y = -Math.atan2(d.z, d.x);
-    } else {
-      const p = curve.getPointAt(1);
-      model.position.x = p.x;
-      model.position.z = p.z;
-      model.rotation.y = -(endHeading + Math.PI * smooth((elapsed - duration) / SPIN));
-    }
+    const u = smooth(elapsed / duration);
+    const p = curve.getPointAt(u);
+    const d = curve.getTangentAt(u);
+    let heading = Math.atan2(d.z, d.x);
+    // coming home, ease the heading onto the parked one (the way round, never the long way)
+    const w = smooth(Math.min(1, Math.max(0, (u - (1 - SETTLE)) / SETTLE)));
+    const diff = Math.atan2(Math.sin(-home.ry - heading), Math.cos(-home.ry - heading));
+    heading += diff * w;
+    model.position.x = p.x;
+    model.position.z = p.z;
+    model.rotation.y = -heading;
   };
 }

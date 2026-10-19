@@ -126,10 +126,10 @@ function racingScene(ox: number, oy: number): Scene {
     { sprite: "battery", ...along(M, 18, -34), angle: ANGLE, solid: rect(8, 5) },
     { sprite: "tirestack", ...along(C, -10, 36), solid: circle(4.5) },
     { sprite: "extinguisher", ...along(C, 0, 29.4), elevation: 3 }, // mounted on the wall, on the bay side of the tire stack
-    { sprite: "person-r", ...along(M, -2, 44), solid: circle(3) }, // beside the garage wall, clear of the car's way home
+    { sprite: "person-r", ...along(M, 14, 42), solid: circle(3) },
     { sprite: "person-w", ...along(M, 10, -50), solid: circle(3) },
     { sprite: "person-b", ...along(M, -8, -46), solid: circle(3) },
-    { sprite: "laptop", ...along(M, -12, 38), ground: true },
+    { sprite: "laptop", ...along(M, 24, 36), ground: true },
   ];
 
   // team dressing around the garage (all positions area-relative, bottom-center anchors)
@@ -205,15 +205,23 @@ function racingScene(ox: number, oy: number): Scene {
     }
     return out;
   };
-  // the first few blue cones are left out: that gap is the car's way back into the bay after a lap
-  const OPEN_BLUE = 3;
-  for (const p of evenly(offset(half), GAP).slice(OPEN_BLUE)) props.push({ sprite: "cone-b", ...p, solid: circle(3) });
+  for (const p of evenly(offset(half), GAP)) props.push({ sprite: "cone-b", ...p, solid: circle(3) });
   for (const p of evenly(offset(-half), GAP)) props.push({ sprite: "cone-y", ...p, solid: circle(3) });
 
   const finish = center[center.length - 1];
 
-  // the car's lap: out of the bay and down the track, a loop past the finish through the open ground to the south-west,
-  // then in through the gap in the blue cones, a left turn onto the bay axis, and home
+  // The car's lap: out of the bay and down the track, a loop past the finish and back up between the tent and the person
+  // with the laptop, in over the gap in the garage's south curb (models.ts), and a right turn to park facing out again.
+  // The lap ends in a clockwise arc that finishes exactly at the parking spot, heading ANGLE; the lane up to it is the
+  // vertical line `lane` (tent's right edge x = 88, the person at x ~ 140).
+  const R = 14; // turning radius of that last arc
+  const arcCenter = { x: bay.x - R * Math.sin(ANGLE), y: bay.y + R * Math.cos(ANGLE) };
+  const lane = arcCenter.x - R;
+  const arc = [];
+  for (let k = 0; k <= 6; k++) {
+    const h = -Math.PI / 2 + ((ANGLE + Math.PI / 2) * k) / 6; // heading: north at the start, ANGLE at the end
+    arc.push({ x: arcCenter.x + R * Math.sin(h), y: arcCenter.y - R * Math.cos(h) });
+  }
   const lap = [
     bay,
     M,
@@ -222,17 +230,13 @@ function racingScene(ox: number, oy: number): Scene {
     at(193, 228),
     at(185, 240),
     at(164, 243),
-    at(142, 236),
-    at(129, 218),
-    at(130, 196),
-    at(139, 174),
-    at(149, 154),
-    along(M, 33, 24),
-    along(M, 30, 10),
-    along(M, 20, 1),
-    along(M, 8, 0),
-    M,
-    bay,
+    { x: lane + 46, y: 257 },
+    { x: lane + 17, y: 248 },
+    { x: lane + 3, y: 230 },
+    { x: lane, y: 205 },
+    { x: lane, y: 170 },
+    { x: lane, y: 140 },
+    ...arc,
   ];
   props.find((p) => p.sprite === "formula")!.drive = lap;
   const prev = center[center.length - 3];
