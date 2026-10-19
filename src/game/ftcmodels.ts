@@ -1,6 +1,16 @@
-import { BoxGeometry, ConeGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, PlaneGeometry, Vector3 } from "three";
+import {
+  BoxGeometry,
+  ConeGeometry,
+  CylinderGeometry,
+  DoubleSide,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  MeshLambertMaterial,
+  PlaneGeometry,
+  Vector3,
+} from "three";
 import type { CanvasTexture } from "three";
-import { SEASONS } from "./ftc";
 import { box, canvasOf, cyl, fillRect, mesh, nearestTexture, toon } from "./models";
 import type { AnimCtx } from "./models";
 
@@ -167,8 +177,8 @@ function backdropTexture(w: number, len: number): CanvasTexture {
 function backdropModel(w: number, d: number): Group {
   const g = new Group();
   g.add(box(w, 1.5, d, DARK, 0, 0, 0)); // the platform
-  const len = 12.4;
-  const tilt = 0.96; // 55 degrees: the top leans back to the wall
+  const len = 14; // a narrow board, taller than it is wide
+  const tilt = 1.08; // 62 degrees: the top leans back to the wall
   const board = new Group();
   board.position.set(0, 1.5 + (len * Math.sin(tilt)) / 2, 0);
   board.rotation.x = tilt;
@@ -178,7 +188,7 @@ function backdropModel(w: number, d: number): Group {
   face.position.y = 0.45;
   board.add(face);
   g.add(board);
-  for (const sx of [-1, 1]) g.add(box(1, 7, 1, STEEL, sx * (w / 2 - 2.5), 1.5, -3)); // props behind
+  for (const sx of [-1, 1]) g.add(box(1, 10, 1, STEEL, sx * (w / 2 - 2.5), 1.5, -3.2)); // props behind
   return g;
 }
 
@@ -244,18 +254,46 @@ function submersibleModel(w: number, d: number): Group {
   return g;
 }
 
-function basketModel(color: string, dir: 1 | -1): Group {
+/**
+ * A basket stand: a tall grey post with a coloured strip down its back edge, and two clear square buckets (wider at the
+ * top) bracketed to its front, one high and one low. Faces +x, the side the buckets are on; the strip is on -x.
+ */
+function basketModel(stripe: string): Group {
   const g = new Group();
-  g.add(cyl(5, 5.4, 1, DARK, 0, 0, 0, 12));
-  g.add(cyl(0.9, 0.9, 13, STEEL, 0, 1, 0, 8));
-  const bucket = (x: number, y: number) => {
-    g.add(cyl(4.2, 3.2, 3.2, color, x, y, 0, 12));
-    g.add(cyl(4.5, 4.5, 0.5, "#f4f4f4", x, y + 3.2, 0, 12)); // the rim
-    g.add(cyl(3.6, 3.6, 0.1, BLACK, x, y + 3.7, 0, 12)); // its open top
+  const glass = new MeshLambertMaterial({ color: "#d6ecff", transparent: true, opacity: 0.55 });
+  g.add(box(6, 0.8, 6, DARK, 0, 0, 0)); // the foot
+  g.add(box(1.6, 22, 1.6, STEEL, 0, 0.8, 0));
+  g.add(box(0.7, 22, 2.2, stripe, -1.1, 0.8, 0));
+  g.add(box(1.8, 0.8, 1.8, DARK, 0, 22.8, 0));
+  const bucket = (y: number) => {
+    g.add(box(2.4, 0.7, 1.2, DARK, 1.6, y, 0)); // the bracket
+    // a square frustum: four sides, 5 wide at the bottom and 7 at the top, turned to line up with the axes
+    const geo = new CylinderGeometry(4.95, 3.54, 5, 4);
+    geo.rotateY(Math.PI / 4);
+    const b = mesh(geo, glass, 4.4, y + 2.5, 0);
+    b.castShadow = false;
+    g.add(b);
+    g.add(box(5, 0.3, 5, "#8fb3d6", 4.4, y, 0)); // its floor
   };
-  bucket(0, 11.5); // the high basket on the post, the low one out on an arm towards the field
-  g.add(box(7, 0.8, 0.8, STEEL, dir * 3.5, 4.4, 0));
-  bucket(dir * 7.5, 5.2);
+  bucket(15);
+  bucket(7.5);
+  return g;
+}
+
+/** One cone lying on its side. */
+function lyingCone(color: string): Group {
+  const g = new Group();
+  const c = cone(2.4, 5.2, color, 0, 0, 0);
+  c.rotation.z = Math.PI / 2;
+  c.position.set(0, 2.4, 0);
+  g.add(c);
+  return g;
+}
+
+/** One sample lying on the floor. */
+function sampleModel(color: string): Group {
+  const g = new Group();
+  g.add(box(3.8, 1.6, 1.6, color, 0, 0, 0));
   return g;
 }
 
@@ -267,26 +305,6 @@ function samplesModel(color: string): Group {
     s.rotation.y = (i - 1) * 0.18;
     g.add(s);
   });
-  return g;
-}
-
-// ---------------------------------------------------------------- signs
-
-/** A plaque on two legs: the season's name over its years, with a stripe in its colour. */
-function signModel(key: keyof typeof SEASONS): Group {
-  const s = SEASONS[key];
-  const [c, ctx] = canvasOf(80, 22);
-  fillRect(ctx, 0, 0, 80, 22, "#1b1d26");
-  fillRect(ctx, 0, 0, 80, 3, s.tint);
-  fillRect(ctx, 0, 19, 80, 3, s.tint);
-  centred(ctx, 80, s.name, 5, 1, "#f4f4f4");
-  centred(ctx, 80, s.years, 10, 2, s.tint);
-  const g = new Group();
-  for (const sx of [-1, 1]) g.add(box(1, 6, 1, STEEL, sx * 16, 0, 0));
-  g.add(box(40, 11, 1.2, "#1b1d26", 0, 5, 0));
-  const { plane } = picture(40, 11, c);
-  plane.position.set(0, 10.5, 0.62);
-  g.add(plane);
   return g;
 }
 
@@ -417,10 +435,10 @@ function pitModel(w: number, d: number): Group {
   return g;
 }
 
-/** An open tote with a heap in it: robot parts, or the game pieces of all three seasons. */
-function binModel(w: number, d: number, kind: "parts" | "pieces", variant: number): Group {
+/** An open tote with a heap in it: the game pieces of all three seasons. */
+function binModel(w: number, d: number): Group {
   const g = new Group();
-  const color = kind === "parts" ? BLUE : "#9aa0ae";
+  const color = "#9aa0ae";
   g.add(box(w, 1, d, color, 0, 0, 0));
   for (const s of [-1, 1]) {
     g.add(box(w, 8, 1, color, 0, 1, s * (d / 2 - 0.5)));
@@ -429,24 +447,14 @@ function binModel(w: number, d: number, kind: "parts" | "pieces", variant: numbe
   }
   g.add(box(w - 3, 4.6, d - 3, "#2b2e38", 0, 1, 0)); // the heap, as far as the rim
   const top = 5.6;
-  if (kind === "parts") {
-    const m = variant ? -1 : 1;
-    for (const [x, z] of [[-6 * m, -2], [-1 * m, 2.5], [5 * m, -1.5]] as const) g.add(cyl(2.4, 2.4, 0.8, GOLD, x, top, z, 10)); // sprockets
-    g.add(box(11, 1.2, 2.2, STEEL, 1.5 * m, top, 0.2)); // a length of channel
-    const wheel = cyl(3, 3, 1.6, BLACK, 5.5 * m, top, 2.4, 12);
-    wheel.rotation.z = 0.35;
-    g.add(wheel);
-    g.add(box(3.6, 0.5, 2.6, "#3fae5a", -6.5 * m, top + 0.8, 2.6)); // a circuit board
-  } else {
-    g.add(cone(1.7, 5, RED, -7, top, -2));
-    g.add(cone(1.7, 5, BLUE, -3.5, top, 2.4));
-    g.add(cyl(2.2, 2.2, 0.9, PIXEL.y, 1.5, top, -2.4, 6));
-    g.add(cyl(2.2, 2.2, 0.9, PIXEL.p, 4.5, top, 2.6, 6));
-    g.add(cyl(2.2, 2.2, 0.9, PIXEL.w, 7, top, -1, 6));
-    g.add(cyl(2.2, 2.2, 0.9, PIXEL.g, 0.5, top + 0.9, -2.2, 6));
-    g.add(box(3.8, 1.6, 1.6, RED, 3, top + 0.9, 0.6));
-    g.add(box(3.8, 1.6, 1.6, GOLD, -1, top + 0.9, 2.2));
-  }
+  g.add(cone(1.7, 5, RED, -7, top, -2));
+  g.add(cone(1.7, 5, BLUE, -3.5, top, 2.4));
+  g.add(cyl(2.2, 2.2, 0.9, PIXEL.y, 1.5, top, -2.4, 6));
+  g.add(cyl(2.2, 2.2, 0.9, PIXEL.p, 4.5, top, 2.6, 6));
+  g.add(cyl(2.2, 2.2, 0.9, PIXEL.w, 7, top, -1, 6));
+  g.add(cyl(2.2, 2.2, 0.9, PIXEL.g, 0.5, top + 0.9, -2.2, 6));
+  g.add(box(3.8, 1.6, 1.6, RED, 3, top + 0.9, 0.6));
+  g.add(box(3.8, 1.6, 1.6, GOLD, -1, top + 0.9, 2.2));
   return g;
 }
 
@@ -573,33 +581,33 @@ export function ftcModel(id: string, w: number, d: number): Group | null {
     case "submersible":
       return submersibleModel(w, d);
     case "basket-red":
-      return basketModel(RED, 1);
+      return basketModel(RED);
     case "basket-blue":
-      return basketModel(BLUE, -1);
+      return basketModel(BLUE);
+    case "cone-red":
+      return lyingCone(RED);
+    case "cone-blue":
+      return lyingCone(BLUE);
+    case "sample-red":
+      return sampleModel(RED);
+    case "sample-yellow":
+      return sampleModel(GOLD);
+    case "sample-blue":
+      return sampleModel(BLUE);
     case "samples-red":
       return samplesModel(RED);
     case "samples-yellow":
       return samplesModel(GOLD);
     case "samples-blue":
       return samplesModel(BLUE);
-    case "sign-pp":
-      return signModel("pp");
-    case "sign-cs":
-      return signModel("cs");
-    case "sign-itd":
-      return signModel("itd");
     case "duck":
       return duckModel();
     case "station":
       return stationModel(w, d);
     case "pit":
       return pitModel(w, d);
-    case "bin-parts":
-      return binModel(w, d, "parts", 0);
-    case "bin-parts-b":
-      return binModel(w, d, "parts", 1);
     case "bin-pieces":
-      return binModel(w, d, "pieces", 0);
+      return binModel(w, d);
     case "scoreboard":
       return scoreboardModel(w, d);
     case "banner":

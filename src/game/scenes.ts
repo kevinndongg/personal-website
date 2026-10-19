@@ -19,8 +19,8 @@ export type Decal =
   /** A filled polygon on the ground (a desk mat, water, a gravel patch) with an optional border and speckle. */
   | { kind: "pool"; points: { x: number; y: number }[]; fill: string; border?: string; speckle?: string[] }
   /**
-   * A competition field: `tiles` x `tiles` foam tiles over a square of side `size` (x,y = its top-left corner), each wedge
-   * tinted its own colour, white tape lines between them (`tape` polylines) and taped squares (`marks`).
+   * A competition field: `tiles` x `tiles` grey foam tiles over a square of side `size` (x,y = its top-left corner),
+   * thin white tape lines (`tape` polylines) and taped squares (`marks`).
    */
   | {
       kind: "field";
@@ -28,7 +28,6 @@ export type Decal =
       y: number;
       size: number;
       tiles: number;
-      wedges: { points: { x: number; y: number }[]; tint: string }[];
       tape: { x: number; y: number }[][];
       marks: Rect[];
     };
