@@ -213,6 +213,35 @@ html:has(.game) body {
   opacity: 0;
 }
 
+/* says what a contact button just did ("Copied ..."), where the hint is */
+.toast {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  margin: 0;
+  padding: 8px 16px;
+  transform: translate(-50%, 6px);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--paper);
+  background: rgba(36, 26, 18, 0.78);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border-radius: 999px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 240ms var(--ease),
+    transform 240ms var(--ease);
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 /* ---- the card that opens beside the zoomed-in building ---- */
 
 .backdrop {
@@ -618,6 +647,7 @@ html:has(.game) body {
 @media (prefers-reduced-motion: reduce) {
   .banner,
   .panel,
+  .toast,
   .zone-label {
     transition: opacity 120ms;
   }

@@ -1,33 +1,30 @@
-import { CanvasTexture, Group, LinearFilter, Mesh, MeshBasicMaterial, PlaneGeometry } from "three";
-import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+import { CanvasTexture, Color, CylinderGeometry, DoubleSide, Group, LinearFilter, Mesh, MeshBasicMaterial, PlaneGeometry } from "three";
 import { mesh, toon } from "./models";
+import type { AnimCtx } from "./models";
 import { BUTTON_SIZE } from "./name";
 
-// Models for the contact area: big square buttons lying on the ground, each carrying one mark (email, LinkedIn, GitHub).
+// Models for the contact buttons: round discs lying on the ground like pressure plates, each carrying one mark (email,
+// LinkedIn, GitHub). Dark at rest, so they sit quietly beside the name, and they light up when hovered.
 // Same conventions as models.ts: 1 unit = 1 world px, origin at the footprint centre on the ground.
 
-const CREAM = "#f4ecd8";
-const PAPER_EDGE = "#cfbf9b";
-const BROWN = "#8a5a35";
-const HOUSING = "#6b4226";
+const RIM = "#2a2521"; // the plate the disc sits in
+const CAP_REST = new Color("#35302b");
+const CAP_LIT = new Color("#5b4a3a");
+const MARK_REST = new Color("#7d705e"); // the mark, dim
+const MARK_LIT = new Color("#fff1d0"); // ... and lit, like a backlit switch
 
 type Mark = "email" | "linkedin" | "github";
 
-/** One button's face: a cream square with its mark drawn large in brown. */
+/** One button's mark, drawn in white on a transparent square (the material tints it, and the cap shows through). */
 function markTexture(mark: Mark): CanvasTexture {
   const S = 256;
   const c = document.createElement("canvas");
   c.width = c.height = S;
   const ctx = c.getContext("2d")!;
-  ctx.fillStyle = CREAM;
-  ctx.fillRect(0, 0, S, S);
-  ctx.strokeStyle = PAPER_EDGE;
-  ctx.lineWidth = 10;
-  ctx.strokeRect(5, 5, S - 10, S - 10);
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  ctx.strokeStyle = BROWN;
-  ctx.fillStyle = BROWN;
+  ctx.strokeStyle = "#fff";
+  ctx.fillStyle = "#fff";
 
   if (mark === "email") {
     // an envelope: a rounded outline with a V flap
@@ -45,7 +42,7 @@ function markTexture(mark: Mark): CanvasTexture {
     ctx.beginPath();
     ctx.roundRect(50, 50, 156, 156, 30);
     ctx.fill();
-    ctx.fillStyle = CREAM;
+    ctx.globalCompositeOperation = "destination-out";
     ctx.font = "bold 104px 'Figtree', 'Helvetica Neue', Arial, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
@@ -75,22 +72,33 @@ function markTexture(mark: Mark): CanvasTexture {
   return t;
 }
 
-const SIZE = BUTTON_SIZE;
-const HOUSING_H = 4; // the dark housing the button sits in
-const CAP_H = 4; // the button's cap, standing proud of the housing
+const R = BUTTON_SIZE / 2;
+const RIM_H = 4; // the plate the disc sits in
+const CAP_H = 4; // the disc, standing proud of the plate
+const CAP_R = R - 5;
+const SEGMENTS = 48;
 
 /**
- * One big square button lying on the ground, with its mark on the cap. It is still: hovering it is hovering its zone, which
- * makes the whole model rise.
+ * One round button lying on the ground. Hovering its zone raises the whole model (the zone does that) and, here, lights
+ * it: the cap warms up and the mark glows.
  */
 export function buttonModel(mark: Mark): Group {
   const g = new Group();
-  g.add(mesh(new RoundedBoxGeometry(SIZE, HOUSING_H, SIZE, 2, 2.5), toon(HOUSING), 0, HOUSING_H / 2, 0));
-  g.add(mesh(new RoundedBoxGeometry(SIZE - 6, CAP_H, SIZE - 6, 2, 2), toon(CREAM), 0, HOUSING_H + CAP_H / 2, 0));
+  g.add(mesh(new CylinderGeometry(R, R, RIM_H, SEGMENTS), toon(RIM), 0, RIM_H / 2, 0));
+
+  const capMat = toon("#35302b").clone(); // (its own: the shared one is for every other model of that colour)
+  g.add(mesh(new CylinderGeometry(CAP_R, CAP_R, CAP_H, SEGMENTS), capMat, 0, RIM_H + CAP_H / 2, 0));
+
   // the mark, flat on the cap's top, reading upright from the south
-  const face = new Mesh(new PlaneGeometry(SIZE - 10, SIZE - 10), new MeshBasicMaterial({ map: markTexture(mark) }));
+  const markMat = new MeshBasicMaterial({ map: markTexture(mark), alphaTest: 0.35, side: DoubleSide });
+  const face = new Mesh(new PlaneGeometry(CAP_R * 1.5, CAP_R * 1.5), markMat);
   face.rotation.x = -Math.PI / 2;
-  face.position.set(0, HOUSING_H + CAP_H + 0.05, 0);
+  face.position.set(0, RIM_H + CAP_H + 0.05, 0);
   g.add(face);
+
+  g.userData.animate = ({ hover }: AnimCtx) => {
+    capMat.color.lerpColors(CAP_REST, CAP_LIT, hover);
+    markMat.color.lerpColors(MARK_REST, MARK_LIT, hover);
+  };
   return g;
 }

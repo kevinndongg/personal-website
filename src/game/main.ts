@@ -97,7 +97,14 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
   root.classList.add("ready");
 
   function zoneAt(x: number, y: number): Zone | null {
-    return world.zones.find((z) => rectContains(z.scene.area, x, y)) ?? null;
+    return (
+      world.zones.find((z) => {
+        const a = z.scene.area;
+        // a link is a round button: its corners do not count
+        if (z.kind === "link") return Math.hypot(x - (a.x + a.w / 2), y - (a.y + a.h / 2)) <= a.w / 2;
+        return rectContains(a, x, y);
+      }) ?? null
+    );
   }
 
   // Deep links use the URL hash (/#ftc), and the browser's Back button closes the panel again.
@@ -369,6 +376,34 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     { signal }
   );
 
+  // The toast: a line that says what a button just did.
+  const toast = document.createElement("p");
+  toast.className = "toast";
+  toast.setAttribute("role", "status");
+  root.append(toast);
+  let toastTimer: ReturnType<typeof setTimeout> | undefined;
+  function say(text: string) {
+    toast.textContent = text;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("show"), 2800);
+  }
+
+  /**
+   * Opens a contact link. A mailto: goes nowhere on a computer with no mail app registered, and the page cannot tell, so it
+   * also copies the address and says so: the visitor has it either way.
+   */
+  function followLink(label: string, href: string) {
+    const mail = href.startsWith("mailto:");
+    openAction({ label, href, external: !mail });
+    if (!mail) return;
+    const address = decodeURIComponent(href.slice("mailto:".length).split("?")[0]);
+    navigator.clipboard?.writeText(address).then(
+      () => say(`Copied ${address}`),
+      () => say(address)
+    ) ?? say(address);
+  }
+
   // A contact button opens its link on the click (not the press, which browsers do not always count as a user's go-ahead
   // for a new tab). A tap on a touch screen is a click too: there is no hover step.
   canvas.addEventListener(
@@ -378,7 +413,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
       const hit = renderer.pick(e.clientX, e.clientY);
       const zone = hit ? zoneAt(hit.x, hit.y) : null;
       if (zone?.kind !== "link" || !zone.href) return;
-      openAction({ label: zone.label, href: zone.href, external: !zone.href.startsWith("mailto:") });
+      followLink(zone.label, zone.href);
     },
     { signal }
   );
@@ -663,6 +698,8 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     if (import.meta.env.DEV) console.info(`[game] scene #${sceneId} stopped`);
     cancelAnimationFrame(raf);
     clearTimeout(bannerTimer);
+    clearTimeout(toastTimer);
+    toast.remove();
     intro?.cancel();
     for (const zone of world.zones) if (zone.kind === "gallery") filmRig(zone).onFrame = undefined;
     panel.destroy();
