@@ -122,13 +122,14 @@ function picture(w: number, h: number, canvas: HTMLCanvasElement, twoSided = fal
 
 // ---------------------------------------------------------------- the field
 
-/** How high the floor sheet lies above the ground: below the ground's shadow catcher (0.05) and leaf shade (0.08). */
-const SHEET_Y = 0.03;
+/** How high the floor sheet lies above the ground: over all of the ground's layers (shadow catcher 0.05, leaf shade 0.08, hover glow 0.12). */
+const SHEET_Y = 0.13;
 
 /**
  * The field's floor: foam tiles, the tape between the wedges and the taped robot start squares, as a flat sheet just above
- * the ground (below the shadow catcher and the leaf shade, so shadows and dapple still fall over it), on a thin slab that
- * only shows once the floor has risen. It is not flagged `flat`, so it lifts with the rest of the field when hovered.
+ * the ground, on a thin slab that only shows once the floor has risen. It lies over the ground's shadow catcher and leaf
+ * shade, so it brings its own (`liftOverlay`): the ground's would flicker against it as it passes their height on the way
+ * up and down. It is not flagged `flat`, so it lifts with the rest of the field when hovered.
  */
 function floorModel(): Group {
   const g = new Group();
@@ -160,8 +161,8 @@ function floorModel(): Group {
   sheet.rotation.x = -Math.PI / 2;
   sheet.position.y = SHEET_Y;
   g.add(sheet);
-  g.add(box(size, 3, size, "#6d717e", 0, -3.02, 0));
-  g.userData.liftOverlay = { w: size, d: size, y: SHEET_Y }; // see Renderer3D.addLiftOverlay: keeps shadows and leaf shade on it as it rises
+  g.add(box(size, 3, size, "#6d717e", 0, SHEET_Y - 0.02 - 3, 0)); // its top just under the sheet
+  g.userData.liftOverlay = { w: size, d: size, y: SHEET_Y }; // see Renderer3D.addLiftOverlay
   return g;
 }
 
