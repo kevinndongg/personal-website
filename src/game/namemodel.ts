@@ -8,7 +8,7 @@ import { nameShapes } from "./nameshapes";
 // baseline, so the capitals stand north of it and the g's tail hangs south of it. It does nothing and cannot be picked; the
 // sun, the grade and the focus dimming do the rest.
 
-const LETTERS = "#b8ae97"; // a warm ivory, well under white: the grade lifts highlights and leans them warm
+export const LETTERS = "#b8ae97"; // a warm ivory, well under white: the grade lifts highlights and leans them warm
 const THICK = 9; // how high the letters stand off the ground
 const BEVEL = 1.4;
 

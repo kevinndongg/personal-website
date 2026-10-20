@@ -1,12 +1,13 @@
-import { CanvasTexture, Color, DoubleSide, Group, LinearFilter, Mesh, MeshBasicMaterial, PlaneGeometry } from "three";
-import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+import { CanvasTexture, Color, ExtrudeGeometry, Group, LinearFilter, Mesh, PlaneGeometry, Shape } from "three";
+import type { BufferGeometry } from "three";
 import { mesh, toon } from "./models";
 import type { AnimCtx } from "./models";
 import { BUTTON_SIZE } from "./name";
+import { LETTERS } from "./namemodel";
 
-// Models for the contact buttons: rounded squares lying on the ground, each carrying one mark (email, LinkedIn, GitHub).
-// At rest they are the site's own dark brown, so they sit quietly beside the name, and they light up when hovered.
-// Same conventions as models.ts: 1 unit = 1 world px, origin at the footprint centre on the ground.
+// Models for the contact buttons: small rounded squares lying on the ground, shaped like the LinkedIn badge, each carrying
+// one mark (email, LinkedIn, GitHub). Cream, the colour of the name, with the mark in the site's dark brown; hovered, they
+// light up. Same conventions as models.ts: 1 unit = 1 world px, origin at the footprint centre on the ground.
 
 /** A colour of the site's theme (src/styles/global.css), so that the scene stays in step with it. */
 function themeColor(name: string, fallback: string): Color {
@@ -16,7 +17,7 @@ function themeColor(name: string, fallback: string): Color {
 
 type Mark = "email" | "linkedin" | "github";
 
-/** One button's mark, drawn in white on a transparent square (the material tints it, and the cap shows through). */
+/** One button's mark, drawn in white on a transparent square (the material tints it, and the button shows through). */
 function markTexture(mark: Mark): CanvasTexture {
   const S = 256;
   const c = document.createElement("canvas");
@@ -74,36 +75,67 @@ function markTexture(mark: Mark): CanvasTexture {
 }
 
 const SIZE = BUTTON_SIZE;
-const PLATE_H = 4; // the plate the cap sits in
-const CAP_H = 4; // the cap, standing proud of the plate
-const CAP = SIZE - 8;
+const RADIUS = 10.5; // about a fifth of the side, like the corners of the LinkedIn badge
+const BODY_H = 5; // the straight sides
+const BEVEL = 1.2; // the top edge is eased over by this much
+
+/** A rounded square, `side` wide, centred on the origin. */
+function roundedSquare(side: number, r: number): Shape {
+  const h = side / 2;
+  const s = new Shape();
+  s.moveTo(-h + r, -h);
+  s.lineTo(h - r, -h);
+  s.absarc(h - r, -h + r, r, -Math.PI / 2, 0, false);
+  s.lineTo(h, h - r);
+  s.absarc(h - r, h - r, r, 0, Math.PI / 2, false);
+  s.lineTo(-h + r, h);
+  s.absarc(-h + r, h - r, r, Math.PI / 2, Math.PI, false);
+  s.lineTo(-h, -h + r);
+  s.absarc(-h + r, -h + r, r, Math.PI, Math.PI * 1.5, false);
+  return s;
+}
+
+/** A rounded slab lying on the ground, rising from y = 0 by `depth` (plus `bevel` over its top edge, which grows it by that much all round). */
+function slab(side: number, r: number, depth: number, bevel: number): BufferGeometry {
+  const geometry = new ExtrudeGeometry(roundedSquare(side - 2 * bevel, r - bevel), {
+    depth,
+    curveSegments: 16,
+    bevelEnabled: bevel > 0,
+    bevelThickness: bevel,
+    bevelSize: bevel,
+    bevelSegments: 3,
+  });
+  geometry.rotateX(-Math.PI / 2); // lie down, rising from the ground
+  geometry.translate(0, bevel, 0); // (the bevel reaches that far below the face the extrusion starts from)
+  return geometry;
+}
 
 /**
- * One rounded-square button lying on the ground. Hovering its zone raises the whole model (the zone does that) and, here,
- * lights it: the cap warms up to the accent brown and the mark glows.
+ * One small rounded-square button lying on the ground: a cream slab (the name's colour) with straight sides and an eased top
+ * edge, and the mark on it in the site's dark brown. Hovering its zone raises the whole model (the zone does that) and, here,
+ * lights it up from the name's cream to the theme's.
  */
 export function buttonModel(mark: Mark): Group {
-  const rest = themeColor("--color-text", "#3b2a20"); // the dark brown, for the plate and the cap alike
-  const capLit = themeColor("--color-accent", "#8a5a35");
-  const markRest = themeColor("--color-text-muted", "#7a6552");
-  const markLit = themeColor("--color-bg", "#f5f1ea");
+  const brown = themeColor("--color-text", "#3b2a20");
+  const rest = new Color(LETTERS); // the same cream as the name
+  const lit = themeColor("--color-bg", "#f5f1ea");
 
   const g = new Group();
-  g.add(mesh(new RoundedBoxGeometry(SIZE, PLATE_H, SIZE, 3, 12), toon(rest.getStyle()), 0, PLATE_H / 2, 0));
+  const bodyMat = toon(rest.getStyle()).clone(); // (its own: it changes colour)
+  g.add(mesh(slab(SIZE, RADIUS, BODY_H, BEVEL), bodyMat));
 
-  const capMat = toon(rest.getStyle()).clone(); // (its own: the shared one is for every other model of that colour)
-  g.add(mesh(new RoundedBoxGeometry(CAP, CAP_H, CAP, 3, 10), capMat, 0, PLATE_H + CAP_H / 2, 0));
-
-  // the mark, flat on the cap's top, reading upright from the south
-  const markMat = new MeshBasicMaterial({ map: markTexture(mark), alphaTest: 0.35, side: DoubleSide });
-  const face = new Mesh(new PlaneGeometry(CAP * 0.78, CAP * 0.78), markMat);
+  // The mark is lit like the slab is (the same kind of material), and flat on top like the name's letters.
+  const top = BODY_H + 2 * BEVEL;
+  const markMat = toon(brown.getStyle()).clone();
+  markMat.map = markTexture(mark);
+  markMat.alphaTest = 0.35;
+  const face = new Mesh(new PlaneGeometry(SIZE * 0.62, SIZE * 0.62), markMat);
   face.rotation.x = -Math.PI / 2;
-  face.position.set(0, PLATE_H + CAP_H + 0.05, 0);
+  face.position.set(0, top + 0.05, 0);
   g.add(face);
 
   g.userData.animate = ({ hover }: AnimCtx) => {
-    capMat.color.lerpColors(rest, capLit, hover);
-    markMat.color.lerpColors(markRest, markLit, hover);
+    bodyMat.color.lerpColors(rest, lit, hover);
   };
   return g;
 }
