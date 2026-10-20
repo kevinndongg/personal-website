@@ -1,4 +1,5 @@
 import {
+  AdditiveBlending,
   BoxGeometry,
   CanvasTexture,
   ConeGeometry,
@@ -409,6 +410,56 @@ export function formulaModel(): Group {
   car.position.x = -3; // center the whole model on its footprint
   const g = new Group();
   g.add(car);
+
+  // The car's own copies of its toon materials (the cached ones are shared with other props), so that it alone can glow.
+  const own = new Map<Material, MeshToonMaterial>();
+  car.traverse((o) => {
+    const m = o as Mesh;
+    if (!m.isMesh || !(m.material instanceof MeshToonMaterial)) return;
+    let copy = own.get(m.material);
+    if (!copy) own.set(m.material, (copy = m.material.clone()));
+    m.material = copy;
+  });
+  const lit = [...own.values()];
+
+  // a soft halo on the floor under the car
+  const [halo, haloCtx] = canvasOf(128, 128);
+  const fade = haloCtx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  fade.addColorStop(0, "rgba(255,217,166,1)");
+  fade.addColorStop(0.55, "rgba(255,217,166,0.55)");
+  fade.addColorStop(1, "rgba(255,217,166,0)");
+  haloCtx.fillStyle = fade;
+  haloCtx.fillRect(0, 0, 128, 128);
+  const haloMat = new MeshBasicMaterial({
+    map: new CanvasTexture(halo),
+    transparent: true,
+    opacity: 0,
+    blending: AdditiveBlending,
+    depthWrite: false,
+  });
+  const glow = new Mesh(new PlaneGeometry(60, 38), haloMat);
+  glow.rotation.x = -Math.PI / 2;
+  glow.position.set(-0.5, 0.2, 0);
+  glow.renderOrder = 1;
+  glow.userData.noPick = true; // (never something to click: the hit box below is the click area)
+  glow.visible = false;
+  g.add(glow);
+
+  /** The hover glow, `amount` 0..1: the car lights up from within and its halo comes up (a gentle pulse, so it reads as live). */
+  g.userData.setGlow = (amount: number, t: number) => {
+    for (const m of lit) {
+      m.emissive.set("#ff9a70");
+      m.emissiveIntensity = amount * 0.45;
+    }
+    haloMat.opacity = amount * (0.55 + 0.15 * Math.sin(t * 4));
+    glow.visible = amount > 0.001;
+  };
+
+  // An invisible box a little bigger than the car (about 4 px all round, at the car's scale): where it can be hovered and
+  // clicked, so the thin wings and wheels are not fiddly to hit. It is never drawn, but rays still hit it.
+  const hit = new Mesh(new BoxGeometry(55, 14.5, 32), new MeshBasicMaterial({ visible: false }));
+  hit.position.set(-0.5, 7.25, 0);
+  g.add(hit);
   return g;
 }
 

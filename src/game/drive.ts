@@ -41,8 +41,18 @@ export function attachLap(model: Group, path: { x: number; y: number }[]) {
 
   carWatch.driving = false;
 
+  // The hover glow: on while the pointer is over the car and a click would send it out, off otherwise (set by the renderer
+  // through `userData.hovered`; the model's `userData.setGlow` draws it).
+  let glow = 0;
+  let lastT = -1;
+
   model.userData.animate = ({ t }: AnimCtx) => {
     if (t <= 0) return; // reduced motion: the car stays put
+    const dt = lastT < 0 ? 0 : Math.min(0.1, Math.max(0, t - lastT));
+    lastT = t;
+    const inviting = model.userData.hovered === true && start < 0 && !requested;
+    glow += ((inviting ? 1 : 0) - glow) * (1 - Math.exp(-dt * 10));
+    (model.userData.setGlow as ((amount: number, t: number) => void) | undefined)?.(glow < 0.002 ? 0 : glow, t);
     if (next < 0) next = t + between(FIRST);
     if (start < 0) {
       if (!requested && t < next) return;

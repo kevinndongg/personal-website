@@ -41,10 +41,13 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     "pointermove",
     (e) => {
       if (e.pointerType === "touch") return;
-      backdrop.style.cursor = renderer.pick(e.clientX, e.clientY)?.propId === "formula" ? "pointer" : "";
+      const onCar = renderer.pick(e.clientX, e.clientY)?.propId === "formula";
+      backdrop.style.cursor = onCar ? "pointer" : "";
+      renderer.hoverCar(onCar);
     },
     { signal }
   );
+  backdrop.addEventListener("pointerleave", () => renderer.hoverCar(false), { signal });
   const mapSize = world.w * TILE;
 
   let hoveredId: string | null = null; // project box under the pointer
@@ -311,12 +314,14 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
       const hit = renderer.pick(e.clientX, e.clientY);
       hoveredId = hit ? (zoneAt(hit.x, hit.y)?.id ?? null) : null;
       canvas.style.cursor = hoveredId ? "pointer" : "default";
+      renderer.hoverCar(hit?.propId === "formula");
     },
     { signal }
   );
   canvas.addEventListener(
     "pointerleave",
     () => {
+      renderer.hoverCar(false);
       if (!panel.isOpen) hoveredId = null;
       else lightControl(null);
     },
