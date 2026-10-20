@@ -1,3 +1,4 @@
+import { nameRect } from "./name";
 import { ZONE_FALLBACK_ACCENTS } from "./palette";
 import { buildScene, sceneSize } from "./scenes";
 import type { Decal, Rect, Scene, ZoneVariant } from "./scenes";
@@ -80,7 +81,8 @@ function rng(seed: number) {
 }
 
 // Zones live on the edge ring. Rearrange by editing ZONE_SLOTS.
-export type Slot = "TL" | "TM" | "TR" | "RM" | "BR" | "BM" | "BL" | "LM";
+// "CM" is the middle of the map, where the contact plaques stand in front of the name (never handed out as a spare).
+export type Slot = "TL" | "TM" | "TR" | "RM" | "BR" | "BM" | "BL" | "LM" | "CM";
 const SLOT_ORDER: Slot[] = ["TL", "TM", "TR", "RM", "BR", "BM", "BL", "LM"];
 export const ZONE_SLOTS: Record<string, Slot> = {
   "cmu-racing": "TL",
@@ -89,7 +91,7 @@ export const ZONE_SLOTS: Record<string, Slot> = {
   "uav-obstacle-detection": "RM",
   ftc: "BR",
   gallery: "BM",
-  contact: "BL",
+  contact: "CM",
 };
 
 const SLOT_CELLS: Record<Slot, { col: "L" | "C" | "R"; row: "T" | "M" | "B" }> = {
@@ -101,6 +103,7 @@ const SLOT_CELLS: Record<Slot, { col: "L" | "C" | "R"; row: "T" | "M" | "B" }> =
   BM: { col: "C", row: "B" },
   BL: { col: "L", row: "B" },
   LM: { col: "L", row: "M" },
+  CM: { col: "C", row: "M" },
 };
 
 const EDGE_PX = 3 * TILE;
@@ -165,6 +168,16 @@ export function generateWorld(inputs: ZoneInput[], seed = 7): World {
     const y0 = Math.max(1, Math.floor(a.y / TILE) - 1);
     const x1 = Math.min(w - 2, Math.ceil((a.x + a.w) / TILE) + 1);
     const y1 = Math.min(h - 2, Math.ceil((a.y + a.h) / TILE) + 1);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) blocked[idx(x, y)] = 1;
+  }
+
+  // ... and off the name's plinth (the tablet leans back over it), with the same margin
+  {
+    const n = nameRect();
+    const x0 = Math.max(1, Math.floor(n.x / TILE) - 1);
+    const y0 = Math.max(1, Math.floor((n.y - TILE) / TILE) - 1);
+    const x1 = Math.min(w - 2, Math.ceil((n.x + n.w) / TILE) + 1);
+    const y1 = Math.min(h - 2, Math.ceil((n.y + n.h) / TILE) + 1);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) blocked[idx(x, y)] = 1;
   }
 
