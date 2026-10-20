@@ -80,7 +80,7 @@ function wheel(r: number, w: number, x: number, y: number, z: number): Mesh {
   return m;
 }
 
-function nearestTexture(canvas: HTMLCanvasElement): CanvasTexture {
+export function nearestTexture(canvas: HTMLCanvasElement): CanvasTexture {
   const t = new CanvasTexture(canvas);
   t.minFilter = NearestFilter;
   t.magFilter = NearestFilter;
@@ -88,7 +88,7 @@ function nearestTexture(canvas: HTMLCanvasElement): CanvasTexture {
   return t;
 }
 
-function canvasOf(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
+export function canvasOf(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const c = document.createElement("canvas");
   c.width = w;
   c.height = h;
@@ -97,7 +97,7 @@ function canvasOf(w: number, h: number): [HTMLCanvasElement, CanvasRenderingCont
   return [c, ctx];
 }
 
-function fillRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string) {
+export function fillRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string) {
   ctx.fillStyle = color;
   ctx.fillRect(x, y, w, h);
 }

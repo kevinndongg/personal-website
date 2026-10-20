@@ -436,6 +436,7 @@ export class Renderer3D {
         }
         model.userData.zoneId = zone.id;
         model.userData.sprite = p.sprite;
+        if (model.userData.liftOverlay) this.addLiftOverlay(model, model.userData.liftOverlay);
         if (p.drive) attachLap(model, p.drive);
         if (p.errand) attachErrand(model, p.errand, Math.PI / 2); // (he stops facing south, toward the grill)
         model.traverse((o) => {
@@ -502,6 +503,35 @@ export class Renderer3D {
     this.slab = slab;
 
     this.edgeMask = fadeMaskTexture(mapSize + 2 * GROUND_MARGIN, mapSize);
+  }
+
+  /**
+   * A floor that rises with its project (a model with `userData.liftOverlay = { w, d, y }`) cannot use the ground's shadow
+   * catcher and leaf shade, which lie only a few hundredths above the ground: once it has risen it covers them, and while it is
+   * landing it passes through their height, where the two surfaces are too close to tell apart in depth and the shadows
+   * flicker. So the floor sheet rests above all of the ground's layers (at height `y` on the model, over the hover glow at
+   * 0.12 too), which can then never show through, and carries a catcher and a leaf shade of its own, covering the same patch
+   * of the map, at every height. They sit just above the sheet, so shadows and dapple stay on it, rising or at rest.
+   */
+  private addLiftOverlay(model: Object3D, { w, d, y }: { w: number; d: number; y: number }) {
+    const { mapSize } = this;
+    const catcher = new Mesh(new PlaneGeometry(w, d), new ShadowMaterial({ color: "#0b1220", opacity: 0.4 }));
+    catcher.rotation.x = -Math.PI / 2;
+    catcher.position.y = y + 0.02;
+    catcher.receiveShadow = true;
+    // the leaf shade takes the texture coordinates of this patch of the ground's, so it carries on from it
+    const geo = new PlaneGeometry(w, d);
+    const uv = geo.attributes.uv;
+    for (let i = 0; i < uv.count; i++) {
+      const x = model.position.x + (uv.getX(i) - 0.5) * w;
+      const z = model.position.z - (uv.getY(i) - 0.5) * d;
+      uv.setXY(i, x / mapSize, 1 - z / mapSize);
+    }
+    const leaves = new Mesh(geo, new MeshBasicMaterial({ map: this.dapple, transparent: true, opacity: 0.34, depthWrite: false }));
+    leaves.rotation.x = -Math.PI / 2;
+    leaves.position.y = y + 0.05;
+    leaves.renderOrder = 0.5;
+    model.add(catcher, leaves);
   }
 
   /** Switch how the map ends (see EdgeMode). Safe to call at any time. */
