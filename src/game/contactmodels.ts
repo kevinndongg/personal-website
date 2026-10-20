@@ -1,17 +1,18 @@
-import { CanvasTexture, Color, CylinderGeometry, DoubleSide, Group, LinearFilter, Mesh, MeshBasicMaterial, PlaneGeometry } from "three";
+import { CanvasTexture, Color, DoubleSide, Group, LinearFilter, Mesh, MeshBasicMaterial, PlaneGeometry } from "three";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { mesh, toon } from "./models";
 import type { AnimCtx } from "./models";
 import { BUTTON_SIZE } from "./name";
 
-// Models for the contact buttons: round discs lying on the ground like pressure plates, each carrying one mark (email,
-// LinkedIn, GitHub). Dark at rest, so they sit quietly beside the name, and they light up when hovered.
+// Models for the contact buttons: rounded squares lying on the ground, each carrying one mark (email, LinkedIn, GitHub).
+// At rest they are the site's own dark brown, so they sit quietly beside the name, and they light up when hovered.
 // Same conventions as models.ts: 1 unit = 1 world px, origin at the footprint centre on the ground.
 
-const RIM = "#2a2521"; // the plate the disc sits in
-const CAP_REST = new Color("#35302b");
-const CAP_LIT = new Color("#5b4a3a");
-const MARK_REST = new Color("#7d705e"); // the mark, dim
-const MARK_LIT = new Color("#fff1d0"); // ... and lit, like a backlit switch
+/** A colour of the site's theme (src/styles/global.css), so that the scene stays in step with it. */
+function themeColor(name: string, fallback: string): Color {
+  const value = typeof document === "undefined" ? "" : getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return new Color(value || fallback);
+}
 
 type Mark = "email" | "linkedin" | "github";
 
@@ -72,33 +73,37 @@ function markTexture(mark: Mark): CanvasTexture {
   return t;
 }
 
-const R = BUTTON_SIZE / 2;
-const RIM_H = 4; // the plate the disc sits in
-const CAP_H = 4; // the disc, standing proud of the plate
-const CAP_R = R - 5;
-const SEGMENTS = 48;
+const SIZE = BUTTON_SIZE;
+const PLATE_H = 4; // the plate the cap sits in
+const CAP_H = 4; // the cap, standing proud of the plate
+const CAP = SIZE - 8;
 
 /**
- * One round button lying on the ground. Hovering its zone raises the whole model (the zone does that) and, here, lights
- * it: the cap warms up and the mark glows.
+ * One rounded-square button lying on the ground. Hovering its zone raises the whole model (the zone does that) and, here,
+ * lights it: the cap warms up to the accent brown and the mark glows.
  */
 export function buttonModel(mark: Mark): Group {
-  const g = new Group();
-  g.add(mesh(new CylinderGeometry(R, R, RIM_H, SEGMENTS), toon(RIM), 0, RIM_H / 2, 0));
+  const rest = themeColor("--color-text", "#3b2a20"); // the dark brown, for the plate and the cap alike
+  const capLit = themeColor("--color-accent", "#8a5a35");
+  const markRest = themeColor("--color-text-muted", "#7a6552");
+  const markLit = themeColor("--color-bg", "#f5f1ea");
 
-  const capMat = toon("#35302b").clone(); // (its own: the shared one is for every other model of that colour)
-  g.add(mesh(new CylinderGeometry(CAP_R, CAP_R, CAP_H, SEGMENTS), capMat, 0, RIM_H + CAP_H / 2, 0));
+  const g = new Group();
+  g.add(mesh(new RoundedBoxGeometry(SIZE, PLATE_H, SIZE, 3, 12), toon(rest.getStyle()), 0, PLATE_H / 2, 0));
+
+  const capMat = toon(rest.getStyle()).clone(); // (its own: the shared one is for every other model of that colour)
+  g.add(mesh(new RoundedBoxGeometry(CAP, CAP_H, CAP, 3, 10), capMat, 0, PLATE_H + CAP_H / 2, 0));
 
   // the mark, flat on the cap's top, reading upright from the south
   const markMat = new MeshBasicMaterial({ map: markTexture(mark), alphaTest: 0.35, side: DoubleSide });
-  const face = new Mesh(new PlaneGeometry(CAP_R * 1.5, CAP_R * 1.5), markMat);
+  const face = new Mesh(new PlaneGeometry(CAP * 0.78, CAP * 0.78), markMat);
   face.rotation.x = -Math.PI / 2;
-  face.position.set(0, RIM_H + CAP_H + 0.05, 0);
+  face.position.set(0, PLATE_H + CAP_H + 0.05, 0);
   g.add(face);
 
   g.userData.animate = ({ hover }: AnimCtx) => {
-    capMat.color.lerpColors(CAP_REST, CAP_LIT, hover);
-    markMat.color.lerpColors(MARK_REST, MARK_LIT, hover);
+    capMat.color.lerpColors(rest, capLit, hover);
+    markMat.color.lerpColors(markRest, markLit, hover);
   };
   return g;
 }

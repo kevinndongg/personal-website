@@ -97,14 +97,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
   root.classList.add("ready");
 
   function zoneAt(x: number, y: number): Zone | null {
-    return (
-      world.zones.find((z) => {
-        const a = z.scene.area;
-        // a link is a round button: its corners do not count
-        if (z.kind === "link") return Math.hypot(x - (a.x + a.w / 2), y - (a.y + a.h / 2)) <= a.w / 2;
-        return rectContains(a, x, y);
-      }) ?? null
-    );
+    return world.zones.find((z) => rectContains(z.scene.area, x, y)) ?? null;
   }
 
   // Deep links use the URL hash (/#ftc), and the browser's Back button closes the panel again.
