@@ -30,10 +30,20 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
   const inputs: ZoneInput[] = JSON.parse(root.dataset.zones ?? "[]");
   const world = generateWorld(inputs);
   const renderer = new Renderer3D(canvas, world);
-  const panel = new Panel(
-    root.querySelector<HTMLElement>("[data-panel]")!,
-    root.querySelector<HTMLElement>("[data-backdrop]")!,
-    signal
+  const backdrop = root.querySelector<HTMLElement>("[data-backdrop]")!;
+  const panel = new Panel(root.querySelector<HTMLElement>("[data-panel]")!, backdrop, signal);
+  // with a project open the backdrop lies over the scene, but the car behind it can still be clicked
+  panel.onBackdropPress = (e) => {
+    const hit = renderer.pick(e.clientX, e.clientY);
+    return hit?.propId === "formula" && !!hit.zoneId && renderer.driveCar(hit.zoneId);
+  };
+  backdrop.addEventListener(
+    "pointermove",
+    (e) => {
+      if (e.pointerType === "touch") return;
+      backdrop.style.cursor = renderer.pick(e.clientX, e.clientY)?.propId === "formula" ? "pointer" : "";
+    },
+    { signal }
   );
   const mapSize = world.w * TILE;
 
@@ -346,6 +356,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
       }
       const hit = renderer.pick(e.clientX, e.clientY);
       if (!hit) return;
+      if (hit.propId === "formula" && hit.zoneId && renderer.driveCar(hit.zoneId)) return; // the parked car drives instead
       const zone = world.zones.find((z) => z.id === hit.zoneId) ?? zoneAt(hit.x, hit.y);
       if (zone) open(zone);
     },

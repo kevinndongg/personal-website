@@ -36,6 +36,8 @@ export class Panel {
   isOpen = false;
   /** Called when the panel closes (Esc, the close button or the backdrop). */
   onClose: () => void = () => {};
+  /** Asked when the backdrop is pressed: return true if the press was for something in the scene behind it (the panel stays). */
+  onBackdropPress: (e: PointerEvent) => boolean = () => false;
   /** Asked before Esc closes the panel: return true if it dealt with the key itself (e.g. zoomed back out a level). */
   beforeEscape: () => boolean = () => false;
 
@@ -52,7 +54,13 @@ export class Panel {
     this.actions = root.querySelector("[data-actions]")!;
     this.grip = root.querySelector("[data-grip]")!;
     root.querySelector("[data-close]")!.addEventListener("click", () => this.close(), { signal });
-    backdrop.addEventListener("pointerdown", () => this.close(), { signal });
+    backdrop.addEventListener(
+      "pointerdown",
+      (e) => {
+        if (!this.onBackdropPress(e)) this.close();
+      },
+      { signal }
+    );
     this.grip.addEventListener("click", () => this.setExpanded(!this.root.classList.contains("expanded")), { signal });
     document.addEventListener(
       "keydown",
