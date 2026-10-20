@@ -3,7 +3,7 @@ import { mesh, toon } from "./models";
 import { NAME } from "./name";
 import { nameShapes } from "./nameshapes";
 
-// The name, "Kevin Dong", in Goudy Bookletter 1911: big, thick ivory letters lying flat on the ground, like block letters
+// The name, "Kevin Dong", in Zilla Slab Bold: big, thick ivory letters lying flat on the ground, like block letters
 // set into a courtyard. Same conventions as models.ts: 1 unit = 1 world px. The origin is on the ground at the middle of the
 // baseline, so the capitals stand north of it and the g's tail hangs south of it. It does nothing and cannot be picked; the
 // sun, the grade and the focus dimming do the rest.

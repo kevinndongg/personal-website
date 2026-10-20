@@ -3,13 +3,11 @@
 // building starts at x = 560). Plain numbers only, so that world.ts can keep the yard tires off it without pulling in three.
 import { NAME_BOX } from "./namepath";
 
-const TILE = 16;
-
 export const NAME = {
   /** The centre line: the middle of the map. */
   cx: 384,
   /** The top of the capital letters. */
-  top: 300,
+  top: 320,
   /** The width the letters are scaled to. */
   letters: 340,
 };
@@ -30,8 +28,8 @@ export function nameRect() {
   };
 }
 
-/** The first tile row below the g's tail, with a little room: the contact buttons start here. */
-export const CONTACT_Y = Math.ceil((NAME_BASELINE - NAME_BOX.y0 * NAME_SCALE + 8) / TILE) * TILE;
+/** A little below the g's tail: the contact buttons start here. */
+export const CONTACT_Y = Math.round(NAME_BASELINE - NAME_BOX.y0 * NAME_SCALE + 16);
 
 /** Each contact button is a square this big, on the ground. */
 export const BUTTON_SIZE = 48;
