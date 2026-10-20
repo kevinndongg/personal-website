@@ -2,6 +2,7 @@
 import { constructionScene } from "./construction";
 import { contactScene } from "./contact";
 import { ftcScene, H as FTC_H, W as FTC_W } from "./ftc";
+import { BUTTON_SIZE } from "./name";
 import { photoDeskScene } from "./photodesk";
 
 export interface Rect {
@@ -83,7 +84,7 @@ export interface Scene {
   decals: Decal[];
 }
 
-export type ZoneVariant = "garage" | "building" | "office" | "photodesk" | "buttons" | "construction" | "ftc";
+export type ZoneVariant = "garage" | "building" | "office" | "photodesk" | "button" | "construction" | "ftc";
 
 export const GARAGE_W = 150; // roofed workshop + a 66 px open bay big enough for the formula car
 export const GARAGE_H = 56;
@@ -96,7 +97,7 @@ const BUILDING = { building: { w: 128, h: 80 }, office: { w: 96, h: 80 } } as co
 export function sceneSize(variant: ZoneVariant): { w: number; h: number } {
   if (variant === "garage") return { w: 224, h: 256 };
   if (variant === "photodesk") return { w: 256, h: 144 };
-  if (variant === "buttons") return { w: 256, h: 96 };
+  if (variant === "button") return { w: BUTTON_SIZE, h: BUTTON_SIZE };
   if (variant === "construction") return { w: 160, h: 144 }; // the same footprint as the generic building
   if (variant === "ftc") return { w: FTC_W, h: FTC_H };
   return { w: BUILDING[variant].w + 32, h: 144 };
@@ -300,7 +301,7 @@ function defaultScene(ox: number, oy: number, id: string, variant: "building" | 
 export function buildScene(id: string, variant: ZoneVariant, ox: number, oy: number): Scene {
   if (variant === "garage") return racingScene(ox, oy);
   if (variant === "photodesk") return photoDeskScene(ox, oy);
-  if (variant === "buttons") return contactScene(ox, oy);
+  if (variant === "button") return contactScene(ox, oy, id);
   if (variant === "construction") return constructionScene(ox, oy, id);
   if (variant === "ftc") return ftcScene(ox, oy);
   return defaultScene(ox, oy, id, variant);

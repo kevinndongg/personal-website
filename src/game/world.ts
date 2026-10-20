@@ -1,4 +1,4 @@
-import { CONTACT_Y, nameRect } from "./name";
+import { BUTTON_AT, nameRect } from "./name";
 import { ZONE_FALLBACK_ACCENTS } from "./palette";
 import { buildScene, sceneSize } from "./scenes";
 import type { Decal, Rect, Scene, ZoneVariant } from "./scenes";
@@ -9,7 +9,8 @@ export const TILE = 16;
 export const WORLD_W = 48;
 export const WORLD_H = 48;
 
-export type ZoneKind = "project" | "gallery" | "contact";
+/** A "link" is a button on the ground that opens its `href` when pressed (no panel). */
+export type ZoneKind = "project" | "gallery" | "link";
 
 export interface ZoneAction {
   label: string;
@@ -81,17 +82,15 @@ function rng(seed: number) {
 }
 
 // Zones live on the edge ring. Rearrange by editing ZONE_SLOTS.
-// "CM" is the middle of the map, where the contact buttons lie in front of the name (never handed out as a spare).
-export type Slot = "TL" | "TM" | "TR" | "RM" | "BR" | "BM" | "BL" | "LM" | "CM";
+export type Slot = "TL" | "TM" | "TR" | "RM" | "BR" | "BM" | "BL" | "LM";
 const SLOT_ORDER: Slot[] = ["TL", "TM", "TR", "RM", "BR", "BM", "BL", "LM"];
 export const ZONE_SLOTS: Record<string, Slot> = {
   "cmu-racing": "TL",
   "auton-lab-vision": "TM",
   "temple-allen-internship": "TR",
-  "uav-obstacle-detection": "RM",
+  "uav-obstacle-detection": "BL",
   ftc: "BR",
   gallery: "BM",
-  contact: "CM",
 };
 
 const SLOT_CELLS: Record<Slot, { col: "L" | "C" | "R"; row: "T" | "M" | "B" }> = {
@@ -103,7 +102,6 @@ const SLOT_CELLS: Record<Slot, { col: "L" | "C" | "R"; row: "T" | "M" | "B" }> =
   BM: { col: "C", row: "B" },
   BL: { col: "L", row: "B" },
   LM: { col: "L", row: "M" },
-  CM: { col: "C", row: "M" },
 };
 
 const EDGE_PX = 3 * TILE;
@@ -117,13 +115,13 @@ function slotOrigin(slot: Slot, w: number, h: number, edge: number) {
   const { col, row } = SLOT_CELLS[slot];
   const px = WORLD_W * TILE;
   const x = col === "L" ? edge : col === "R" ? px - edge - w : snap((px - w) / 2);
-  const y = slot === "CM" ? CONTACT_Y : row === "T" ? edge : row === "B" ? px - BOTTOM_PX - h : snap((WORLD_H * TILE - h) / 2);
+  const y = row === "T" ? edge : row === "B" ? px - BOTTOM_PX - h : snap((WORLD_H * TILE - h) / 2);
   return { x, y };
 }
 
 function defaultVariant(input: ZoneInput): ZoneVariant {
   // a project without a scene of its own is still being built
-  return input.variant ?? (input.kind === "contact" ? "buttons" : input.kind === "project" ? "construction" : "building");
+  return input.variant ?? (input.kind === "link" ? "button" : input.kind === "project" ? "construction" : "building");
 }
 
 function layoutZones(inputs: ZoneInput[]): Zone[] {
@@ -132,9 +130,11 @@ function layoutZones(inputs: ZoneInput[]): Zone[] {
   return inputs.map((input, i) => {
     const variant = defaultVariant(input);
     const { w, h } = sceneSize(variant);
-    const slot = ZONE_SLOTS[input.id] ?? spare.shift() ?? "LM";
+    // the contact buttons have places of their own; everything else sits on the edge ring
+    const fixed = BUTTON_AT[input.id];
+    const slot = fixed ? undefined : (ZONE_SLOTS[input.id] ?? spare.shift() ?? "LM");
     // the Racing garage sits right against the border wall
-    const { x, y } = slotOrigin(slot, w, h, variant === "garage" ? TILE : EDGE_PX);
+    const { x, y } = fixed ?? slotOrigin(slot!, w, h, variant === "garage" ? TILE : EDGE_PX);
     return {
       ...input,
       variant,

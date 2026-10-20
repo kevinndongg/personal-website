@@ -30,5 +30,17 @@ export function nameRect() {
   };
 }
 
-/** Where the contact area starts: the first tile row below the g's tail, with a little room. */
+/** The first tile row below the g's tail, with a little room: the contact buttons start here. */
 export const CONTACT_Y = Math.ceil((NAME_BASELINE - NAME_BOX.y0 * NAME_SCALE + 8) / TILE) * TILE;
+
+/** Each contact button is a square this big, on the ground. */
+export const BUTTON_SIZE = 64;
+const BUTTON_GAP = 20;
+
+/** The contact buttons' top-left corners (they are zones of their own, one per link), side by side on the centre line. */
+export const BUTTON_AT: Record<string, { x: number; y: number }> = Object.fromEntries(
+  ["email", "linkedin", "github"].map((id, i) => [
+    id,
+    { x: NAME.cx - (3 * BUTTON_SIZE + 2 * BUTTON_GAP) / 2 + i * (BUTTON_SIZE + BUTTON_GAP), y: CONTACT_Y },
+  ])
+);

@@ -131,14 +131,7 @@ function zoneRoofTexture(w: number, d: number, zone: Zone): CanvasTexture {
   const ey = Math.floor(d / 2);
   disc(ctx, ex, ey, 14, "#16161d");
   disc(ctx, ex, ey, 12, "#f4f4f4");
-  if (zone.kind === "contact") {
-    fillRect(ctx, ex - 9, ey - 6, 18, 12, "#16161d");
-    fillRect(ctx, ex - 8, ey - 5, 16, 10, "#f4f4f4");
-    for (let i = 0; i < 8; i++) {
-      fillRect(ctx, ex - 8 + i, ey - 5 + i, 1, 1, accent);
-      fillRect(ctx, ex + 7 - i, ey - 5 + i, 1, 1, accent);
-    }
-  } else if (zone.kind === "gallery") {
+  if (zone.kind === "gallery") {
     disc(ctx, ex, ey, 8, "#2a2d38");
     disc(ctx, ex, ey, 5, "#2f74e0");
     fillRect(ctx, ex - 3, ey - 3, 2, 2, "#cfe6ff");

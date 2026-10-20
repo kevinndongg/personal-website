@@ -1,6 +1,6 @@
 import { navigate } from "astro:transitions/client";
 import type { Intro } from "./intro";
-import { Panel } from "./panel";
+import { Panel, openAction } from "./panel";
 import type { PanelSide } from "./panel";
 import { Renderer3D } from "./render3d";
 import { filmRig } from "./scenery";
@@ -140,6 +140,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
   }
 
   function open(zone: Zone, fromUrl = false) {
+    if (zone.kind === "link") return; // a button on the ground opens its link when pressed, never a card
     const side = sideFor(zone);
     // the gallery is a roll with a start and an end: opening it begins at the start (a turn of the window, which opens it
     // again, does not)
@@ -368,6 +369,20 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     { signal }
   );
 
+  // A contact button opens its link on the click (not the press, which browsers do not always count as a user's go-ahead
+  // for a new tab). A tap on a touch screen is a click too: there is no hover step.
+  canvas.addEventListener(
+    "click",
+    (e) => {
+      if (e.button !== 0 || panel.isOpen) return;
+      const hit = renderer.pick(e.clientX, e.clientY);
+      const zone = hit ? zoneAt(hit.x, hit.y) : null;
+      if (zone?.kind !== "link" || !zone.href) return;
+      openAction({ label: zone.label, href: zone.href, external: !zone.href.startsWith("mailto:") });
+    },
+    { signal }
+  );
+
   // A swipe, zoomed into a photo, does what the arrow keys do (the photo is dragged along: swiping left shows the one to
   // the right). A short touch is a tap, which goes back to the page.
   const SWIPE_PX = 40;
@@ -466,7 +481,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
 
   function updateLabels() {
     world.zones.forEach((zone, i) => {
-      const show = !panel.isOpen && zone.id === hoveredId;
+      const show = !panel.isOpen && zone.id === hoveredId && zone.kind !== "link"; // (a button has no name pill)
       // a label only needs placing while it is showing or fading out (placing asks the page for the canvas's size,
       // which makes the browser do layout work, and this runs for every project on every frame)
       if (show || labels[i].classList.contains("visible")) {

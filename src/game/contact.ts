@@ -1,39 +1,35 @@
-import type { Decal, Footprint, Prop, Scene } from "./scenes";
+import { BUTTON_SIZE } from "./name";
+import type { Decal, Prop, Scene } from "./scenes";
 
-// The contact area: three big square buttons lying side by side on the ground, one mark each for email, LinkedIn and GitHub.
+// One contact button: a big square button lying on the ground that opens a link when it is pressed. Each of the three
+// (email, LinkedIn, GitHub) is a zone of its own, `id` says which. The area is the button itself, so hovering the button
+// is hovering the zone (it rises and its ground brightens), and there is no card: world.ts places the three side by side.
 // Positions are relative to the area's top-left corner, then shifted by (ox, oy) into world px.
 
-const W = 256;
-const H = 96;
-const BUTTON = 64; // each button is a square this big
-const GAP = 20;
-const ROW_W = 3 * BUTTON + 2 * GAP;
-const TOP = 12; // from the area's top edge to the row of buttons
-
-const rect = (w: number, h: number): Footprint => ({ kind: "rect", w, h });
-
-export function contactScene(ox: number, oy: number): Scene {
+export function contactScene(ox: number, oy: number, id: string): Scene {
+  const S = BUTTON_SIZE;
   const at = (x: number, y: number) => ({ x: ox + x, y: oy + y });
 
-  // a plain paved pad under the buttons, so the group reads as one place
+  // a plain paved square under the button, so it reads as a place of its own
   const decals: Decal[] = [
     {
       kind: "pool",
-      points: [at(4, 4), at(W - 4, 4), at(W - 4, H - 4), at(4, H - 4)],
+      points: [at(0, 0), at(S, 0), at(S, S), at(0, S)],
       fill: "#34353d",
       speckle: ["#3f4049", "#2b2c33"],
     },
   ];
 
-  // the row of buttons: bottom-centre anchored, so y is the front edge of their footprint
-  const props: Prop[] = [{ sprite: "buttons", ...at(W / 2, TOP + BUTTON), solid: rect(ROW_W, BUTTON) }];
+  // bottom-centre anchored, so y is the front edge of the footprint
+  const props: Prop[] = [{ sprite: `button-${id}`, ...at(S / 2, S), solid: { kind: "rect", w: S, h: S } }];
 
   return {
-    area: { x: ox, y: oy, w: W, h: H },
-    building: { x: ox + (W - ROW_W) / 2, y: oy + TOP, w: ROW_W, h: BUTTON },
-    labelAt: { x: ox + W / 2, y: oy + TOP + BUTTON / 2 },
-    labelHeight: 14,
+    area: { x: ox, y: oy, w: S, h: S },
+    building: { x: ox, y: oy, w: S, h: S },
+    labelAt: { x: ox + S / 2, y: oy + S / 2 }, // (no label is shown for a link)
+    labelHeight: 10,
     height: 8,
+    hover: { lift: 3 }, // (the renderer doubles it: the button rises about 6 px)
     props,
     decals,
   };
