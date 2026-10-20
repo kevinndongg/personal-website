@@ -757,6 +757,13 @@ export class Renderer3D {
     return false;
   }
 
+  /** Tells the zone's car whether the pointer is over it (it glows while it is parked and could be sent out). */
+  hoverCar(on: boolean) {
+    for (const list of this.zoneModels.values()) {
+      for (const m of list) if (typeof m.userData.drive === "function") m.userData.hovered = on;
+    }
+  }
+
   /** Hover effect for one project box, `amount` 0..1: its props rise and its ground brightens. Works for any zone. */
   setHover(zoneId: string, amount: number) {
     this.hoverAmount.set(zoneId, amount);
