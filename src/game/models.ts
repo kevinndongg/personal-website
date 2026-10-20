@@ -1,4 +1,5 @@
 import {
+  AdditiveBlending,
   BoxGeometry,
   CanvasTexture,
   ConeGeometry,
@@ -12,11 +13,15 @@ import {
   NearestFilter,
   PlaneGeometry,
   RedFormat,
-  SphereGeometry,
 } from "three";
 import type { BufferGeometry, Material } from "three";
-import { CMR_LOGO } from "./cmr-logo";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+import cmrLogo from "../content/projects/CMR_Logo.png";
+import { carWatch } from "./drive";
+import { crewDoor } from "./errand";
+import type { WalkerPose } from "./errand";
 import { shade } from "./ground";
+import { GARAGE_DOOR } from "./scenes";
 import type { Footprint } from "./scenes";
 import type { Zone } from "./world";
 
@@ -55,6 +60,12 @@ export function mesh(geo: BufferGeometry, mat: Material, x = 0, y = 0, z = 0): M
 export function box(w: number, h: number, d: number, color: string | Material, x: number, y: number, z: number): Mesh {
   const mat = typeof color === "string" ? toon(color) : color;
   return mesh(new BoxGeometry(w, h, d), mat, x, y + h / 2, z);
+}
+
+/** Like `box()`, with softly rounded edges (radius `r`) so it catches the light the way the car and cones do. */
+function rbox(w: number, h: number, d: number, color: string, x: number, y: number, z: number, r = 0.5): Mesh {
+  const rr = Math.min(r, w / 2, h / 2, d / 2);
+  return mesh(new RoundedBoxGeometry(w, h, d, 2, rr), toon(color), x, y + h / 2, z);
 }
 
 export function cyl(rTop: number, rBottom: number, h: number, color: string, x: number, y: number, z: number, seg = 10): Mesh {
@@ -106,35 +117,6 @@ function withTop(side: Material, top: Material): Material[] {
 
 // ---------------------------------------------------------------- roofs
 
-function garageRoofTexture(w: number, d: number): CanvasTexture {
-  const [c, ctx] = canvasOf(w, d);
-  fillRect(ctx, 0, 0, w, d, "#b4b8c0");
-  for (let x = 6; x < w - 2; x += 8) {
-    fillRect(ctx, x, 0, 1, d, "#9a9ea8");
-    fillRect(ctx, x + 1, 0, 1, d, "#c8ccd4");
-  }
-  for (let i = 0; i < 220; i++) {
-    const px = (i * 53) % w;
-    const py = (i * 29 + ((i * i) % 7)) % d;
-    fillRect(ctx, px, py, 1, 1, i % 3 ? "#a2a6b0" : "#c0c4cc");
-  }
-  fillRect(ctx, 0, 0, w, 2, "#d6d9e0");
-  fillRect(ctx, 0, d - 2, w, 2, "#8b909a");
-  // CMR logo: only the black and red parts, straight onto the roof
-  const lw = CMR_LOGO[0].length;
-  const lh = CMR_LOGO.length;
-  const lx = Math.floor((w - lw) / 2);
-  const ly = Math.floor((d - lh) / 2);
-  CMR_LOGO.forEach((row, y) => {
-    for (let x = 0; x < lw; x++) {
-      const key = row[x];
-      if (key === "k") fillRect(ctx, lx + x, ly + y, 1, 1, "#16161d");
-      else if (key === "r") fillRect(ctx, lx + x, ly + y, 1, 1, "#a51c30");
-    }
-  });
-  return nearestTexture(c);
-}
-
 function zoneRoofTexture(w: number, d: number, zone: Zone): CanvasTexture {
   const accent = zone.accent;
   const dark = shade(accent, -0.35);
@@ -175,7 +157,33 @@ function zoneRoofTexture(w: number, d: number, zone: Zone): CanvasTexture {
 const WALL = "#d8dbe2";
 const DARK = new MeshBasicMaterial({ color: "#14161c" });
 
-/** CMR garage: grey box with the logo roof and one wide opening in its east (+x) wall. */
+const CURB_GAP = [18, 52]; // see garageModel
+
+const TEAM_RED = "#a51c30"; // the red of the CMR logo
+const LOGO_ASPECT = 1571 / 4215; // of CMR_Logo.png
+
+let logoTexture: CanvasTexture | undefined;
+/** The team logo, from the real artwork: drawn at 2048 px wide (the original is wider than some GPUs allow), smooth and mipmapped. */
+function cmrLogoTexture(): CanvasTexture {
+  if (logoTexture) return logoTexture;
+  const w = 2048;
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = Math.round(w * LOGO_ASPECT);
+  const tex = new CanvasTexture(c);
+  tex.anisotropy = 8;
+  const img = new Image();
+  img.onload = () => {
+    const ctx = c.getContext("2d")!;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    tex.needsUpdate = true;
+  };
+  img.src = cmrLogo.src;
+  return (logoTexture = tex);
+}
+
+/** CMR garage: a roofed workshop with the logo on its roof and a roll-up door, opening onto an open pit bay to the east (+x). */
 export function garageModel(w: number, d: number): Group {
   const g = new Group();
   const H = 24;
@@ -186,42 +194,101 @@ export function garageModel(w: number, d: number): Group {
   const cx = x0 + roofW / 2;
   const bayW = w - roofW;
   const bayX = x0 + roofW + bayW / 2;
+  const PLINTH = "#3a3d47";
 
   // roofed block: closed walls, dark inside
-  g.add(box(roofW, H, t, WALL, cx, 0, -hz + t / 2)); // north
-  g.add(box(roofW, H, t, WALL, cx, 0, hz - t / 2)); // south
-  g.add(box(t, H, d - 2 * t, WALL, x0 + t / 2, 0, 0)); // west
+  g.add(rbox(roofW, H, t, WALL, cx, 0, -hz + t / 2)); // north
+  // south, the wall that faces the tent: a side door (at GARAGE_DOOR.x) with a lintel over it
+  const dl = GARAGE_DOOR.x - GARAGE_DOOR.w / 2; // the door's west and east edges
+  const dr = GARAGE_DOOR.x + GARAGE_DOOR.w / 2;
+  g.add(rbox(dl - x0, H, t, WALL, (x0 + dl) / 2, 0, hz - t / 2));
+  g.add(rbox(x0 + roofW - dr, H, t, WALL, (dr + x0 + roofW) / 2, 0, hz - t / 2));
+  g.add(rbox(GARAGE_DOOR.w, H - GARAGE_DOOR.h, t, WALL, GARAGE_DOOR.x, GARAGE_DOOR.h, hz - t / 2));
+  g.add(rbox(t, H, d - 2 * t, WALL, x0 + t / 2, 0, 0)); // west
   const doorW = 22;
   const doorH = 17;
   const side = (d - doorW) / 2 - t;
   const ex = x0 + roofW - t / 2; // east wall of the block, facing the bay
-  g.add(box(t, H, side, WALL, ex, 0, -(doorW / 2 + side / 2)));
-  g.add(box(t, H, side, WALL, ex, 0, doorW / 2 + side / 2));
-  g.add(box(t, H - doorH, doorW, WALL, ex, doorH, 0));
+  g.add(rbox(t, H, side, WALL, ex, 0, -(doorW / 2 + side / 2)));
+  g.add(rbox(t, H, side, WALL, ex, 0, doorW / 2 + side / 2));
+  g.add(rbox(t, H - doorH, doorW, WALL, ex, doorH, 0));
   const interior = mesh(new BoxGeometry(roofW - 2 * t - 1, H - 1, d - 2 * t), DARK, cx, (H - 1) / 2, 0);
   interior.castShadow = false;
   g.add(interior);
-  const roll = cyl(2, 2, doorW, "#b8bcc4", ex + 1, doorH - 0.5, 0, 10); // rolled-up door
-  roll.rotation.x = Math.PI / 2;
-  roll.position.y = doorH - 0.5;
-  g.add(roll);
 
-  // open bay: floor and a low front curb; no back wall, so the crew can reach the car from either side
-  g.add(box(bayW, 1, d, "#30333c", bayX, 0, 0));
-  g.add(box(bayW, 4, t, "#d9b21f", bayX, 1, hz - t / 2));
-  g.add(box(7, 8, 5, "#d8322c", bayX - 7, 1, -hz + t + 3)); // toolbox
-  g.add(box(2, 14, 12, "#4a4d57", bayX + 6, 1, -hz + t + 7)); // shelf
-  g.add(box(2.4, 2, 3, "#f6d02a", bayX + 6, 9, -hz + t + 6));
-  g.add(box(6, 0.6, 6, "#f4f4f4", bayX - 6, 1, 4)); // painted pad mark
-  g.add(box(1, 0.6, 14, "#f6d02a", bayX + bayW / 2 - 2, 1, 0)); // threshold stripe
+  // a dark plinth round the foot of the block and a team-red band near the top (a hair proud of the walls)
+  const dressing = (h: number, y: number, color: string, aroundDoor: boolean) => {
+    g.add(rbox(roofW + 0.4, h, t + 0.5, color, cx, y, -hz + t / 2));
+    if (aroundDoor) {
+      g.add(rbox(dl - x0 + 0.2, h, t + 0.5, color, (x0 - 0.2 + dl) / 2, y, hz - t / 2));
+      g.add(rbox(x0 + roofW - dr + 0.2, h, t + 0.5, color, (dr + x0 + roofW + 0.2) / 2, y, hz - t / 2));
+    } else g.add(rbox(roofW + 0.4, h, t + 0.5, color, cx, y, hz - t / 2));
+    g.add(rbox(t + 0.5, h, d - 2 * t + 0.4, color, x0 + t / 2, y, 0));
+    g.add(rbox(t + 0.5, h, d - 2 * t + 0.4, color, ex, y, 0));
+  };
+  dressing(1.6, 0, PLINTH, true); // (the plinth stops at the door)
+  dressing(2.2, H - 4.4, TEAM_RED, false); // (the band runs on across the lintel, above the door)
 
-  // roof slab over the block with a slight overhang; the logo is painted on its top face
+  // the side door: light jambs, and a leaf on a hinge at the east jamb that swings out when the crew come through
+  for (const x of [dl + 0.5, dr - 0.5]) g.add(rbox(1, GARAGE_DOOR.h, t + 0.6, "#b8bcc4", x, 0, hz - t / 2, 0.3));
+  const hinge = new Group();
+  hinge.position.set(dr - 1, 0, hz - t / 2);
+  const leafW = GARAGE_DOOR.w - 2;
+  hinge.add(rbox(leafW, GARAGE_DOOR.h - 0.6, 0.8, "#aeb4bf", -leafW / 2, 0, 0, 0.3));
+  hinge.add(rbox(0.8, 1.6, 1.4, PLINTH, -leafW + 1, 8, 0, 0.3)); // handle
+  g.add(hinge);
+  let doorOpen = 0;
+  let lastT = -1;
+  g.userData.animate = ({ t }: AnimCtx) => {
+    if (t <= 0) return;
+    const dt = lastT < 0 ? 0 : Math.min(0.1, Math.max(0, t - lastT));
+    lastT = t;
+    doorOpen += (crewDoor.open - doorOpen) * (1 - Math.exp(-dt * 8));
+    hinge.rotation.y = 1.7 * doorOpen; // (about +z: the free edge swings outward)
+  };
+
+  // roll-up door: a light frame, a dark housing above it on the bay side, and a slatted shutter part way down
+  const bayFace = ex + t / 2; // the wall's face toward the bay
+  for (const z of [-1, 1]) g.add(rbox(t + 0.6, doorH, 1.2, "#b8bcc4", ex, 0, z * (doorW / 2 - 0.6)));
+  g.add(rbox(t + 0.6, 1.4, doorW, "#b8bcc4", ex, doorH - 1.4, 0));
+  g.add(rbox(2.4, 3.2, doorW + 3, PLINTH, bayFace + 1.2, doorH - 0.4, 0, 0.8));
+  for (let i = 0; i < 4; i++) g.add(rbox(0.8, 1.5, doorW - 2.4, "#c8ccd4", ex + 0.2, doorH - 3.4 - i * 1.8, 0, 0.3));
+
+  // open bay: smooth floor and a low front curb; no back wall, so the crew can reach the car from either side
+  g.add(rbox(bayW, 1, d, "#2c2f37", bayX, 0, 0, 0.4));
+  // the curb has a gap (x from CURB_GAP[0] to CURB_GAP[1], from the garage's centre) where the car drives in after a lap
+  for (const [a, b] of [
+    [x0 + roofW, CURB_GAP[0]],
+    [CURB_GAP[1], x0 + roofW + bayW],
+  ]) {
+    g.add(rbox(b - a, 4, t, "#d9b21f", (a + b) / 2, 1, hz - t / 2, 0.6));
+  }
+  g.add(rbox(7, 8, 5, "#d8322c", bayX - 7, 1, -hz + t + 3, 0.6)); // toolbox
+  // painted lines: a parking box round the car's place, and a stripe across the mouth of the bay
+  const line = (lw: number, ld: number, x: number, z: number, color: string) => g.add(box(lw, 0.12, ld, color, x, 1, z));
+  const BOX_L = 46;
+  const BOX_W = 22;
+  for (const z of [-1, 1]) line(BOX_L, 0.8, bayX, z * BOX_W / 2, "#f4f4f4");
+  for (const x of [-1, 1]) line(0.8, BOX_W + 0.8, bayX + x * BOX_L / 2, 0, "#f4f4f4");
+  line(1, d - 8, bayX + bayW / 2 - 2, 0, "#f6d02a");
+
+  // roof: a clean light slab with a slight overhang, a red lip along the bay side, and the logo lying on top, lit like the rest
   const rw = roofW + 4;
   const rd = d + 4;
-  const top = new MeshToonMaterial({ map: garageRoofTexture(rw, rd), gradientMap: gradient });
-  const roof = mesh(new BoxGeometry(rw, 3, rd), top, cx, H + 1.5, 0);
-  roof.material = withTop(toon("#9a9ea8"), top);
-  g.add(roof);
+  g.add(rbox(rw, 3, rd, "#e6e8ee", cx, H, 0, 0.9));
+  g.add(rbox(1.4, 3.1, rd, TEAM_RED, cx + rw / 2 - 0.7, H - 0.05, 0, 0.5));
+  const lw = 74;
+  const logo = mesh(
+    new PlaneGeometry(lw, lw * LOGO_ASPECT),
+    new MeshToonMaterial({ map: cmrLogoTexture(), gradientMap: gradient, transparent: true, depthWrite: false }),
+    cx - 0.7,
+    H + 3.06,
+    0
+  );
+  logo.rotation.x = -Math.PI / 2;
+  logo.castShadow = false;
+  logo.renderOrder = 1;
+  g.add(logo);
   return g;
 }
 
@@ -308,14 +375,8 @@ export function formulaModel(): Group {
   // engine cover and rear bodywork: closes the tail between the sidepods and the rear wing
   car.add(box(10, 3.8, 4.4, RED, -10.5, 1.4, 0));
   car.add(box(8, 0.3, 1.2, BLACK, -10.5, 5.2, 0)); // black stripe on the engine cover
-  car.add(box(3, 2.4, 2.8, BLACK, -7.8, 5.2, 0)); // airbox behind the driver
+  car.add(box(3, 2.4, 2.8, BLACK, -7.8, 5.2, 0)); // airbox behind the cockpit
   car.add(box(4, 2.6, 3.4, BLACK, -15.5, 1.2, 0)); // crash structure under the rear wing
-
-  // driver: red suit, bright helmet with a dark visor
-  car.add(box(3.8, 3.4, 4.2, RED, -1, 4.2, 0));
-  car.add(mesh(new SphereGeometry(2.5, 8, 6), toon("#f0f2f5"), -1, 8.6, 0));
-  car.add(box(1.4, 1.1, 3, BLACK, 0.9, 8.7, 0));
-  car.add(box(0.8, 0.8, 3.4, BLACK, 5, 5.4, 0)); // steering wheel
 
   // roll hoop
   car.add(box(0.8, 6.4, 0.8, BLACK, -5, 4.4, -2.5));
@@ -349,6 +410,56 @@ export function formulaModel(): Group {
   car.position.x = -3; // center the whole model on its footprint
   const g = new Group();
   g.add(car);
+
+  // The car's own copies of its toon materials (the cached ones are shared with other props), so that it alone can glow.
+  const own = new Map<Material, MeshToonMaterial>();
+  car.traverse((o) => {
+    const m = o as Mesh;
+    if (!m.isMesh || !(m.material instanceof MeshToonMaterial)) return;
+    let copy = own.get(m.material);
+    if (!copy) own.set(m.material, (copy = m.material.clone()));
+    m.material = copy;
+  });
+  const lit = [...own.values()];
+
+  // a soft halo on the floor under the car
+  const [halo, haloCtx] = canvasOf(128, 128);
+  const fade = haloCtx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  fade.addColorStop(0, "rgba(255,217,166,1)");
+  fade.addColorStop(0.55, "rgba(255,217,166,0.55)");
+  fade.addColorStop(1, "rgba(255,217,166,0)");
+  haloCtx.fillStyle = fade;
+  haloCtx.fillRect(0, 0, 128, 128);
+  const haloMat = new MeshBasicMaterial({
+    map: new CanvasTexture(halo),
+    transparent: true,
+    opacity: 0,
+    blending: AdditiveBlending,
+    depthWrite: false,
+  });
+  const glow = new Mesh(new PlaneGeometry(60, 38), haloMat);
+  glow.rotation.x = -Math.PI / 2;
+  glow.position.set(-0.5, 0.2, 0);
+  glow.renderOrder = 1;
+  glow.userData.noPick = true; // (never something to click: the hit box below is the click area)
+  glow.visible = false;
+  g.add(glow);
+
+  /** The hover glow, `amount` 0..1: the car lights up from within and its halo comes up (a gentle pulse, so it reads as live). */
+  g.userData.setGlow = (amount: number, t: number) => {
+    for (const m of lit) {
+      m.emissive.set("#ff9a70");
+      m.emissiveIntensity = amount * 0.45;
+    }
+    haloMat.opacity = amount * (0.55 + 0.15 * Math.sin(t * 4));
+    glow.visible = amount > 0.001;
+  };
+
+  // An invisible box a little bigger than the car (about 4 px all round, at the car's scale): where it can be hovered and
+  // clicked, so the thin wings and wheels are not fiddly to hit. It is never drawn, but rays still hit it.
+  const hit = new Mesh(new BoxGeometry(55, 14.5, 32), new MeshBasicMaterial({ visible: false }));
+  hit.position.set(-0.5, 7.25, 0);
+  g.add(hit);
   return g;
 }
 
@@ -380,6 +491,127 @@ export function personModel(key: string): Group {
   g.add(box(1, 4, 1.2, shirt, 2.7, 5, 0));
   g.add(box(3.2, 3, 3.2, "#e8b890", 0, 9.5, 0));
   g.add(box(3.6, 1.2, 3.6, cap, 0, 12, 0));
+  return g;
+}
+
+/**
+ * The crew member at the laptop (red shirt), facing +x, where the laptop is: he types, nodding at the screen now and then.
+ * While the car is out on a lap he stops, lowers his arms and turns to follow it round, then goes back to work.
+ */
+export function typistModel(): Group {
+  const SHIRT = "#d8322c";
+  const g = new Group();
+  g.add(box(1.5, 4.5, 1.5, "#2a3a6a", 0, 0, -1.1));
+  g.add(box(1.5, 4.5, 1.5, "#2a3a6a", 0, 0, 1.1));
+  g.add(box(2.6, 5, 4.4, SHIRT, 0, 4.5, 0));
+
+  // two arms (side -1 is his left, the far one from the camera), each with an elbow: the upper arm hangs from the shoulder
+  // and rotation.z swings it forward (+x); the forearm hangs from the elbow and bends further forward the same way
+  const arms = [-1, 1].map((side) => {
+    const upper = new Group();
+    upper.name = side < 0 ? "upper-left" : "upper-right";
+    upper.position.set(0, 9, side * 2.7);
+    upper.add(box(1.2, 2.4, 1, SHIRT, 0, -2.4, 0));
+    const forearm = new Group();
+    forearm.name = side < 0 ? "forearm-left" : "forearm-right";
+    forearm.position.set(0, -2.4, 0);
+    forearm.add(box(1.2, 1.8, 1, SHIRT, 0, -1.8, 0));
+    forearm.add(box(1.2, 0.8, 1, "#e8b890", 0, -2.6, 0)); // hand
+    upper.add(forearm);
+    g.add(upper);
+    return { side, upper, forearm };
+  });
+
+  const head = new Group(); // pivots at the neck; rotation.z nods it forward
+  head.position.set(0, 9.5, 0);
+  head.add(box(3.2, 3, 3.2, "#e8b890", 0, 0, 0));
+  head.add(box(3.6, 1.2, 3.6, "#f4f4f4", 0, 2.5, 0)); // cap
+  head.add(box(1.6, 0.4, 3.2, "#f4f4f4", 2.4, 2.5, 0)); // its brim, which shows which way he faces
+  for (const z of [-0.8, 0.8]) head.add(box(0.3, 0.6, 0.6, "#16161d", 1.6, 1.3, z));
+  g.add(head);
+
+  const REST = 0.06; // arms down at his sides
+  const UPPER = 0.5; // typing: upper arms a little forward and out to the sides (so the far one clears his body)...
+  const SPLAY = 0.18;
+  const FOREARM = 0.95; // ...and forearms bent forward to the keys
+  const pose = (work: number, t: number) => {
+    // typing comes in bursts: the hands tap in turns (never quite in a regular rhythm), and the head dips toward the keys
+    const burst = Math.min(1, Math.max(0, 0.5 + 1.4 * Math.sin(t * 1.1)));
+    for (const { side, upper, forearm } of arms) {
+      const wob = 0.6 * Math.sin(t * 13 + (side < 0 ? 0 : Math.PI)) + 0.4 * Math.sin(t * 7.1 + side * 1.2);
+      upper.rotation.z = REST + (UPPER - REST) * work + work * burst * 0.08 * wob;
+      upper.rotation.x = -side * SPLAY * work; // (tilts the arm's lower end away from his body)
+      forearm.rotation.z = REST + (FOREARM - REST) * work + work * (0.1 + 0.25 * burst) * wob;
+    }
+    head.rotation.z = -work * (0.22 + 0.05 * Math.sin(t * 2.1));
+  };
+  pose(1, 0); // (stays like this when motion is reduced)
+
+  let heading = 0; // the way he faces: 0 is +x, toward the laptop
+  let work = 1; // 1 typing, 0 watching the car
+  let last = -1;
+  g.userData.animate = ({ t }: AnimCtx) => {
+    if (t <= 0) return;
+    const dt = last < 0 ? 0 : Math.min(0.1, Math.max(0, t - last));
+    last = t;
+    const watching = carWatch.driving;
+    const goal = watching ? Math.atan2(carWatch.z - g.position.z, carWatch.x - g.position.x) : 0;
+    const turn = Math.atan2(Math.sin(goal - heading), Math.cos(goal - heading)); // the short way round
+    heading += turn * (1 - Math.exp(-dt * (watching ? 9 : 4)));
+    heading = Math.atan2(Math.sin(heading), Math.cos(heading)); // (keeps it from winding up over many laps)
+    g.rotation.y = -heading;
+    work += ((watching ? 0 : 1) - work) * (1 - Math.exp(-dt * 6));
+    pose(work, t);
+  };
+  return g;
+}
+
+/**
+ * The crew member who walks to the grill for a burger (yellow shirt, dark cap), facing +x. `errand.ts` moves and turns him
+ * and calls `userData.pose` with the stride, a reach toward the table and whether he holds the burger.
+ */
+export function walkerModel(): Group {
+  const SHIRT = "#f6d02a";
+  const DARK_CAP = "#2a2d38";
+  const g = new Group();
+  const figure = new Group(); // everything but the placement, so that the stride's bob can lift it
+  g.add(figure);
+  const limb = (z: number, y: number, len: number, color: string, w: number) => {
+    const pivot = new Group(); // rotation.z swings it forward (+x)
+    pivot.position.set(0, y, z);
+    pivot.add(box(w, len, w, color, 0, -len, 0));
+    figure.add(pivot);
+    return pivot;
+  };
+  const legL = limb(-1.1, 4.5, 4.5, "#2a3a6a", 1.5);
+  const legR = limb(1.1, 4.5, 4.5, "#2a3a6a", 1.5);
+  const armL = limb(-2.7, 9.2, 4, SHIRT, 1.1);
+  const armR = limb(2.7, 9.2, 4, SHIRT, 1.1);
+  figure.add(box(2.6, 5, 4.4, SHIRT, 0, 4.5, 0));
+  figure.add(box(3.2, 3, 3.2, "#e8b890", 0, 9.5, 0));
+  figure.add(box(3.6, 1.2, 3.6, DARK_CAP, 0, 12, 0));
+  figure.add(box(1.6, 0.4, 3.2, DARK_CAP, 2.4, 12, 0)); // brim: shows which way he faces
+  for (const z of [-0.8, 0.8]) figure.add(box(0.3, 0.6, 0.6, "#16161d", 1.6, 10.8, z));
+
+  const burger = new Group(); // in his right hand
+  burger.position.set(3.9, 7.2, 2.7);
+  burger.add(box(3, 0.8, 3, "#e0b060", 0, 0, 0));
+  burger.add(box(3.2, 0.7, 3.2, "#5a3418", 0, 0.8, 0));
+  burger.add(box(3.4, 0.3, 3.4, "#5fae4a", 0, 1.5, 0));
+  burger.add(box(3, 1, 3, "#e0b060", 0, 1.8, 0));
+  burger.visible = false;
+  figure.add(burger);
+
+  g.userData.pose = ({ phase, swing, reach, burger: holding }: WalkerPose) => {
+    const step = Math.sin(phase) * 0.6 * swing;
+    legL.rotation.z = step;
+    legR.rotation.z = -step;
+    figure.position.y = 0.05 + Math.abs(Math.sin(phase)) * 0.25 * swing; // (a stepping foot just clears the ground)
+    armL.rotation.z = -step * 0.8;
+    armR.rotation.z = holding ? 1.2 : step * 0.8 + reach * 1.35;
+    burger.visible = holding;
+  };
+  g.userData.pose({ phase: 0, swing: 0, reach: 0, burger: false });
   return g;
 }
 
@@ -774,6 +1006,10 @@ export function createModel(id: string, footprint: Footprint | undefined, zones:
       return tireStackModel();
     case "laptop":
       return laptopModel();
+    case "typist":
+      return typistModel();
+    case "walker":
+      return walkerModel();
   }
   throw new Error(`Unknown model: ${id}`);
 }

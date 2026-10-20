@@ -32,6 +32,8 @@ import {
   WebGLRenderTarget,
   WebGLRenderer,
 } from "three";
+import { attachLap } from "./drive";
+import { attachErrand } from "./errand";
 import { GROUND_MARGIN, buildGroundLayer } from "./ground";
 import { createModel, tireModel, woodTexture } from "./models";
 import type { AnimCtx } from "./models";
@@ -144,6 +146,8 @@ function resolveFocus(f: PropFocus): ResolvedFocus {
 const VISUAL_SCALE: Record<string, number> = {
   cone: 1.3,
   person: 1.5,
+  typist: 1.5,
+  walker: 1.5,
   battery: 1.5,
   laptop: 1.6,
   tirestack: 1.4,
@@ -433,6 +437,8 @@ export class Renderer3D {
         model.userData.zoneId = zone.id;
         model.userData.sprite = p.sprite;
         if (model.userData.liftOverlay) this.addLiftOverlay(model, model.userData.liftOverlay);
+        if (p.drive) attachLap(model, p.drive);
+        if (p.errand) attachErrand(model, p.errand, Math.PI / 2); // (he stops facing south, toward the grill)
         model.traverse((o) => {
           if (typeof o.userData.animate === "function") this.animators.push({ fn: o.userData.animate, zoneId: zone.id });
         });
@@ -770,6 +776,22 @@ export class Renderer3D {
     const { x, z, scale } = this.zoomOf(zone);
     if (scale === 1) return r;
     return { x: x + (r.x - x) / scale, y: z + (r.y - z) / scale, w: r.w / scale, h: r.h / scale };
+  }
+
+  /** Sends the zone's car round its lap. False when it is already out, or there is none (or motion is reduced). */
+  driveCar(zoneId: string): boolean {
+    if (this.reduceMotion) return false;
+    for (const m of this.zoneModels.get(zoneId) ?? []) {
+      if (typeof m.userData.drive === "function" && m.userData.drive()) return true;
+    }
+    return false;
+  }
+
+  /** Tells the zone's car whether the pointer is over it (it glows while it is parked and could be sent out). */
+  hoverCar(on: boolean) {
+    for (const list of this.zoneModels.values()) {
+      for (const m of list) if (typeof m.userData.drive === "function") m.userData.hovered = on;
+    }
   }
 
   /** Hover effect for one project box, `amount` 0..1: its props rise and its ground brightens. Works for any zone. */

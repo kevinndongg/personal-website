@@ -40,6 +40,10 @@ export interface Prop {
    * world px, easing in with the zoom and back out again on the map. `tall` replaces it on portrait screens.
    */
   focus?: PropFocus & { tall?: PropFocus };
+  /** A lap the prop drives now and then (world px; the first and last points are its parked pose). See drive.ts. */
+  drive?: { x: number; y: number }[];
+  /** A trip the prop makes now and then, one way (world px, from where it starts out of sight to where it stops). See errand.ts. */
+  errand?: { x: number; y: number }[];
 }
 
 export interface PropFocus {
@@ -83,6 +87,8 @@ export type ZoneVariant = "garage" | "building" | "office" | "photodesk" | "plaq
 
 export const GARAGE_W = 150; // roofed workshop + a 66 px open bay big enough for the formula car
 export const GARAGE_H = 56;
+/** The side door in the garage's south wall (the one facing the tent): its centre (x from the garage centre), width and height. */
+export const GARAGE_DOOR = { x: -52, w: 9, h: 19 };
 
 const BUILDING = { building: { w: 128, h: 80 }, office: { w: 96, h: 80 } } as const;
 
@@ -117,6 +123,7 @@ function racingScene(ox: number, oy: number): Scene {
   const bay = along(C, 42, 0); // center of the bay: the car parks here
   const building = { x: C.x - 77, y: C.y - 68, w: 154, h: 136 }; // bounding box of the rotated garage
 
+  const laptopAt = along(M, 24, 36);
   const props: Prop[] = [
     { sprite: "garage", ...C, angle: ANGLE, solid: rect(GARAGE_W, GARAGE_H) },
     // parked inside the bay, nose toward the opening (the garage footprint already blocks the space)
@@ -126,15 +133,16 @@ function racingScene(ox: number, oy: number): Scene {
     { sprite: "battery", ...along(M, 18, -34), angle: ANGLE, solid: rect(8, 5) },
     { sprite: "tirestack", ...along(C, -10, 36), solid: circle(4.5) },
     { sprite: "extinguisher", ...along(C, 0, 29.4), elevation: 3 }, // mounted on the wall, on the bay side of the tire stack
-    { sprite: "person-r", ...along(M, 14, 42), solid: circle(3) },
+    { sprite: "typist", ...along(M, 14, 42), solid: circle(3) }, // at the laptop; watches the car when it drives
     { sprite: "person-w", ...along(M, 10, -50), solid: circle(3) },
     { sprite: "person-b", ...along(M, -8, -46), solid: circle(3) },
-    { sprite: "laptop", ...along(M, 24, 36), ground: true },
+    // turned toward the typist, who stands to its west (0: screen faces south, PI / 2: faces him square-on, which turns
+    // the lid edge-on to the camera). A prop with an angle is placed by its centre, 2 px further down than one without.
+    { sprite: "laptop", x: laptopAt.x, y: laptopAt.y - 2, angle: Math.PI / 4 },
   ];
 
   // team dressing around the garage (all positions area-relative, bottom-center anchors)
   props.push(
-    { sprite: "pitwall", ...at(114, 208), solid: rect(8, 44) },
     { sprite: "lidar", ...at(204, 44), solid: circle(5) },
     { sprite: "estop", ...at(184, 48), solid: rect(10, 8) },
     { sprite: "cart", ...at(160, 44), solid: rect(18, 12) },
@@ -145,7 +153,6 @@ function racingScene(ox: number, oy: number): Scene {
     { sprite: "sit-r", ...at(42, 190), angle: 0.5, solid: circle(3.5) },
     { sprite: "sit-w", ...at(56, 193), angle: 0.9, solid: circle(3.5) },
     { sprite: "sit-b", ...at(70, 190), angle: 0.3, solid: circle(3.5) },
-    { sprite: "tirerack", ...at(92, 176), solid: rect(32, 14) },
     { sprite: "toolchest", ...at(22, 208), solid: rect(18, 12) },
   );
 
@@ -211,6 +218,46 @@ function racingScene(ox: number, oy: number): Scene {
   for (const p of evenly(offset(-half), GAP)) props.push({ sprite: "cone-y", ...p, solid: circle(3) });
 
   const finish = center[center.length - 1];
+
+  // The car's lap: out of the bay and down the track, a loop past the finish and back up between the tent and the person
+  // with the laptop, in over the gap in the garage's south curb (models.ts), and a right turn to park facing out again.
+  // The lap ends in a clockwise arc that finishes exactly at the parking spot, heading ANGLE; the lane up to it is the
+  // vertical line `lane` (tent's right edge x = 88, the person at x ~ 140).
+  const R = 14; // turning radius of that last arc
+  const arcCenter = { x: bay.x - R * Math.sin(ANGLE), y: bay.y + R * Math.cos(ANGLE) };
+  const lane = arcCenter.x - R;
+  const arc = [];
+  for (let k = 0; k <= 6; k++) {
+    const h = -Math.PI / 2 + ((ANGLE + Math.PI / 2) * k) / 6; // heading: north at the start, ANGLE at the end
+    arc.push({ x: arcCenter.x + R * Math.sin(h), y: arcCenter.y - R * Math.cos(h) });
+  }
+  const lap = [
+    bay,
+    M,
+    ...center.filter((_, i) => i % 20 === 0 && i > 0 && i < center.length - 10),
+    finish,
+    at(185, 240),
+    at(164, 243),
+    { x: lane + 40, y: 230 },
+    { x: lane + 30, y: 205 },
+    { x: lane + 14, y: 170 },
+    { x: lane, y: 140 },
+    ...arc,
+  ];
+  props.find((p) => p.sprite === "formula")!.drive = lap;
+
+  // The burger run: out of the garage's side door (the long wall facing the tent, at its back end), down to the grill's
+  // side table. Clear of the tent and of the car's lane.
+  const doorX = GARAGE_DOOR.x;
+  const errand = [
+    along(C, doorX, 22), // just inside the door
+    along(C, doorX, 31), // the doorstep
+    along(C, doorX + 4, 40),
+    at(17, 84),
+    at(24, 124),
+    at(37, 158), // beside the side table, north of the grill (it faces south, toward it)
+  ];
+  props.push({ sprite: "walker", ...errand[0], errand });
   const prev = center[center.length - 3];
   const endT = { x: finish.x - prev.x, y: finish.y - prev.y };
   const endLen = Math.hypot(endT.x, endT.y) || 1;
