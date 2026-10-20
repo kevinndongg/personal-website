@@ -122,6 +122,9 @@ function picture(w: number, h: number, canvas: HTMLCanvasElement, twoSided = fal
 
 // ---------------------------------------------------------------- the field
 
+/** How high the floor sheet lies above the ground: below the ground's shadow catcher (0.05) and leaf shade (0.08). */
+const SHEET_Y = 0.03;
+
 /**
  * The field's floor: foam tiles, the tape between the wedges and the taped robot start squares, as a flat sheet just above
  * the ground (below the shadow catcher and the leaf shade, so shadows and dapple still fall over it), on a thin slab that
@@ -155,10 +158,10 @@ function floorModel(): Group {
   tex.generateMipmaps = false;
   const sheet = new Mesh(new PlaneGeometry(size, size), new MeshBasicMaterial({ map: tex }));
   sheet.rotation.x = -Math.PI / 2;
-  sheet.position.y = 0.03;
+  sheet.position.y = SHEET_Y;
   g.add(sheet);
   g.add(box(size, 3, size, "#6d717e", 0, -3.02, 0));
-  g.userData.liftOverlay = { w: size, d: size }; // see Renderer3D.addLiftOverlay: keeps shadows and leaf shade on it as it rises
+  g.userData.liftOverlay = { w: size, d: size, y: SHEET_Y }; // see Renderer3D.addLiftOverlay: keeps shadows and leaf shade on it as it rises
   return g;
 }
 
