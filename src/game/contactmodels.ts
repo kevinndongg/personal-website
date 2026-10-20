@@ -1,18 +1,19 @@
 import { CanvasTexture, Group, LinearFilter, Mesh, MeshBasicMaterial, PlaneGeometry } from "three";
-import { box } from "./models";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+import { mesh, toon } from "./models";
 import type { AnimCtx } from "./models";
 
-// Models for the contact area: three small plaques on posts, each carrying one mark (email, LinkedIn, GitHub).
+// Models for the contact area: three big square buttons lying on the ground, each carrying one mark (email, LinkedIn, GitHub).
 // Same conventions as models.ts: 1 unit = 1 world px, origin at the footprint centre on the ground.
 
 const CREAM = "#f4ecd8";
 const PAPER_EDGE = "#cfbf9b";
 const BROWN = "#8a5a35";
-const POST = "#6b4226";
+const HOUSING = "#6b4226";
 
 type Mark = "email" | "linkedin" | "github";
 
-/** One plaque's face: a cream square with its mark drawn large in brown. */
+/** One button's face: a cream square with its mark drawn large in brown. */
 function markTexture(mark: Mark): CanvasTexture {
   const S = 256;
   const c = document.createElement("canvas");
@@ -79,42 +80,44 @@ function easeInOut(k: number) {
   return c * c * (3 - 2 * c);
 }
 
+const SIZE = 64; // each button is a square this big (see contact.ts)
+const HOUSING_H = 4; // the dark housing the button sits in
+const CAP_H = 4; // the button's cap, standing proud of the housing
+const PRESS = 2.6; // how far a cap sinks when it is pressed
+
 /**
- * Three plaques in a row on short posts, leaning back toward the viewer. Still at rest; on hover they tip up a little
- * more, one after another, so the group seems to nod hello. `w` is the footprint width the group is spread across.
+ * Three big square buttons side by side, lying on the ground. Still at rest; on hover they are pressed in one after
+ * another, so the row seems to say hello. `w` is the footprint width the row is spread across and `d` its depth.
  */
-export function plaquesModel(w: number): Group {
+export function buttonsModel(w: number, d: number): Group {
   const g = new Group();
   const marks: Mark[] = ["email", "linkedin", "github"];
-  const POST_H = 28;
-  const BOARD = 32;
-  const gap = Math.min(40, (w - BOARD) / 2);
-  const REST = (40 * Math.PI) / 180;
-  const EXTRA = (14 * Math.PI) / 180;
+  const gap = (w - 3 * SIZE) / 2;
+  const pitch = SIZE + gap;
+  const z = -d / 2 + SIZE / 2; // the row sits against the back of its footprint (the footprint is one button deep)
 
-  const boards: Group[] = [];
+  const caps: Group[] = [];
   marks.forEach((mark, i) => {
-    const x = (i - 1) * gap;
-    g.add(box(2.6, POST_H, 2.6, POST, x, 0, 0));
-    g.add(box(8, 1.4, 5, POST, x, 0, 0)); // a small foot
+    const x = (i - 1) * pitch;
+    g.add(mesh(new RoundedBoxGeometry(SIZE, HOUSING_H, SIZE, 2, 2.5), toon(HOUSING), x, HOUSING_H / 2, z));
 
-    const pivot = new Group();
-    pivot.position.set(x, POST_H - 2, 0);
-    pivot.rotation.x = -REST;
-    pivot.add(box(BOARD, BOARD, 2.2, CREAM, 0, 0, 0)); // the board
-    pivot.add(box(BOARD + 1.4, 1.6, 2.6, PAPER_EDGE, 0, 0, 0)); // a lower rim
-    const face = new Mesh(new PlaneGeometry(BOARD - 3, BOARD - 3), new MeshBasicMaterial({ map: markTexture(mark) }));
-    face.position.set(0, BOARD / 2, 1.2);
-    pivot.add(face);
-    g.add(pivot);
-    boards.push(pivot);
+    const cap = new Group();
+    cap.position.set(x, HOUSING_H, z);
+    cap.add(mesh(new RoundedBoxGeometry(SIZE - 6, CAP_H, SIZE - 6, 2, 2), toon(CREAM), 0, CAP_H / 2, 0));
+    // the mark, flat on the cap's top, reading upright from the south
+    const face = new Mesh(new PlaneGeometry(SIZE - 10, SIZE - 10), new MeshBasicMaterial({ map: markTexture(mark) }));
+    face.rotation.x = -Math.PI / 2;
+    face.position.set(0, CAP_H + 0.05, 0);
+    cap.add(face);
+    g.add(cap);
+    caps.push(cap);
   });
 
   g.userData.animate = ({ hover }: AnimCtx) => {
-    boards.forEach((b, i) => {
-      // the wave: each board starts a little after the one before it
+    caps.forEach((c, i) => {
+      // the wave: each button starts a little after the one before it
       const a = easeInOut((hover - i * 0.14) / 0.72);
-      b.rotation.x = -(REST + a * EXTRA);
+      c.position.y = HOUSING_H - a * PRESS;
     });
   };
   return g;

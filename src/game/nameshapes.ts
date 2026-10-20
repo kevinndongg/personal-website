@@ -26,5 +26,5 @@ export function nameShapes(width: number): NameShapes {
     else if (cmd === "C") path.bezierCurveTo(px(n[0]), py(n[1]), px(n[2]), py(n[3]), px(n[4]), py(n[5]));
     // "Z": a subpath closes by itself when it is made into a shape
   }
-  return { shapes: path.toShapes(false), top: NAME_BOX.y1 * k, bottom: NAME_BOX.y0 * k };
+  return { shapes: path.toShapes(), top: NAME_BOX.y1 * k, bottom: NAME_BOX.y0 * k };
 }

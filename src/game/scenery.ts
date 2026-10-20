@@ -20,7 +20,7 @@ import type { Zone, ZonePhoto } from "./world";
 import { box, cyl, mesh, toon } from "./models";
 import type { AnimCtx } from "./models";
 import { ImageCache } from "./photocache";
-import { plaquesModel } from "./contactmodels";
+import { buttonsModel } from "./contactmodels";
 import { constructionModel } from "./constructionmodels";
 import { ftcModel } from "./ftcmodels";
 
@@ -1665,8 +1665,8 @@ export function sceneryModel(id: string, footprint: Footprint | undefined, prop:
       return lightTableModel(w, d, zone, rig);
     case "deskmat":
       return deskMatModel(w, d);
-    case "plaques":
-      return plaquesModel(w);
+    case "buttons":
+      return buttonsModel(w, d);
   }
   return null;
 }

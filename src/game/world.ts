@@ -1,4 +1,4 @@
-import { nameRect } from "./name";
+import { CONTACT_Y, nameRect } from "./name";
 import { ZONE_FALLBACK_ACCENTS } from "./palette";
 import { buildScene, sceneSize } from "./scenes";
 import type { Decal, Rect, Scene, ZoneVariant } from "./scenes";
@@ -81,7 +81,7 @@ function rng(seed: number) {
 }
 
 // Zones live on the edge ring. Rearrange by editing ZONE_SLOTS.
-// "CM" is the middle of the map, where the contact plaques stand in front of the name (never handed out as a spare).
+// "CM" is the middle of the map, where the contact buttons lie in front of the name (never handed out as a spare).
 export type Slot = "TL" | "TM" | "TR" | "RM" | "BR" | "BM" | "BL" | "LM" | "CM";
 const SLOT_ORDER: Slot[] = ["TL", "TM", "TR", "RM", "BR", "BM", "BL", "LM"];
 export const ZONE_SLOTS: Record<string, Slot> = {
@@ -117,13 +117,13 @@ function slotOrigin(slot: Slot, w: number, h: number, edge: number) {
   const { col, row } = SLOT_CELLS[slot];
   const px = WORLD_W * TILE;
   const x = col === "L" ? edge : col === "R" ? px - edge - w : snap((px - w) / 2);
-  const y = row === "T" ? edge : row === "B" ? px - BOTTOM_PX - h : snap((WORLD_H * TILE - h) / 2);
+  const y = slot === "CM" ? CONTACT_Y : row === "T" ? edge : row === "B" ? px - BOTTOM_PX - h : snap((WORLD_H * TILE - h) / 2);
   return { x, y };
 }
 
 function defaultVariant(input: ZoneInput): ZoneVariant {
   // a project without a scene of its own is still being built
-  return input.variant ?? (input.kind === "contact" ? "plaques" : input.kind === "project" ? "construction" : "building");
+  return input.variant ?? (input.kind === "contact" ? "buttons" : input.kind === "project" ? "construction" : "building");
 }
 
 function layoutZones(inputs: ZoneInput[]): Zone[] {
@@ -171,11 +171,11 @@ export function generateWorld(inputs: ZoneInput[], seed = 7): World {
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) blocked[idx(x, y)] = 1;
   }
 
-  // ... and off the name's plinth (the tablet leans back over it), with the same margin
+  // ... and off the name, with the same margin
   {
     const n = nameRect();
     const x0 = Math.max(1, Math.floor(n.x / TILE) - 1);
-    const y0 = Math.max(1, Math.floor((n.y - TILE) / TILE) - 1);
+    const y0 = Math.max(1, Math.floor(n.y / TILE) - 1);
     const x1 = Math.min(w - 2, Math.ceil((n.x + n.w) / TILE) + 1);
     const y1 = Math.min(h - 2, Math.ceil((n.y + n.h) / TILE) + 1);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) blocked[idx(x, y)] = 1;

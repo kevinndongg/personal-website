@@ -37,7 +37,7 @@ import { attachErrand } from "./errand";
 import { GROUND_MARGIN, buildGroundLayer } from "./ground";
 import { createModel, tireModel, woodTexture } from "./models";
 import type { AnimCtx } from "./models";
-import { NAME } from "./name";
+import { NAME, NAME_BASELINE } from "./name";
 import { nameModel } from "./namemodel";
 import { sceneryModel } from "./scenery";
 import type { PropFocus, Rect } from "./scenes";
@@ -474,9 +474,9 @@ export class Renderer3D {
       map.add(t);
     }
 
-    // the name, in the middle of the map: not a project, so it is not pickable and has no label
+    // the name, lying on the ground in the middle of the map: not a project, so it is not pickable and has no label
     const nameRig = nameModel();
-    nameRig.position.set(NAME.cx, 0, NAME.front - NAME.depth / 2);
+    nameRig.position.set(NAME.cx, 0, NAME_BASELINE);
     map.add(nameRig);
 
     // everything that is solid casts and receives soft shadows
