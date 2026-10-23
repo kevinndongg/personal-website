@@ -8,6 +8,14 @@ astro dev --background
 
 Manage the background server with `astro dev stop`, `astro dev status`, and `astro dev logs`.
 
+## Branch naming
+
+Never name branches `claude/...`. Use `[project (optional)]/[feature]`, e.g. `cmr/garage-roof`. If the change isn't tied to a specific project, drop the project and name the branch after the feature in plain text, e.g. `branch-naming-standard`.
+
+## Commits
+
+Don't ask or prompt about committing. Commit automatically at the end of any plan.
+
 ## Documentation
 
 Full documentation: https://docs.astro.build
