@@ -1,4 +1,4 @@
-import { BUTTON_AT, nameRect } from "./name";
+import { FIXED_AT } from "./name";
 import { ZONE_FALLBACK_ACCENTS } from "./palette";
 import { buildScene, sceneSize } from "./scenes";
 import type { Decal, Rect, Scene, ZoneVariant } from "./scenes";
@@ -9,8 +9,10 @@ export const TILE = 16;
 export const WORLD_W = 48;
 export const WORLD_H = 48;
 
-/** A "link" is a button on the ground that opens its `href` when pressed (no panel). */
-export type ZoneKind = "project" | "gallery" | "link";
+/**
+ * A "link" is a mailbox module that opens its `href` when pressed (no panel); an "about" is the name, which opens a card about you.
+ */
+export type ZoneKind = "project" | "gallery" | "link" | "about";
 
 export interface ZoneAction {
   label: string;
@@ -121,7 +123,7 @@ function slotOrigin(slot: Slot, w: number, h: number, edge: number) {
 
 function defaultVariant(input: ZoneInput): ZoneVariant {
   // a project without a scene of its own is still being built
-  return input.variant ?? (input.kind === "link" ? "button" : input.kind === "project" ? "construction" : "building");
+  return input.variant ?? (input.kind === "link" ? "mailbox" : input.kind === "about" ? "name" : input.kind === "project" ? "construction" : "building");
 }
 
 function layoutZones(inputs: ZoneInput[]): Zone[] {
@@ -130,8 +132,8 @@ function layoutZones(inputs: ZoneInput[]): Zone[] {
   return inputs.map((input, i) => {
     const variant = defaultVariant(input);
     const { w, h } = sceneSize(variant);
-    // the contact buttons have places of their own; everything else sits on the edge ring
-    const fixed = BUTTON_AT[input.id];
+    // the name and its mailbox have places of their own; everything else sits on the edge ring
+    const fixed = FIXED_AT[input.id];
     const slot = fixed ? undefined : (ZONE_SLOTS[input.id] ?? spare.shift() ?? "LM");
     // the Racing garage sits right against the border wall
     const { x, y } = fixed ?? slotOrigin(slot!, w, h, variant === "garage" ? TILE : EDGE_PX);
@@ -168,16 +170,6 @@ export function generateWorld(inputs: ZoneInput[], seed = 7): World {
     const y0 = Math.max(1, Math.floor(a.y / TILE) - 1);
     const x1 = Math.min(w - 2, Math.ceil((a.x + a.w) / TILE) + 1);
     const y1 = Math.min(h - 2, Math.ceil((a.y + a.h) / TILE) + 1);
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) blocked[idx(x, y)] = 1;
-  }
-
-  // ... and off the name, with the same margin
-  {
-    const n = nameRect();
-    const x0 = Math.max(1, Math.floor(n.x / TILE) - 1);
-    const y0 = Math.max(1, Math.floor(n.y / TILE) - 1);
-    const x1 = Math.min(w - 2, Math.ceil((n.x + n.w) / TILE) + 1);
-    const y1 = Math.min(h - 2, Math.ceil((n.y + n.h) / TILE) + 1);
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) blocked[idx(x, y)] = 1;
   }
 

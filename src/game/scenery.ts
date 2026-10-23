@@ -20,7 +20,8 @@ import type { Zone, ZonePhoto } from "./world";
 import { box, cyl, mesh, toon } from "./models";
 import type { AnimCtx } from "./models";
 import { ImageCache } from "./photocache";
-import { buttonModel } from "./contactmodels";
+import { mailModule } from "./mailmodels";
+import { nameModel } from "./namemodel";
 import { constructionModel } from "./constructionmodels";
 import { ftcModel } from "./ftcmodels";
 
@@ -1665,12 +1666,14 @@ export function sceneryModel(id: string, footprint: Footprint | undefined, prop:
       return lightTableModel(w, d, zone, rig);
     case "deskmat":
       return deskMatModel(w, d);
-    case "button-email":
-      return buttonModel("email");
-    case "button-linkedin":
-      return buttonModel("linkedin");
-    case "button-github":
-      return buttonModel("github");
+    case "kdname":
+      return nameModel();
+    case "kdmail-email":
+      return mailModule("email");
+    case "kdmail-linkedin":
+      return mailModule("linkedin");
+    case "kdmail-github":
+      return mailModule("github");
   }
   return null;
 }

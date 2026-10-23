@@ -10,7 +10,7 @@ export type PanelSide = "left" | "right" | "bottom";
  */
 const isLinkOnly = (zone: Zone) => zone.kind === "gallery";
 
-const KIND_LABEL: Record<string, string> = { project: "Project", gallery: "Photography" };
+const KIND_LABEL: Record<string, string> = { project: "Project", gallery: "Photography", about: "About me" };
 
 /** Follows a link: external ones in a new tab, mailto: in this window, the rest through the site's router. */
 export function openAction(a: ZoneAction) {

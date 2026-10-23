@@ -1,14 +1,14 @@
 import { ExtrudeGeometry, Group } from "three";
 import { mesh, toon } from "./models";
-import { NAME } from "./name";
+import { NAME, NAME_BASELINE, NAME_H, NAME_TOP } from "./name";
 import { nameShapes } from "./nameshapes";
 
-// The name, "Kevin Dong", in Zilla Slab Bold: big, thick ivory letters lying flat on the ground, like block letters
-// set into a courtyard. Same conventions as models.ts: 1 unit = 1 world px. The origin is on the ground at the middle of the
-// baseline, so the capitals stand north of it and the g's tail hangs south of it. It does nothing and cannot be picked; the
-// sun, the grade and the focus dimming do the rest.
+// The name, "Kevin Dong", in Goudy Bookletter 1911: big, thick ivory letters lying flat on the ground, like block letters set
+// into a courtyard. Same conventions as models.ts: 1 unit = 1 world px. The origin is the middle of the name's footprint on the
+// ground (it is the model of the name's zone), so the baseline is a little south of it, with the capitals north of the baseline
+// and the g's tail hanging south. Hovering the zone lifts the letters, like any other project.
 
-export const LETTERS = "#b8ae97"; // a warm ivory, well under white: the grade lifts highlights and leans them warm
+const LETTERS = "#e6d9bd"; // a little under the ivory it ends up as: the grade lifts highlights and leans them warm
 const THICK = 9; // how high the letters stand off the ground
 const BEVEL = 1.4;
 
@@ -27,6 +27,7 @@ export function nameModel(): Group {
   // upright from the south, where the camera is (a letter's top towards -z)
   geometry.rotateX(-Math.PI / 2);
   geometry.translate(0, BEVEL, 0); // (the bevel reaches that far below the face the extrusion starts from)
-  g.add(mesh(geometry, toon(LETTERS)));
+  // the shapes' baseline is at the origin: move it to where it is, relative to the middle of the footprint
+  g.add(mesh(geometry, toon(LETTERS), 0, 0, NAME_BASELINE - (NAME_TOP + NAME_H / 2)));
   return g;
 }

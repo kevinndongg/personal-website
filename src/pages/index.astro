@@ -128,7 +128,17 @@ const zones = [
     accent: "#8a4fd0",
     photos: reel,
   },
-  // the contact links: a button on the ground each, which opens its link when it is pressed (no card)
+  // the name: it opens a short card about you (draft copy: edit it here)
+  {
+    id: "hub",
+    kind: "about" as const,
+    label: "Kevin Dong",
+    role: "Computer Science at CMU",
+    summary: "Robotics engineer building mechanical systems, autonomous flight, and vision models.",
+    actions: contactLinks.map((l) => ({ ...l, external: !l.href.startsWith("mailto:") })),
+    accent: "#8a5a35",
+  },
+  // the contact links: a mailbox module each, which opens its link when it is pressed (no card)
   ...contactLinks.map((l) => ({
     id: l.label.toLowerCase(),
     kind: "link" as const,
@@ -231,7 +241,7 @@ const zones = [
     <nav class="fallback" aria-label="Projects">
       <h1>Kevin Dong</h1>
       <ul>
-        {zones.map((z) => (z.href ? <li><a href={z.href}>{z.label}</a></li> : (z.actions ?? []).map((a) => <li><a href={a.href}>{z.label}: {a.label}</a></li>)))}
+        {zones.filter((z) => z.kind !== "link").map((z) => (z.href ? <li><a href={z.href}>{z.label}</a></li> : (z.actions ?? []).map((a) => <li><a href={a.href}>{z.label}: {a.label}</a></li>)))}
       </ul>
       <noscript><p>The interactive diorama needs JavaScript. These links go straight to each page.</p></noscript>
     </nav>

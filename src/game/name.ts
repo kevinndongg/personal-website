@@ -1,13 +1,12 @@
-// Where the name lies: big raised letters flat on the ground in the open yard, with the contact buttons just south of them.
-// World px, on the 768 px map. It sits clear of every project area (the Racing area ends at y = 272, the right-middle
-// building starts at x = 560). Plain numbers only, so that world.ts can keep the yard tires off it without pulling in three.
+// Where the name is: big raised letters lying flat in the open yard (clicking them opens a card about you), and below them a
+// cluster mailbox of three modules, one per link. World px, on the 768 px map, centred on it. It sits clear of every project
+// area (the Racing area ends at y = 272, the gallery starts at y = 592). Plain numbers only, so that world.ts and scenes.ts can
+// use it without pulling in three.
 import { NAME_BOX } from "./namepath";
 
 export const NAME = {
   /** The centre line: the middle of the map. */
   cx: 384,
-  /** The top of the capital letters. */
-  top: 320,
   /** The width the letters are scaled to. */
   letters: 340,
 };
@@ -15,30 +14,44 @@ export const NAME = {
 /** Path units to world px. */
 export const NAME_SCALE = NAME.letters / (NAME_BOX.x1 - NAME_BOX.x0);
 
+/** Capitals to the bottom of the g's tail. */
+export const NAME_H = (NAME_BOX.y1 - NAME_BOX.y0) * NAME_SCALE;
+
+/** One mailbox module (a link each): its footprint, its sloped front, and the zone area round it. */
+export const MODULE = { w: 52, depth: 22, height: 46, frontHeight: 16, areaH: 40, areaBack: 4 };
+
+/** From the g's tail to the back of the mailbox. A 46-tall box hides about 29 px of ground behind it, so this keeps it clear. */
+const GAP = 32;
+const GROUP_H = NAME_H + GAP + MODULE.depth + (MODULE.areaH - MODULE.areaBack - MODULE.depth);
+
+/** The top of the capital letters: the name and the mailbox, together, are centred on the map. */
+export const NAME_TOP = Math.round(384 - GROUP_H / 2);
+
 /** The baseline: capitals stand on it, and the tail of the g hangs below it. */
-export const NAME_BASELINE = NAME.top + NAME_BOX.y1 * NAME_SCALE;
+export const NAME_BASELINE = NAME_TOP + NAME_BOX.y1 * NAME_SCALE;
 
 /** The name's footprint on the ground. */
 export function nameRect() {
-  return {
-    x: NAME.cx - NAME.letters / 2,
-    y: NAME.top,
-    w: NAME.letters,
-    h: (NAME_BOX.y1 - NAME_BOX.y0) * NAME_SCALE,
-  };
+  return { x: NAME.cx - NAME.letters / 2, y: NAME_TOP, w: NAME.letters, h: NAME_H };
 }
 
-/** A little below the g's tail: the contact buttons start here. */
-export const CONTACT_Y = Math.round(NAME_BASELINE - NAME_BOX.y0 * NAME_SCALE + 16);
+/** The name's zone: its footprint with a margin round it, so that it is easy to hover. */
+export const NAME_ZONE_MARGIN = 10;
+export function nameZone() {
+  const r = nameRect();
+  const m = NAME_ZONE_MARGIN;
+  return { x: r.x - m, y: r.y - m, w: r.w + 2 * m, h: r.h + 2 * m };
+}
 
-/** Each contact button is a square this big, on the ground. */
-export const BUTTON_SIZE = 48;
-const BUTTON_GAP = 16;
+/** The back edge of the mailbox's footprint. */
+export const MAIL_BACK = NAME_TOP + NAME_H + GAP;
 
-/** The contact buttons' top-left corners (they are zones of their own, one per link), side by side on the centre line. */
-export const BUTTON_AT: Record<string, { x: number; y: number }> = Object.fromEntries(
-  ["email", "linkedin", "github"].map((id, i) => [
-    id,
-    { x: NAME.cx - (3 * BUTTON_SIZE + 2 * BUTTON_GAP) / 2 + i * (BUTTON_SIZE + BUTTON_GAP), y: CONTACT_Y },
-  ])
-);
+const MAIL_IDS = ["email", "linkedin", "github"] as const;
+
+/** The top-left corners of the zones: the name's, and the three modules' side by side (their areas touch, and do not overlap). */
+export const FIXED_AT: Record<string, { x: number; y: number }> = {
+  hub: { x: nameZone().x, y: nameZone().y },
+  ...Object.fromEntries(
+    MAIL_IDS.map((id, i) => [id, { x: NAME.cx - (3 * MODULE.w) / 2 + i * MODULE.w, y: MAIL_BACK - MODULE.areaBack }])
+  ),
+};
