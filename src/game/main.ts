@@ -15,7 +15,7 @@ const nextPaint = () => new Promise<void>((resolve) => requestAnimationFrame(() 
 
 /**
  * Boots the scene inside `root`. Returns a teardown function. With a loader (`intro`) the scene is built behind it, and the
- * view is only handed over (the banner, a linked project) once the photos are on the GPU at their own resolution.
+ * view is only handed over (a linked project) once the photos are on the GPU at their own resolution.
  */
 export function startGame(root: HTMLElement, intro: Intro | null = null): () => void {
   const sceneId = ++sceneCount;
@@ -23,7 +23,6 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
   const canvas = root.querySelector<HTMLCanvasElement>("[data-canvas]")!;
   const labelsEl = root.querySelector<HTMLElement>("[data-labels]")!;
   const hint = root.querySelector<HTMLElement>("[data-hint]");
-  const banner = root.querySelector<HTMLElement>("[data-banner]");
   const abort = new AbortController();
   const { signal } = abort;
 
@@ -89,8 +88,38 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
       })
     : [];
 
+  // "Pick an area to look inside" stands to the left of the racing area, or above it on a narrow screen (or one with no room
+  // beside it). Placed whenever the window changes: the camera is at its resting view then, and the hint is gone before it moves.
+  const racing = world.zones.find((z) => z.variant === "garage");
+  function placeHint() {
+    if (!hint || !racing) return; // (without a racing area the hint keeps its place at the top left)
+    const a = racing.scene.area;
+    const left = renderer.project(a.x, 0, a.y + a.h / 2);
+    const top = renderer.project(a.x + a.w / 2, 0, a.y);
+    const GAP = 14;
+    const narrow = innerWidth < 760 || innerWidth < innerHeight * 0.9;
+    const room = left.x - 16 - GAP;
+    const above = narrow || room < 120;
+    hint.style.maxWidth = above ? "" : `${room}px`;
+    hint.classList.toggle("above", above);
+    const w = hint.offsetWidth;
+    const h = hint.offsetHeight;
+    let x: number;
+    let y: number;
+    if (above) {
+      x = Math.min(Math.max(16, top.x - w / 2), innerWidth - 16 - w);
+      y = Math.max(16, top.y - GAP - h);
+    } else {
+      x = left.x - GAP - w;
+      y = left.y - h / 2;
+    }
+    hint.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    hint.classList.add("placed");
+  }
+
   function resize() {
     renderer.resize(innerWidth, innerHeight);
+    placeHint();
   }
   resize();
   addEventListener("resize", resize, { signal });
@@ -151,6 +180,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     panel.open(zone, side);
     hoveredId = zone.id;
     hint?.classList.add("gone");
+    renderer.setInvite(false);
     if (!fromUrl && location.hash.slice(1) !== zone.id) {
       ownEntry = true;
       void navigate(`#${zone.id}`);
@@ -602,14 +632,8 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
       },
     });
 
-  let bannerTimer: ReturnType<typeof setTimeout> | undefined;
-  function showBanner() {
-    banner?.classList.add("show");
-    bannerTimer = setTimeout(() => banner?.classList.remove("show"), 3200);
-  }
-
   if (!intro) {
-    showBanner();
+    if (!linked) renderer.setInvite(true);
   } else {
     // The loader is up and the scene is built behind it. What it waits for: the photos of the first two pages on the GPU at
     // their own resolution (the table makes those lazily otherwise: on first hover), and the shaders compiled, so that
@@ -640,14 +664,13 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
       last = performance.now();
       raf = requestAnimationFrame(frame);
       if (linked) open(linked, true);
-      showBanner();
+      else renderer.setInvite(true);
     })();
   }
 
   return () => {
     if (import.meta.env.DEV) console.info(`[game] scene #${sceneId} stopped`);
     cancelAnimationFrame(raf);
-    clearTimeout(bannerTimer);
     intro?.cancel();
     for (const zone of world.zones) if (zone.kind === "gallery") filmRig(zone).onFrame = undefined;
     panel.destroy();

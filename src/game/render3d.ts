@@ -209,6 +209,28 @@ function blurredRectTexture(total: number, inner: number, blur: number): CanvasT
   return new CanvasTexture(c);
 }
 
+/** A soft warm halo around a rounded rectangle's outline (the glow that invites a click): `w` x `h` units, the outline `margin` in from each edge. */
+function haloTexture(w: number, h: number, margin: number): CanvasTexture {
+  const size = 512;
+  const k = size / w;
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = Math.max(2, Math.round(h * k));
+  const ctx = c.getContext("2d")!;
+  // as in blurredRectTexture: only the shadow is wanted, so the outline is drawn far off-canvas and its shadow cast back in
+  const far = size * 4;
+  ctx.shadowColor = "rgb(255, 243, 214)";
+  ctx.shadowBlur = margin * 0.9 * k;
+  ctx.shadowOffsetX = far;
+  ctx.lineWidth = margin * 0.35 * k;
+  ctx.strokeStyle = "#fff";
+  ctx.beginPath();
+  ctx.roundRect(margin * k - far, margin * k, (w - 2 * margin) * k, (h - 2 * margin) * k, margin * 0.6 * k);
+  ctx.stroke();
+  ctx.stroke(); // (twice: one pass of a shadow is too faint to read on the dark ground)
+  return new CanvasTexture(c);
+}
+
 /** Alpha mask for the "fade" mode: opaque over the map, falling to transparent across the margin around it. */
 function fadeMaskTexture(total: number, inner: number): CanvasTexture {
   const size = 512;
@@ -248,6 +270,8 @@ export class Renderer3D {
   private pickables: Object3D[] = [];
   private zoneModels = new Map<string, Object3D[]>();
   private zoneGlow = new Map<string, Mesh>();
+  /** The pulsing halo round the racing area that says "start here" (`on` until the viewer opens something). */
+  private invite: { mesh: Mesh; on: boolean; amount: number } | null = null;
   /** Per-model animation callbacks (see `userData.animate` in models.ts) grouped by zone. */
   private animators: { fn: (c: AnimCtx) => void; zoneId: string }[] = [];
   /** Props that grow and move while their project is zoomed into (`Prop.focus`), with the placement they start from. */
@@ -463,6 +487,25 @@ export class Renderer3D {
       glow.visible = false;
       map.add(glow);
       this.zoneGlow.set(zone.id, glow);
+    }
+
+    // the invitation: a halo round the racing area, pulsing until something is opened (see `setInvite`)
+    const racing = world.zones.find((z) => z.variant === "garage");
+    if (racing) {
+      const a = racing.scene.area;
+      const margin = TILE;
+      const w = a.w + 2 * margin;
+      const h = a.h + 2 * margin;
+      const mesh = new Mesh(
+        new PlaneGeometry(w, h),
+        new MeshBasicMaterial({ map: haloTexture(w, h, margin), transparent: true, opacity: 0, depthWrite: false })
+      );
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(a.x + a.w / 2, 0.13, a.y + a.h / 2);
+      mesh.renderOrder = 1;
+      mesh.visible = false;
+      map.add(mesh);
+      this.invite = { mesh, on: false, amount: 0 };
     }
 
     // yard tire piles
@@ -794,6 +837,11 @@ export class Renderer3D {
     }
   }
 
+  /** Turns the pulsing halo round the racing area on or off (it eases in and out). */
+  setInvite(on: boolean) {
+    if (this.invite) this.invite.on = on;
+  }
+
   /** Hover effect for one project box, `amount` 0..1: its props rise and its ground brightens. Works for any zone. */
   setHover(zoneId: string, amount: number) {
     this.hoverAmount.set(zoneId, amount);
@@ -889,6 +937,16 @@ export class Renderer3D {
     this.orient();
     this.pureAmt += ((this.focused && this.focusPts ? 1 : 0) - this.pureAmt) * k;
     this.applyView();
+
+    // the invitation's halo: a slow pulse (steady when motion is reduced), eased in and out as it is turned on and off
+    const invite = this.invite;
+    if (invite) {
+      invite.amount += ((invite.on ? 1 : 0) - invite.amount) * k;
+      if (!invite.on && invite.amount < 0.002) invite.amount = 0;
+      const pulse = this.reduceMotion ? 0.6 : 0.6 + 0.4 * Math.sin((time * Math.PI * 2) / 2.4);
+      invite.mesh.visible = invite.amount > 0;
+      (invite.mesh.material as MeshBasicMaterial).opacity = invite.amount * pulse * 0.85;
+    }
 
     // drifting leaf-shade (a slow breeze across the yard)
     if (!this.reduceMotion) {
@@ -1027,6 +1085,12 @@ export class Renderer3D {
   }
 
   dispose() {
+    if (this.invite) {
+      const material = this.invite.mesh.material as MeshBasicMaterial;
+      material.map?.dispose();
+      material.dispose();
+      this.invite.mesh.geometry.dispose();
+    }
     this.renderer.dispose();
     this.colorTarget.dispose();
   }
