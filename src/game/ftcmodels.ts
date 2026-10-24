@@ -365,20 +365,27 @@ function submersibleModel(w: number, d: number): Group {
  */
 function basketModel(stripe: string, index: number, held: string[], dropped: string): Group {
   const g = new Group();
-  const glass = new MeshLambertMaterial({ color: "#d6ecff", transparent: true, opacity: 0.55 });
+  // clear plastic: faint enough that the samples inside show in their own colours (and not washed over by it)
+  const glass = new MeshLambertMaterial({ color: "#eaf5ff", transparent: true, opacity: 0.16, depthWrite: false });
   g.add(box(6, 0.8, 6, DARK, 0, 0, 0)); // the foot
   g.add(box(1.6, 22, 1.6, STEEL, 0, 0.8, 0));
   g.add(box(0.7, 22, 2.2, stripe, -1.1, 0.8, 0));
   g.add(box(1.8, 0.8, 1.8, DARK, 0, 22.8, 0));
   const bucket = (y: number) => {
     g.add(box(2.4, 0.7, 1.2, DARK, 1.6, y, 0)); // the bracket
-    // a square frustum: four sides, 5 wide at the bottom and 7 at the top, turned to line up with the axes
-    const geo = new CylinderGeometry(4.95, 3.54, 5, 4);
+    // a square frustum with no top and no bottom (an open bucket, so that you can see down into it): four sides, 5 wide at
+    // the bottom and 7 at the top, turned to line up with the axes
+    const geo = new CylinderGeometry(4.95, 3.54, 5, 4, 1, true);
     geo.rotateY(Math.PI / 4);
     const b = mesh(geo, glass, 4.4, y + 2.5, 0);
     b.castShadow = false;
     g.add(b);
     g.add(box(5, 0.3, 5, "#8fb3d6", 4.4, y, 0)); // its floor
+    // the rim, and the four edges, as thin lines of clear plastic, so the bucket still reads as one
+    for (const s of [-1, 1]) {
+      g.add(box(7.2, 0.3, 0.3, "#e6f3ff", 4.4, y + 4.85, s * 3.5));
+      g.add(box(0.3, 0.3, 7.2, "#e6f3ff", 4.4 + s * 3.5, y + 4.85, 0));
+    }
   };
   bucket(15);
   bucket(7.5);

@@ -221,7 +221,14 @@ export function robotModel(): Group {
     paddle.rotation.z = p.spin;
     sample.visible = p.carrying;
     sample.material = toon(p.carryColor);
-    sample.position.x = 4.6 - 2.2 * p.slide; // from the scoop's tip back to where it rests
+    // How folded up the head is (1 with the scoop standing upright at the front of the arm, 0 with it level, pointing either
+    // way). With the scoop on end a sample lying on it would stand on end too, so as the head folds the sample moves across
+    // onto the top of the head's housing instead, lying flat against the scoop, and turns with it to stay level.
+    const fold = Math.max(0, 1 - Math.abs(p.head - Math.PI / 2) / (Math.PI / 2)) * Math.max(0, 1 - p.roll / Math.PI);
+    const onScoop = 4.6 - 2.2 * p.slide; // from the scoop's tip back to where it rests
+    sample.position.x = onScoop + (1.8 - onScoop) * fold;
+    sample.position.y = -HEAD.drop + 1.15 + (-1.5 - (-HEAD.drop + 1.15)) * fold;
+    sample.rotation.z = fold * (Math.PI / 2);
   };
   g.userData.pose = pose;
   pose({ ...STOWED, spin: 0, carrying: false, carryColor: YELLOW, slide: 1 });
