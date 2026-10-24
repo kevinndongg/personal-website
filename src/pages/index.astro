@@ -215,10 +215,11 @@ const zones = [
     </p>
 
     <!--
-      The same torn note on the open photography page, above the camera, with an arrow to each of its controls: the advance
-      lever and the rewind knob (`placeFilmHint` in src/game/main.ts places the note and draws the arrows).
+      The same torn notes on the open photography page, one at a time in the same place above the camera (`updateFilmHints` in
+      src/game/main.ts places them and draws the arrows). First, with an arrow to each of the camera's controls (the advance
+      lever and the rewind knob); once the viewer has turned the roll, one about clicking into the photos, with an arrow to them.
     -->
-    <p class="hint film" data-film-hint>
+    <p class="hint film" data-film-hint="controls">
       <span class="hint-body">
         <span class="hint-shade"><span class="hint-paper" data-film-paper>Click to <span class="scribble">advance</span> / <span class="scribble">rewind</span></span></span>
       </span>
@@ -228,6 +229,15 @@ const zones = [
       <path pathLength="1" data-head></path>
     </svg>
     <svg class="film-arrow" data-film-arrow="rewind" aria-hidden="true">
+      <path pathLength="1" data-shaft></path>
+      <path pathLength="1" data-head></path>
+    </svg>
+    <p class="hint film" data-film-hint="photos">
+      <span class="hint-body">
+        <span class="hint-shade"><span class="hint-paper" data-film-paper>Click a photo to <span class="scribble">look closer</span></span></span>
+      </span>
+    </p>
+    <svg class="film-arrow" data-film-arrow="photos" aria-hidden="true">
       <path pathLength="1" data-shaft></path>
       <path pathLength="1" data-head></path>
     </svg>

@@ -3,7 +3,7 @@ import type { Intro } from "./intro";
 import { Panel } from "./panel";
 import type { PanelSide } from "./panel";
 import { Renderer3D } from "./render3d";
-import { filmRig } from "./scenery";
+import { LEVER_REST_YAW, filmRig } from "./scenery";
 import type { MoveKey } from "./scenery";
 import { TILE, generateWorld, rectContains } from "./world";
 import type { Zone, ZoneInput } from "./world";
@@ -91,6 +91,8 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
   // the viewer has used a control, a photo or a key: the offer (the lever turning the page by itself, and the glow) is
   // done, for this visit
   let used = false;
+  // the viewer has turned the roll (the lever, the knob, an arrow key or the wheel): the notes go on to the photos
+  let wound = false;
   // announces the photo that is up, for screen readers (its title and place are not drawn anywhere in the scene)
   const live = root.querySelector<HTMLElement>("[data-live]");
 
@@ -314,6 +316,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
   function wind(direction: 1 | -1) {
     if (panel.isOpen && openZone?.kind === "gallery") {
       used = true;
+      wound = true;
       filmRig(openZone).queue(direction);
     }
   }
@@ -583,58 +586,103 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
   let lastClose: number[][] = [];
   const WATCH_MS = 3000;
 
-  // ---- the note on the open photography page: "Click to advance / rewind", above the camera, with an arrow to each control
-  const filmHint = root.querySelector<HTMLElement>("[data-film-hint]");
-  const filmPaper = root.querySelector<HTMLElement>("[data-film-paper]");
-  const filmArrows = [...root.querySelectorAll<SVGSVGElement>("[data-film-arrow]")].map((el) => ({
-    el,
-    part: el.dataset.filmArrow as "lever" | "rewind",
-    shaft: el.querySelector<SVGPathElement>("[data-shaft]")!,
-    head: el.querySelector<SVGPathElement>("[data-head]")!,
-    last: "",
-  }));
-  const FILM_DELAY = 0.6; // seconds after the page opens (the camera is still coming in) before the note is tossed down
-  const FILM_GAP = 1.6; // how far above the camera's controls the note sits, in note heights (room for the arrows)
-  let filmWantedAt: number | null = null; // scene time the note began to be wanted
-  let filmShown = false;
-  let filmLeaveUntil = 0; // scene time the note has finished falling away
-  let filmSize = { w: 0, h: 0 };
+  // ---- the notes on the open photography page, one at a time in the same place above the camera. First "Click to advance /
+  // rewind", with an arrow to each of the camera's controls; once the viewer has turned the roll, "Click a photo to look
+  // closer", with an arrow to the photos (which pulse softly meanwhile).
+  type FilmPart = "lever" | "rewind" | "photos";
+  const notes = (["controls", "photos"] as const).map((id) => {
+    const el = root.querySelector<HTMLElement>(`[data-film-hint="${id}"]`);
+    return {
+      id,
+      el,
+      paper: el?.querySelector<HTMLElement>("[data-film-paper]") ?? null,
+      arrows: [...root.querySelectorAll<SVGSVGElement>("[data-film-arrow]")]
+        .filter((a) => (a.dataset.filmArrow === "photos") === (id === "photos"))
+        .map((a) => ({
+          el: a,
+          part: a.dataset.filmArrow as FilmPart,
+          shaft: a.querySelector<SVGPathElement>("[data-shaft]")!,
+          head: a.querySelector<SVGPathElement>("[data-head]")!,
+          last: "",
+        })),
+      size: { w: 0, h: 0 },
+      wantedAt: null as number | null, // scene time the note began to be wanted
+      shown: false,
+      leaveUntil: 0, // scene time the note has finished falling away
+    };
+  });
+  type Note = (typeof notes)[number];
+  const FILM_DELAY = 0.6; // seconds after the page opens (the camera is still coming in) before the first note is tossed down
+  const PHOTO_DELAY = 0.5; // ...and after the roll is first turned before the second one is (the first has fallen away by then)
+  const PHOTO_NOTE_SECONDS = 8; // how long the second note stays up
+  const FILM_GAP = 1.6; // how far above the camera's controls the notes sit, in note heights (room for the arrows)
+  let looked = false; // a photo has been zoomed into this visit
+  let photosAt: number | null = null; // scene time the second note first appeared
 
-  addEventListener("resize", () => filmShown && measureFilmHint(), { signal });
+  addEventListener("resize", () => notes.forEach((n) => n.shown && measureNote(n)), { signal });
 
-  /** The note's torn edge and size, for the size it has now (it is read each frame, so it is kept here). */
-  function measureFilmHint() {
-    if (!filmHint || !filmPaper) return;
-    filmPaper.style.clipPath = tornOutline(filmPaper.offsetWidth, filmPaper.offsetHeight);
-    filmSize = { w: filmHint.offsetWidth, h: filmHint.offsetHeight };
+  /** A note's torn edge and size, for the size it has now (they are read each frame, so they are kept here). */
+  function measureNote(note: Note) {
+    if (!note.el || !note.paper) return;
+    note.paper.style.clipPath = tornOutline(note.paper.offsetWidth, note.paper.offsetHeight);
+    note.size = { w: note.el.offsetWidth, h: note.el.offsetHeight };
   }
 
   /**
-   * Puts the note above the camera's two controls (below them when there is no room above, on a phone) and draws each arrow:
-   * a gently bowed pen line from the note to just short of its control, with a head at the end. Read each frame while the note
-   * is up, since the camera is still easing in when it appears, and the lever moves when it is used.
+   * Where the notes go: over the middle of the camera's two controls, a gap above them (below them when there is no room
+   * above, on a phone). The lever is taken parked, not where it is: it swings on every stroke, and the notes stay where they are.
    */
-  function placeFilmHint(rig: ReturnType<typeof filmRig>) {
-    if (!filmHint || !galleryZone) return;
-    const lever = renderer.partScreen(galleryZone.id, "lever", [0, 0.5, 4]);
+  function filmSpot() {
+    if (!galleryZone) return null;
+    const lever = renderer.partScreen(galleryZone.id, "lever", [0, 0.5, 4], LEVER_REST_YAW);
     const knob = renderer.partScreen(galleryZone.id, "rewind", [0, 1.3, 0]);
-    if (!lever || !knob) return;
-    const { w, h } = filmSize;
-    const gap = Math.max(60, h * FILM_GAP);
-    const above = Math.min(lever.y, knob.y) - gap - h >= 16;
-    const x = Math.min(Math.max(16, (lever.x + knob.x) / 2 - w / 2), innerWidth - 16 - w);
-    const y = above ? Math.min(lever.y, knob.y) - gap - h : Math.min(Math.max(lever.y, knob.y) + gap, innerHeight - 16 - h);
-    filmHint.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
-    const glows = { lever: rig.glowLever, rewind: rig.glowKnob };
-    filmHint.style.setProperty("--pulse", Math.max(glows.lever, glows.rewind).toFixed(3)); // (the note breathes with the controls)
-    for (const a of filmArrows) {
-      const to = a.part === "lever" ? lever : knob;
-      // from the note's edge nearest the controls, a third of the way in from the side its control is on
-      const from = { x: x + w * (a.part === "lever" ? 0.3 : 0.7), y: above ? y + h + 2 : y - 2 };
+    if (!lever || !knob) return null;
+    const gap = Math.max(60, notes[0].size.h * FILM_GAP);
+    const above = Math.min(lever.y, knob.y) - gap - notes[0].size.h >= 16;
+    return { lever, knob, cx: (lever.x + knob.x) / 2, edge: above ? Math.min(lever.y, knob.y) : Math.max(lever.y, knob.y), gap, above };
+  }
+
+  /** Where the arrow to the photos ends: the left edge of the page's first photo (and the film round it), or null. */
+  function photosTarget(rig: ReturnType<typeof filmRig>) {
+    const first = (rig.layout.pages[rig.page] ?? []).find((i) => i >= 0);
+    const c = first === undefined ? undefined : rig.photoCorners?.(first);
+    return c ? renderer.projectWorld(c[0].clone().add(c[3]).multiplyScalar(0.5)) : null;
+  }
+
+  /**
+   * Puts a note in its place and draws its arrows: gently bowed pen lines from the note to just short of what they point at,
+   * with a head at the end. Read each frame while the note is up, since the camera is still easing in when it appears.
+   */
+  function placeNote(note: Note, rig: ReturnType<typeof filmRig>) {
+    const spot = filmSpot();
+    if (!note.el || !spot) return;
+    const { w, h } = note.size;
+    const x = Math.min(Math.max(16, spot.cx - w / 2), innerWidth - 16 - w);
+    const y = spot.above ? spot.edge - spot.gap - h : Math.min(spot.edge + spot.gap, innerHeight - 16 - h);
+    note.el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    const glows = { lever: rig.glowLever, rewind: rig.glowKnob, photos: rig.glowPhotos };
+    // (the note breathes with what it points at)
+    note.el.style.setProperty("--pulse", (note.id === "photos" ? glows.photos : Math.max(glows.lever, glows.rewind)).toFixed(3));
+    for (const a of note.arrows) {
+      const to = a.part === "lever" ? spot.lever : a.part === "rewind" ? spot.knob : photosTarget(rig);
+      if (!to) continue;
+      let from: { x: number; y: number };
+      if (a.part === "photos") {
+        // from whichever of the note's edges faces the photos
+        const fx = to.x - (x + w / 2);
+        const fy = to.y - (y + h / 2);
+        from =
+          Math.abs(fx) * h > Math.abs(fy) * w
+            ? { x: fx > 0 ? x + w + 2 : x - 2, y: y + h / 2 }
+            : { x: x + w / 2, y: fy > 0 ? y + h + 2 : y - 2 };
+      } else {
+        // from the note's edge nearest the controls, a third of the way in from the side its control is on
+        from = { x: x + w * (a.part === "lever" ? 0.3 : 0.7), y: spot.above ? y + h + 2 : y - 2 };
+      }
       const dx = to.x - from.x;
       const dy = to.y - from.y;
       const len = Math.hypot(dx, dy) || 1;
-      const end = { x: to.x - (dx / len) * 14, y: to.y - (dy / len) * 14 }; // (stops short, so the control stays clear)
+      const end = { x: to.x - (dx / len) * 14, y: to.y - (dy / len) * 14 }; // (stops short, so what it points at stays clear)
       const bow = len * 0.08;
       const nx = -dy / len;
       const ny = dx / len;
@@ -663,31 +711,50 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     }
   }
 
-  /** Shows the note while the camera's offer stands (the page is open, looking at the page, and nothing has been used yet). */
-  function updateFilmHint() {
-    if (!galleryZone || !filmHint) return;
-    const rig = filmRig(galleryZone);
-    if (rig.invite) {
-      filmWantedAt ??= time;
-      if (!filmShown && time - filmWantedAt >= FILM_DELAY) {
-        measureFilmHint();
-        placeFilmHint(rig); // (before it shows, so that it is tossed down where it belongs)
-        for (const el of [filmHint, ...filmArrows.map((a) => a.el)]) {
+  /** Shows a note while it is wanted, tossing it down `delay` seconds after it began to be, and dropping it when it stops. */
+  function updateNote(note: Note, wanted: boolean, delay: number, rig: ReturnType<typeof filmRig>) {
+    if (!note.el) return;
+    const els = [note.el, ...note.arrows.map((a) => a.el)];
+    if (wanted) {
+      note.wantedAt ??= time;
+      if (!note.shown && time - note.wantedAt >= delay) {
+        measureNote(note);
+        placeNote(note, rig); // (before it shows, so that it is tossed down where it belongs)
+        for (const el of els) {
           el.classList.remove("shown", "gone");
           void el.getBoundingClientRect(); // (so that the animations run again)
           el.classList.add("shown");
         }
-        filmShown = true;
+        note.shown = true;
+        if (note.id === "photos") photosAt ??= time;
       }
     } else {
-      filmWantedAt = null;
-      if (filmShown) {
-        filmShown = false;
-        filmLeaveUntil = time + 0.5;
-        for (const el of [filmHint, ...filmArrows.map((a) => a.el)]) el.classList.add("gone");
+      note.wantedAt = null;
+      if (note.shown) {
+        note.shown = false;
+        note.leaveUntil = time + 0.5;
+        for (const el of els) el.classList.add("gone");
       }
     }
-    if (filmShown || time < filmLeaveUntil) placeFilmHint(rig);
+    if (note.shown || time < note.leaveUntil) placeNote(note, rig);
+  }
+
+  /**
+   * The first note is up while the camera's offer stands (the page is open, looking at the page, nothing used yet). The
+   * second comes once the roll has been turned, for a few seconds or until a photo is looked into, and while it is up the
+   * photos' outlines pulse. Using a photo or the shutter first shows neither: the viewer already knows.
+   */
+  function updateFilmHints() {
+    if (!galleryZone) return;
+    const rig = filmRig(galleryZone);
+    const open = panel.isOpen && openZone === galleryZone;
+    if (open && rig.mode === "photo") looked = true;
+    const [controls, photos] = notes;
+    updateNote(controls, rig.invite, FILM_DELAY, rig);
+    const wantPhotos =
+      open && rig.mode === "page" && wound && !looked && (photosAt === null || time - photosAt < PHOTO_NOTE_SECONDS);
+    updateNote(photos, wantPhotos, PHOTO_DELAY, rig);
+    rig.invitePhotos = photos.shown;
   }
 
   function frame(now: number) {
@@ -701,7 +768,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     renderer.draw(time);
     if (hint && !hint.classList.contains("gone")) hint.style.setProperty("--pulse", renderer.invitePulse.toFixed(3)); // (the note breathes with the glow)
     updateLabels();
-    updateFilmHint();
+    updateFilmHints();
     if (import.meta.env.DEV) {
       gaps.push(gap);
       if (gaps.length > 300) gaps.shift();

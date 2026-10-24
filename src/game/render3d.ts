@@ -932,21 +932,44 @@ export class Renderer3D {
   /**
    * Screen position (css px) of a point on a named part of a zone's prop (`userData.part`, as `pick` reads it: the camera's lever
    * and rewind knob), `local` being the point in the part's own space (its origin by default), or null when there is no such
-   * part. As the part is now, mid-stroke and mid-zoom included: read it each frame to follow it.
+   * part. By default as the part is now, mid-stroke and mid-zoom included. With `restYaw`, as the part would be turned to that
+   * yaw instead (the lever parked, say): the point then stays where it is however the part swings, and moves only with the view.
    */
-  partScreen(zoneId: string, part: string, local: [number, number, number] = [0, 0, 0]): { x: number; y: number } | null {
+  partScreen(
+    zoneId: string,
+    part: string,
+    local: [number, number, number] = [0, 0, 0],
+    restYaw?: number
+  ): { x: number; y: number } | null {
     for (const model of this.zoneModels.get(zoneId) ?? []) {
       let found: Object3D | undefined;
       model.traverse((o) => {
         if (!found && o.userData.part === part) found = o;
       });
       if (!found) continue;
-      found.updateWorldMatrix(true, false);
-      const v = found.localToWorld(new Vector3(...local)).project(this.camera);
-      const rect = this.canvas.getBoundingClientRect();
-      return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
+      const v = new Vector3(...local);
+      if (restYaw === undefined || !found.parent) {
+        found.updateWorldMatrix(true, false);
+        found.localToWorld(v);
+      } else {
+        // the part's own turn is the only thing left out: its place and the rest of the chain above it are as they are
+        found.parent.updateWorldMatrix(true, false);
+        found.parent.localToWorld(v.applyAxisAngle(new Vector3(0, 1, 0), restYaw).add(found.position));
+      }
+      return this.toScreen(v);
     }
     return null;
+  }
+
+  /** Screen position (css px) of a point in world space (not map space: the view's zoom is already in it). */
+  projectWorld(point: Vector3): { x: number; y: number } {
+    return this.toScreen(point.clone());
+  }
+
+  private toScreen(world: Vector3): { x: number; y: number } {
+    const v = world.project(this.camera);
+    const rect = this.canvas.getBoundingClientRect();
+    return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
   }
 
   /** Screen position (css px) of a map point at the given height. */
