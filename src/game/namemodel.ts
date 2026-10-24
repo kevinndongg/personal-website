@@ -1,5 +1,4 @@
 import { Color, ExtrudeGeometry, Group } from "three";
-import type { AnimCtx } from "./models";
 import { GRAIN_MEAN, grainTexture } from "./grain";
 import { mesh, toon } from "./models";
 import { NAME, NAME_BASELINE, NAME_H, NAME_TOP } from "./name";
@@ -48,11 +47,6 @@ export function nameModel(): Group {
 
   // the shapes' baseline is at the origin: move it to where it is, relative to the middle of the footprint
   g.add(mesh(geometry, letters, 0, 0, NAME_BASELINE - (NAME_TOP + NAME_H / 2)));
-
-  // hovered, the letters take a slight warm lift, as if lit from within (the light on the ground is nameglow.ts)
-  letters.emissive.set("#ff9a70");
-  g.userData.animate = ({ hover }: AnimCtx) => {
-    letters.emissiveIntensity = hover * 0.25;
-  };
+  // (hovered, the letters only lift: the light is on the ground under them, see nameglow.ts)
   return g;
 }
