@@ -319,6 +319,55 @@ html:has(.game) body {
   }
 }
 
+/*
+ * The same torn note on the open photography page ("Click to advance / rewind"), with an arrow to each of the camera's two
+ * controls. `placeFilmHint` (src/game/main.ts) puts the note above the camera and draws each arrow's path to its control, so
+ * the arrows are screen-sized SVGs of their own; `--glow` (0..1) on each is how lit its control is just now, so it lights in
+ * turn with it, like the lever and the knob do.
+ */
+.hint.film .hint-paper {
+  --tilt: -1.5deg;
+  text-align: center;
+  padding-left: 22px;
+  background-position: 0 0, 0 12px, 0 0;
+}
+
+.film-arrow {
+  --glow: 0.45;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  fill: none;
+  stroke: #fffaf0;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* the same warm light as the racing arrow, centred on the stroke, brightest when its control is */
+  filter: drop-shadow(0 0 calc(2px + var(--glow) * 7px) rgba(255, 228, 170, 0.95));
+  opacity: 0;
+  transition: opacity 320ms ease;
+}
+
+.film-arrow path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+.film-arrow.shown {
+  opacity: 1;
+}
+
+.film-arrow.shown path {
+  animation: hint-draw 600ms 650ms ease-out forwards;
+}
+
+.film-arrow.shown.gone {
+  opacity: 0;
+}
+
 /* ---- the card that opens beside the zoomed-in building ---- */
 
 .backdrop {
@@ -732,7 +781,9 @@ html:has(.game) body {
     opacity: 0;
   }
   .hint-arrow path,
-  .hint.shown .hint-arrow path {
+  .hint.shown .hint-arrow path,
+  .film-arrow path,
+  .film-arrow.shown path {
     animation: none;
     stroke-dashoffset: 0;
   }

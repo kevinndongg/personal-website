@@ -929,6 +929,26 @@ export class Renderer3D {
     };
   }
 
+  /**
+   * Screen position (css px) of a point on a named part of a zone's prop (`userData.part`, as `pick` reads it: the camera's lever
+   * and rewind knob), `local` being the point in the part's own space (its origin by default), or null when there is no such
+   * part. As the part is now, mid-stroke and mid-zoom included: read it each frame to follow it.
+   */
+  partScreen(zoneId: string, part: string, local: [number, number, number] = [0, 0, 0]): { x: number; y: number } | null {
+    for (const model of this.zoneModels.get(zoneId) ?? []) {
+      let found: Object3D | undefined;
+      model.traverse((o) => {
+        if (!found && o.userData.part === part) found = o;
+      });
+      if (!found) continue;
+      found.updateWorldMatrix(true, false);
+      const v = found.localToWorld(new Vector3(...local)).project(this.camera);
+      const rect = this.canvas.getBoundingClientRect();
+      return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
+    }
+    return null;
+  }
+
   /** Screen position (css px) of a map point at the given height. */
   project(x: number, height: number, z: number): { x: number; y: number } {
     const v = this.mapToWorld(new Vector3(x, height, z)).project(this.camera);

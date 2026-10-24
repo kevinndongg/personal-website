@@ -238,6 +238,9 @@ export class FilmRig {
    * cleared for good by the first use).
    */
   invite = false;
+  /** How far the lever and the rewind knob are lit by the offer just now, 0..1 (set by the camera model, read by the page's note). */
+  glowLever = 0;
+  glowKnob = 0;
   /** Counts the strokes that hit the end of the roll (so the page can show it when the camera is off screen). */
   stuckCount = 0;
   /** The viewer has used the gallery this visit (a control, a photo, a key, the wheel or a swipe). Set from outside. */
@@ -657,6 +660,8 @@ function omCameraModel(rig: FilmRig): Group {
       const offered = c.phase === null ? 0 : breath * (t <= 0 ? 0.45 : swell(pulse, c.phase));
       const lit = Math.max(c.glow, offered);
       c.mat.color.copy(c.base).lerp(AMBER, lit);
+      if (c.hint === "lever") rig.glowLever = offered; // (the arm and the tip are lit alike)
+      else if (c.hint === "rewind") rig.glowKnob = offered;
       // the knob and lever shine (they give off light, not just a different colour), more so before they have been used
       if (c.shine) c.mat.emissive.copy(AMBER).multiplyScalar(lit * (SHINE + SHINE_FIRST * fresh));
     }

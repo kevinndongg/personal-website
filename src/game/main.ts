@@ -583,6 +583,113 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
   let lastClose: number[][] = [];
   const WATCH_MS = 3000;
 
+  // ---- the note on the open photography page: "Click to advance / rewind", above the camera, with an arrow to each control
+  const filmHint = root.querySelector<HTMLElement>("[data-film-hint]");
+  const filmPaper = root.querySelector<HTMLElement>("[data-film-paper]");
+  const filmArrows = [...root.querySelectorAll<SVGSVGElement>("[data-film-arrow]")].map((el) => ({
+    el,
+    part: el.dataset.filmArrow as "lever" | "rewind",
+    shaft: el.querySelector<SVGPathElement>("[data-shaft]")!,
+    head: el.querySelector<SVGPathElement>("[data-head]")!,
+    last: "",
+  }));
+  const FILM_DELAY = 0.6; // seconds after the page opens (the camera is still coming in) before the note is tossed down
+  const FILM_GAP = 1.6; // how far above the camera's controls the note sits, in note heights (room for the arrows)
+  let filmWantedAt: number | null = null; // scene time the note began to be wanted
+  let filmShown = false;
+  let filmLeaveUntil = 0; // scene time the note has finished falling away
+  let filmSize = { w: 0, h: 0 };
+
+  addEventListener("resize", () => filmShown && measureFilmHint(), { signal });
+
+  /** The note's torn edge and size, for the size it has now (it is read each frame, so it is kept here). */
+  function measureFilmHint() {
+    if (!filmHint || !filmPaper) return;
+    filmPaper.style.clipPath = tornOutline(filmPaper.offsetWidth, filmPaper.offsetHeight);
+    filmSize = { w: filmHint.offsetWidth, h: filmHint.offsetHeight };
+  }
+
+  /**
+   * Puts the note above the camera's two controls (below them when there is no room above, on a phone) and draws each arrow:
+   * a gently bowed pen line from the note to just short of its control, with a head at the end. Read each frame while the note
+   * is up, since the camera is still easing in when it appears, and the lever moves when it is used.
+   */
+  function placeFilmHint(rig: ReturnType<typeof filmRig>) {
+    if (!filmHint || !galleryZone) return;
+    const lever = renderer.partScreen(galleryZone.id, "lever", [0, 0.5, 4]);
+    const knob = renderer.partScreen(galleryZone.id, "rewind", [0, 1.3, 0]);
+    if (!lever || !knob) return;
+    const { w, h } = filmSize;
+    const gap = Math.max(60, h * FILM_GAP);
+    const above = Math.min(lever.y, knob.y) - gap - h >= 16;
+    const x = Math.min(Math.max(16, (lever.x + knob.x) / 2 - w / 2), innerWidth - 16 - w);
+    const y = above ? Math.min(lever.y, knob.y) - gap - h : Math.min(Math.max(lever.y, knob.y) + gap, innerHeight - 16 - h);
+    filmHint.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    const glows = { lever: rig.glowLever, rewind: rig.glowKnob };
+    filmHint.style.setProperty("--pulse", Math.max(glows.lever, glows.rewind).toFixed(3)); // (the note breathes with the controls)
+    for (const a of filmArrows) {
+      const to = a.part === "lever" ? lever : knob;
+      // from the note's edge nearest the controls, a third of the way in from the side its control is on
+      const from = { x: x + w * (a.part === "lever" ? 0.3 : 0.7), y: above ? y + h + 2 : y - 2 };
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const end = { x: to.x - (dx / len) * 14, y: to.y - (dy / len) * 14 }; // (stops short, so the control stays clear)
+      const bow = len * 0.08;
+      const nx = -dy / len;
+      const ny = dx / len;
+      const c1 = { x: from.x + dx * 0.33 + nx * bow, y: from.y + dy * 0.33 + ny * bow };
+      const c2 = { x: from.x + dx * 0.66 - nx * bow * 0.6, y: from.y + dy * 0.66 - ny * bow * 0.6 };
+      const tx = end.x - c2.x;
+      const ty = end.y - c2.y;
+      const tl = Math.hypot(tx, ty) || 1;
+      const head = (turn: number) => {
+        const cos = Math.cos(turn);
+        const sin = Math.sin(turn);
+        const ux = (tx / tl) * cos - (ty / tl) * sin;
+        const uy = (tx / tl) * sin + (ty / tl) * cos;
+        return `${(end.x - ux * 11).toFixed(1)} ${(end.y - uy * 11).toFixed(1)}`;
+      };
+      const f = (n: number) => n.toFixed(1);
+      const shaft = `M${f(from.x)} ${f(from.y)} C${f(c1.x)} ${f(c1.y)}, ${f(c2.x)} ${f(c2.y)}, ${f(end.x)} ${f(end.y)}`;
+      const tip = `M${head(0.5)} L${f(end.x)} ${f(end.y)} L${head(-0.5)}`;
+      const d = shaft + tip;
+      if (d !== a.last) {
+        a.last = d;
+        a.shaft.setAttribute("d", shaft);
+        a.head.setAttribute("d", tip);
+      }
+      a.el.style.setProperty("--glow", glows[a.part].toFixed(3));
+    }
+  }
+
+  /** Shows the note while the camera's offer stands (the page is open, looking at the page, and nothing has been used yet). */
+  function updateFilmHint() {
+    if (!galleryZone || !filmHint) return;
+    const rig = filmRig(galleryZone);
+    if (rig.invite) {
+      filmWantedAt ??= time;
+      if (!filmShown && time - filmWantedAt >= FILM_DELAY) {
+        measureFilmHint();
+        placeFilmHint(rig); // (before it shows, so that it is tossed down where it belongs)
+        for (const el of [filmHint, ...filmArrows.map((a) => a.el)]) {
+          el.classList.remove("shown", "gone");
+          void el.getBoundingClientRect(); // (so that the animations run again)
+          el.classList.add("shown");
+        }
+        filmShown = true;
+      }
+    } else {
+      filmWantedAt = null;
+      if (filmShown) {
+        filmShown = false;
+        filmLeaveUntil = time + 0.5;
+        for (const el of [filmHint, ...filmArrows.map((a) => a.el)]) el.classList.add("gone");
+      }
+    }
+    if (filmShown || time < filmLeaveUntil) placeFilmHint(rig);
+  }
+
   function frame(now: number) {
     raf = requestAnimationFrame(frame);
     const gap = now - last;
@@ -594,6 +701,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     renderer.draw(time);
     if (hint && !hint.classList.contains("gone")) hint.style.setProperty("--pulse", renderer.invitePulse.toFixed(3)); // (the note breathes with the glow)
     updateLabels();
+    updateFilmHint();
     if (import.meta.env.DEV) {
       gaps.push(gap);
       if (gaps.length > 300) gaps.shift();

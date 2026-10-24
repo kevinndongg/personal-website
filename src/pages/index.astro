@@ -214,6 +214,24 @@ const zones = [
       </span>
     </p>
 
+    <!--
+      The same torn note on the open photography page, above the camera, with an arrow to each of its controls: the advance
+      lever and the rewind knob (`placeFilmHint` in src/game/main.ts places the note and draws the arrows).
+    -->
+    <p class="hint film" data-film-hint>
+      <span class="hint-body">
+        <span class="hint-shade"><span class="hint-paper" data-film-paper>Click to <span class="scribble">advance</span> / <span class="scribble">rewind</span></span></span>
+      </span>
+    </p>
+    <svg class="film-arrow" data-film-arrow="lever" aria-hidden="true">
+      <path pathLength="1" data-shaft></path>
+      <path pathLength="1" data-head></path>
+    </svg>
+    <svg class="film-arrow" data-film-arrow="rewind" aria-hidden="true">
+      <path pathLength="1" data-shaft></path>
+      <path pathLength="1" data-head></path>
+    </svg>
+
     <!-- announces the photo on the table (the title and place are drawn on the film, which a screen reader cannot read) -->
     <p class="sr-only" data-live aria-live="polite"></p>
 
