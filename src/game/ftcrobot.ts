@@ -23,7 +23,7 @@ const YELLOW = "#f2c230";
  */
 export const ARM = {
   x: -5, // the shoulder pivot, at the back of the chassis (behind its centre)
-  y: 4.6, // and its height above the floor, just over the deck
+  y: 4.9, // and its height above the floor, just clear of the deck (its top is at 3.8)
   base: 6.5, // the length of the fixed stage of the slide (the second stage slides out of it)
 } as const;
 
@@ -31,7 +31,7 @@ export const ARM = {
  * The head hangs from the end of the slide: how far in front of the wrist pivot a sample sits on the scoop, and how far below
  * the pivot the scoop's underside is. The drop is what lets the scoop reach the floor from a slide lying level on the deck.
  */
-export const HEAD = { reach: 2.4, drop: 3.4 } as const;
+export const HEAD = { reach: 2.4, drop: 3.7 } as const;
 
 /**
  * Arm joints, in radians and px: the slide's pitch (0 = level forward, up positive, past pi/2 = leaning back over the robot),

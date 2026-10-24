@@ -17,7 +17,6 @@ const SPIN_RATE = 14; // rad/s of the paddle wheel while it is running
 const FLOOR_Y = 1.2; // the top of the submersible's floor plate, where the scoop lies
 const OVER_RIM = 2.5; // how far above the bucket's rim the head holds the sample
 const TIP = (60 * Math.PI) / 180; // the head tipped nose down to slide the sample out
-const TURN = Math.PI * 2;
 
 const smooth = (k: number) => {
   const c = Math.min(1, Math.max(0, k));
@@ -96,8 +95,13 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
   const vertArm: ArmPose = { ...STOWED, pitch: Math.PI / 2 };
   const upArm: ArmPose = { pitch: Math.PI / 2, extend: scoreArm.extend, head: Math.PI, roll: Math.PI };
   const tipArm: ArmPose = { ...scoreArm, head: scoreArm.head + TIP };
-  // coming back, the head carries on round the way it was going, so that it ends where it started without unwinding
-  const foldArm: ArmPose = { ...STOWED, head: STOWED.head + TURN, roll: TURN };
+  // Putting the arm away takes care, because the head hangs below the end of the slide and would go through the robot's
+  // bumper, deck or hooks if it turned while the slide was near them. So the head always turns while it is clear (high
+  // above the robot, or well out in front of it), and only then does the slide pivot down or retract.
+  // After the deposit the head turns back the short way round (head -150 deg, roll to 0), up in the air, to the folded pose.
+  const turnedArm: ArmPose = { ...tipArm, head: STOWED.head, roll: 0 };
+  // Before the intake the slide extends with the head folded up, and only then does the head drop to the floor.
+  const reachedArm: ArmPose = { ...STOWED, extend: intakeArm.extend };
 
   const out = curve([home, ...cfg.out, intakeAt]);
   const over = curve([intakeAt, ...cfg.over, scoreAt]);
@@ -110,14 +114,17 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
   const phases: Phase[] = [
     { dur: 0.4, at: home, arm: [STOWED, STOWED], carry: never },
     { dur: drive(out), route: { curve: out, h0: home.h, h1: intakeAt.h }, arm: [STOWED, STOWED], carry: never },
-    { dur: 0.8, at: intakeAt, arm: [STOWED, intakeArm], spin: true, carry: never }, // the slide just extends forward, the head dropping to the floor
-    { dur: 0.9, at: intakeAt, arm: [intakeArm, intakeArm], spin: true, carry: (u) => u > 0.55 }, // the sample rolls on
-    { dur: 0.7, at: intakeAt, arm: [intakeArm, STOWED], carry: always }, // and it retracts
+    { dur: 0.45, at: intakeAt, arm: [STOWED, reachedArm], carry: never }, // the slide just extends forward, no pivoting
+    { dur: 0.25, at: intakeAt, arm: [reachedArm, intakeArm], spin: true, carry: never }, // the head drops to the floor
+    { dur: 0.85, at: intakeAt, arm: [intakeArm, intakeArm], spin: true, carry: (u) => u > 0.55 }, // the sample rolls on
+    { dur: 0.3, at: intakeAt, arm: [intakeArm, reachedArm], carry: always }, // the head curls up, out in front of the robot
+    { dur: 0.45, at: intakeAt, arm: [reachedArm, STOWED], carry: always }, // and then the slide retracts
     { dur: drive(over), route: { curve: over, h0: intakeAt.h, h1: scoreAt.h }, arm: [STOWED, STOWED], carry: always },
     { dur: 0.7, at: scoreAt, arm: [STOWED, vertArm], carry: always }, // the arm pivots up to vertical
     { dur: 0.9, at: scoreAt, arm: [vertArm, upArm], carry: always }, // and extends upwards, the head swinging round to face the bucket
     { dur: 0.8, at: scoreAt, arm: [upArm, tipArm], carry: (u) => u < 0.55 }, // leans back over it and tips: the sample slides out
-    { dur: 1.0, at: scoreAt, arm: [tipArm, foldArm], carry: never },
+    { dur: 0.45, at: scoreAt, arm: [tipArm, turnedArm], carry: never }, // the head turns back the short way, still up in the air
+    { dur: 0.65, at: scoreAt, arm: [turnedArm, STOWED], carry: never }, // and then the arm pivots down and retracts
     { dur: drive(back), route: { curve: back, h0: scoreAt.h, h1: home.h }, arm: [STOWED, STOWED], carry: never },
   ];
   const total = phases.reduce((s, p) => s + p.dur, 0);
