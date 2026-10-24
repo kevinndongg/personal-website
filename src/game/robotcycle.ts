@@ -1,8 +1,9 @@
 // The Into the Deep robot's loop, forever: it parks for a moment, drives to the west end of the submersible, and from then on it
 // does two jobs in turn. Each job: extend the arm forward to a sample lying in the submersible (the arm lies flat when
-// retracted, so it only has to extend) and roll it onto the scoop, retract, drive to a basket and stop diagonally with its back
-// to the bucket, pivot the arm up to vertical, extend it upwards and lean it back over the robot to tip the sample into the
-// bucket behind it, then put the arm away. The first job takes a red sample to the red basket; the second takes a yellow one
+// empty, so it only has to extend) and roll it onto the scoop, retract, pivot the arm up to stand upright with the sample lying
+// on top of it, drive like that to a basket and stop diagonally with its back to the bucket, extend the arm straight up and
+// lean it back over the robot to tip the sample into the bucket behind it, then lay the arm back down flat. The first job takes
+// a red sample to the red basket; the second takes a yellow one
 // from the south side of the submersible to the blue basket. The robot never has to turn round: the sample goes over the top.
 //
 // The game pieces are persistent. The sample the robot takes vanishes from the floor as it rolls onto the scoop and a new one
@@ -118,9 +119,9 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
     const intakeArm = reach(intakeAt, intakeAt.h, intake.target, FLOOR_Y + HEAD.drop, false);
     // the pivot has to be one scoop's depth above where the sample is let go, which is a little over the bucket's rim
     const scoreArm = reach(scoreAt, scoreAt.h, score.target, score.rim + OVER_RIM + HEAD.drop, true);
-    // The arm goes up in two moves, as the real one does: it pivots up to vertical with the slide still retracted, then extends
-    // straight up to its full height (the head swinging round to point back as it goes), and last it leans back a little over
-    // the bucket as the head tips.
+    // The arm goes up in two moves, as the real one does: it pivots up to vertical with the slide still retracted (as soon as it
+    // has the sample, and it drives like that), then at the basket extends straight up to its full height (the head swinging round
+    // to point back as it goes), and last it leans back a little over the bucket as the head tips.
     const vertArm: ArmPose = { ...STOWED, pitch: Math.PI / 2 };
     const upArm: ArmPose = { pitch: Math.PI / 2, extend: scoreArm.extend, head: Math.PI, roll: Math.PI };
     const tipArm: ArmPose = { ...scoreArm, head: scoreArm.head + TIP };
@@ -135,7 +136,7 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
   };
   const jobs = cfg.jobs.map(prepare);
 
-  /** Pick up: the slide extends, the head drops, the sample rolls on, and it curls up and retracts. */
+  /** Pick up: the slide extends, the head drops, the sample rolls on, it curls up and retracts, and the arm stands upright. */
   const intakePhases = (j: ReturnType<typeof prepare>): Phase[] => {
     const color = j.job.intake.color;
     const slot = j.job.intake.slot;
@@ -155,15 +156,17 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
       },
       { dur: 0.3, at: j.intakeAt, arm: [j.intakeArm, j.reachedArm], carry: always, color }, // the head curls up, out in front of the robot
       { dur: 0.45, at: j.intakeAt, arm: [j.reachedArm, STOWED], carry: always, color }, // and then the slide retracts
+      // and with the sample on it the arm stands upright, ready to go straight up at the basket, and drives like that
+      { dur: 0.5, at: j.intakeAt, arm: [STOWED, j.vertArm], carry: always, color },
     ];
   };
 
-  /** Drop it in: the arm pivots up, extends upwards, leans back and tips; the head turns, and the arm pivots down and retracts. */
+  /** Drop it in: the upright arm extends upwards, leans back and tips; the head turns, and the arm pivots down and retracts. */
   const depositPhases = (j: ReturnType<typeof prepare>): Phase[] => {
     const color = j.job.intake.color;
     return [
-      { dur: 0.7, at: j.scoreAt, arm: [STOWED, j.vertArm], carry: always, color }, // the arm pivots up to vertical
-      { dur: 0.9, at: j.scoreAt, arm: [j.vertArm, j.upArm], carry: always, color }, // and extends upwards, the head swinging round to face the bucket
+      // the arm is already upright, so it just extends upwards, the head swinging round to face the bucket
+      { dur: 0.9, at: j.scoreAt, arm: [j.vertArm, j.upArm], carry: always, color },
       {
         dur: 0.8,
         at: j.scoreAt,
@@ -188,7 +191,7 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
     loop.push({
       dur: drive(over),
       route: { curve: over, h0: j.intakeAt.h, h1: j.scoreAt.h },
-      arm: [STOWED, STOWED],
+      arm: [j.vertArm, j.vertArm], // upright, with the sample on top
       carry: always,
       color,
       mark: { what: "spawn", index: j.job.intake.slot, offset: 0.2 }, // a new sample grows back once the robot has set off with this one

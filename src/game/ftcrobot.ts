@@ -196,18 +196,32 @@ export function robotModel(): Group {
   head.add(box(2, HEAD.drop + 0.3, 2.6, BLUE, 0, -HEAD.drop + 0.3, 0)); // the housing hangs from the wrist down to the scoop
   head.add(box(3.8, 0.35, 2.2, BLUE, 2.1, -HEAD.drop, 0));
   head.add(box(0.4, 0.2, 0.8, "#bfe9ff", 3.8, -HEAD.drop - 0.2, 0)); // the light under the scoop's tip
+  // The paddle wheel is up at the back of the head, round the wrist pivot, on one side, with a round blue plate (and a screw) over
+  // its outside so that only the tips of the black fingers show round it; the other side has the same plate and no wheel.
   const paddle = new Group();
-  paddle.position.set(0.9, -HEAD.drop + 1.5, 1.6);
+  paddle.position.set(0.9, -0.9, 1.65);
   const hubMesh = cyl(0.6, 0.6, 0.6, SILVER, 0, 0, 0, 8);
   hubMesh.rotation.x = Math.PI / 2;
   paddle.add(hubMesh);
   for (let i = 0; i < 6; i++) {
     const finger = new Group(); // each finger points out from the hub at its own angle
     finger.rotation.z = (i * Math.PI) / 3;
-    finger.add(box(0.35, 1, 0.5, "#111114", 0, 0.3, 0));
+    finger.add(box(0.4, 1.2, 0.5, "#111114", 0, 0.3, 0));
     paddle.add(finger);
   }
   head.add(paddle);
+  for (const s of [-1, 1]) {
+    const plate = cyl(1.3, 1.3, 0.3, BLUE, 0, 0, 0, 14);
+    plate.rotation.x = Math.PI / 2;
+    plate.position.set(0.9, -0.9, s * (s > 0 ? 2.15 : 1.45));
+    head.add(plate);
+    if (s > 0) {
+      const screw = cyl(0.3, 0.3, 0.2, SILVER, 0, 0, 0, 8);
+      screw.rotation.x = Math.PI / 2;
+      screw.position.set(0.9, -0.9, 2.4);
+      head.add(screw);
+    }
+  }
   const sample = box(3.8, 1.6, 1.6, YELLOW, 2.4, -HEAD.drop + 0.35, 0); // the sample on the scoop
   head.add(sample);
 
@@ -223,12 +237,13 @@ export function robotModel(): Group {
     sample.material = toon(p.carryColor);
     // How folded up the head is (1 with the scoop standing upright at the front of the arm, 0 with it level, pointing either
     // way). With the scoop on end a sample lying on it would stand on end too, so as the head folds the sample moves across
-    // onto the top of the head's housing instead, lying flat against the scoop, and turns with it to stay level.
+    // onto the top of the head's housing instead, lying flat against the scoop with its long side across the robot, left to
+    // right, as it does in the photos of the arm standing upright with a sample on top; it turns to lie so as the head folds.
     const fold = Math.max(0, 1 - Math.abs(p.head - Math.PI / 2) / (Math.PI / 2)) * Math.max(0, 1 - p.roll / Math.PI);
     const onScoop = 4.6 - 2.2 * p.slide; // from the scoop's tip back to where it rests
     sample.position.x = onScoop + (1.8 - onScoop) * fold;
-    sample.position.y = -HEAD.drop + 1.15 + (-1.5 - (-HEAD.drop + 1.15)) * fold;
-    sample.rotation.z = fold * (Math.PI / 2);
+    sample.position.y = -HEAD.drop + 1.15 + (-2.55 - (-HEAD.drop + 1.15)) * fold;
+    sample.rotation.y = fold * (Math.PI / 2);
   };
   g.userData.pose = pose;
   pose({ ...STOWED, spin: 0, carrying: false, carryColor: YELLOW, slide: 1 });
