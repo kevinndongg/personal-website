@@ -209,7 +209,7 @@ function blurredRectTexture(total: number, inner: number, blur: number): CanvasT
   return new CanvasTexture(c);
 }
 
-/** A soft warm halo around a rounded rectangle's outline (the glow that invites a click): `w` x `h` units, the outline `margin` in from each edge. */
+/** A soft warm halo just outside a rectangle (the glow that invites a click): `w` x `h` units, the rectangle `margin` in from each edge. */
 function haloTexture(w: number, h: number, margin: number): CanvasTexture {
   const size = 512;
   const k = size / w;
@@ -225,9 +225,18 @@ function haloTexture(w: number, h: number, margin: number): CanvasTexture {
   ctx.lineWidth = margin * 0.35 * k;
   ctx.strokeStyle = "#fff";
   ctx.beginPath();
-  ctx.roundRect(margin * k - far, margin * k, (w - 2 * margin) * k, (h - 2 * margin) * k, margin * 0.6 * k);
+  ctx.rect(margin * k - far, margin * k, (w - 2 * margin) * k, (h - 2 * margin) * k);
   ctx.stroke();
   ctx.stroke(); // (twice: one pass of a shadow is too faint to read on the dark ground)
+  ctx.stroke();
+  // the glow is for the outside only: the inside of the outline is cleared, so the area itself stays as it is lit
+  ctx.shadowColor = "transparent";
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.beginPath();
+  ctx.rect(margin * k, margin * k, (w - 2 * margin) * k, (h - 2 * margin) * k);
+  ctx.fill();
   return new CanvasTexture(c);
 }
 
@@ -837,6 +846,13 @@ export class Renderer3D {
     }
   }
 
+  private pulseNow = 0.5;
+
+  /** Where the halo is in its pulse, 0 (dimmest) to 1 (brightest): the note beside it breathes with this, so the two stay in step. */
+  get invitePulse(): number {
+    return this.pulseNow;
+  }
+
   /** Turns the pulsing halo round the racing area on or off (it eases in and out). */
   setInvite(on: boolean) {
     if (this.invite) this.invite.on = on;
@@ -944,6 +960,7 @@ export class Renderer3D {
       invite.amount += ((invite.on ? 1 : 0) - invite.amount) * k;
       if (!invite.on && invite.amount < 0.002) invite.amount = 0;
       const pulse = this.reduceMotion ? 0.6 : 0.6 + 0.4 * Math.sin((time * Math.PI * 2) / 2.4);
+      this.pulseNow = (pulse - 0.2) / 0.8;
       invite.mesh.visible = invite.amount > 0;
       (invite.mesh.material as MeshBasicMaterial).opacity = invite.amount * pulse * 0.85;
     }

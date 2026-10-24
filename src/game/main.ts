@@ -14,6 +14,30 @@ let sceneCount = 0; // dev only: how many times a scene has been started in this
 const nextPaint = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 
 /**
+ * The outline of a page torn out of a notebook, for a box `w` x `h` px, as a CSS polygon: every side ragged, and along the
+ * left the half-holes the binding leaves. Seeded, so that a box of one size is torn the same way every time.
+ */
+function tornOutline(w: number, h: number): string {
+  let seed = 7;
+  const rand = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296;
+  const JAG = 2.4; // how far a tear wanders in from the straight edge
+  const STEP = 8;
+  const pts: [number, number][] = [];
+  for (let x = 0; x < w; x += STEP) pts.push([x, rand() * JAG]); // top, left to right
+  for (let y = 0; y < h; y += STEP) pts.push([w - rand() * JAG, y]); // right, top to bottom
+  for (let x = w; x > 0; x -= STEP) pts.push([x, h - rand() * JAG]); // bottom, right to left
+  // left, bottom to top: a half-hole every PITCH px, torn ragged between them
+  const PITCH = 24;
+  const R = 4.5;
+  for (let cy = h - PITCH / 2; cy > R + 3; cy -= PITCH) {
+    pts.push([rand() * JAG, cy + R + 4]);
+    for (let a = 0.5; a >= -0.5; a -= 0.25) pts.push([R * Math.cos(a * Math.PI) + 0.5, cy + R * Math.sin(a * Math.PI) * 1.0]);
+  }
+  pts.push([rand() * JAG, rand() * JAG]);
+  return `polygon(${pts.map(([x, y]) => `${x.toFixed(1)}px ${y.toFixed(1)}px`).join(", ")})`;
+}
+
+/**
  * Boots the scene inside `root`. Returns a teardown function. With a loader (`intro`) the scene is built behind it, and the
  * view is only handed over (a linked project) once the photos are on the GPU at their own resolution.
  */
@@ -88,20 +112,23 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
       })
     : [];
 
-  // "Pick an area to look inside" stands to the left of the racing area, or above it on a narrow screen (or one with no room
-  // beside it). Placed whenever the window changes: the camera is at its resting view then, and the hint is gone before it moves.
+  // "Pick an area to look inside" is a torn page that stands to the left of the racing area, or above it on a narrow screen (or
+  // one with no room beside it), with an arrow drawn toward the area. Placed whenever the window changes: the camera is at its
+  // resting view then, and the hint is gone before it moves.
   const racing = world.zones.find((z) => z.variant === "garage");
+  const paper = hint?.querySelector<HTMLElement>("[data-hint-paper]");
   function placeHint() {
     if (!hint || !racing) return; // (without a racing area the hint keeps its place at the top left)
     const a = racing.scene.area;
     const left = renderer.project(a.x, 0, a.y + a.h / 2);
     const top = renderer.project(a.x + a.w / 2, 0, a.y);
-    const GAP = 14;
+    const GAP = 8; // from the arrow's tip to the area
     const narrow = innerWidth < 760 || innerWidth < innerHeight * 0.9;
     const room = left.x - 16 - GAP;
-    const above = narrow || room < 120;
+    const above = narrow || room < 160;
     hint.style.maxWidth = above ? "" : `${room}px`;
     hint.classList.toggle("above", above);
+    if (paper) paper.style.clipPath = tornOutline(paper.offsetWidth, paper.offsetHeight); // (its size is after any wrapping)
     const w = hint.offsetWidth;
     const h = hint.offsetHeight;
     let x: number;
@@ -109,12 +136,22 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     if (above) {
       x = Math.min(Math.max(16, top.x - w / 2), innerWidth - 16 - w);
       y = Math.max(16, top.y - GAP - h);
+      hint.style.setProperty("--ax", `${Math.min(Math.max(top.x - x, 24), w - 24)}px`);
     } else {
       x = left.x - GAP - w;
       y = left.y - h / 2;
     }
     hint.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
-    hint.classList.add("placed");
+  }
+  // the handwriting is not the same size as the font it stands in for until it has arrived: place the note again then
+  void document.fonts?.load("600 22px Caveat").then(() => {
+    if (!signal.aborted) placeHint();
+  });
+
+  /** The scene is on: the glow starts to pulse and the note is tossed down beside it. */
+  function invite() {
+    renderer.setInvite(true);
+    hint?.classList.add("shown");
   }
 
   function resize() {
@@ -555,6 +592,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     updateHover(dt);
     syncZoom();
     renderer.draw(time);
+    if (hint && !hint.classList.contains("gone")) hint.style.setProperty("--pulse", renderer.invitePulse.toFixed(3)); // (the note breathes with the glow)
     updateLabels();
     if (import.meta.env.DEV) {
       gaps.push(gap);
@@ -633,7 +671,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     });
 
   if (!intro) {
-    if (!linked) renderer.setInvite(true);
+    if (!linked) invite();
   } else {
     // The loader is up and the scene is built behind it. What it waits for: the photos of the first two pages on the GPU at
     // their own resolution (the table makes those lazily otherwise: on first hover), and the shaders compiled, so that
@@ -664,7 +702,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
       last = performance.now();
       raf = requestAnimationFrame(frame);
       if (linked) open(linked, true);
-      else renderer.setInvite(true);
+      else invite();
     })();
   }
 
