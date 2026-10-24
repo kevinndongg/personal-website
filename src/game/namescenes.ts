@@ -1,4 +1,4 @@
-import { MODULE, NAME, NAME_H, NAME_ZONE_MARGIN, nameZone } from "./name";
+import { SLAB, NAME, NAME_H, NAME_ZONE_MARGIN, nameZone } from "./name";
 import type { Prop, Scene } from "./scenes";
 
 // The two kinds of area here. Positions are relative to the area's top-left corner, then shifted by (ox, oy) into world px.
@@ -23,19 +23,19 @@ export function nameScene(ox: number, oy: number): Scene {
   };
 }
 
-/** One mailbox module: a link, so it opens its URL when it is pressed (no card), and its door opens when it is hovered. */
-export function mailScene(ox: number, oy: number, id: string): Scene {
-  const { w, depth, areaH, areaBack } = MODULE;
+/** One link slab: a link, so it opens its URL when it is pressed (no card), and its plate rises and brightens when it is hovered. */
+export function slabScene(ox: number, oy: number, id: string): Scene {
+  const { w, depth, areaH, areaBack } = SLAB;
   const at = (x: number, y: number) => ({ x: ox + x, y: oy + y });
   // the footprint stands a little way in from the area's back edge; bottom-centre anchored, so y is its front edge
-  const props: Prop[] = [{ sprite: `kdmail-${id}`, ...at(w / 2, areaBack + depth), solid: { kind: "rect", w, h: depth } }];
+  const props: Prop[] = [{ sprite: `kdslab-${id}`, ...at(w / 2, areaBack + depth), solid: { kind: "rect", w, h: depth } }];
   return {
     area: { x: ox, y: oy, w, h: areaH },
     building: { x: ox, y: oy + areaBack, w, h: depth },
     labelAt: { x: ox + w / 2, y: oy + areaBack }, // (no label is shown for a link)
-    labelHeight: 40,
-    height: MODULE.height,
-    // nothing rises or glows on the ground: the door is the hover
+    labelHeight: 20,
+    height: SLAB.height,
+    // nothing rises or glows on the ground: the plate is the hover
     hover: { lift: 0, glow: 0 },
     props,
     decals: [],

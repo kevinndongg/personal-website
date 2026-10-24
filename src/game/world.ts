@@ -10,7 +10,7 @@ export const WORLD_W = 48;
 export const WORLD_H = 48;
 
 /**
- * A "link" is a mailbox module that opens its `href` when pressed (no panel); an "about" is the name, which opens a card about you.
+ * A "link" is a slab plate that opens its `href` when pressed (no panel); an "about" is the name, which opens a card about you.
  */
 export type ZoneKind = "project" | "gallery" | "link" | "about";
 
@@ -123,7 +123,7 @@ function slotOrigin(slot: Slot, w: number, h: number, edge: number) {
 
 function defaultVariant(input: ZoneInput): ZoneVariant {
   // a project without a scene of its own is still being built
-  return input.variant ?? (input.kind === "link" ? "mailbox" : input.kind === "about" ? "name" : input.kind === "project" ? "construction" : "building");
+  return input.variant ?? (input.kind === "link" ? "slab" : input.kind === "about" ? "name" : input.kind === "project" ? "construction" : "building");
 }
 
 function layoutZones(inputs: ZoneInput[]): Zone[] {
@@ -132,7 +132,7 @@ function layoutZones(inputs: ZoneInput[]): Zone[] {
   return inputs.map((input, i) => {
     const variant = defaultVariant(input);
     const { w, h } = sceneSize(variant);
-    // the name and its mailbox have places of their own; everything else sits on the edge ring
+    // the name and its slabs have places of their own; everything else sits on the edge ring
     const fixed = FIXED_AT[input.id];
     const slot = fixed ? undefined : (ZONE_SLOTS[input.id] ?? spare.shift() ?? "LM");
     // the Racing garage sits right against the border wall

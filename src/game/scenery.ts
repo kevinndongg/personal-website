@@ -20,7 +20,7 @@ import type { Zone, ZonePhoto } from "./world";
 import { box, cyl, mesh, toon } from "./models";
 import type { AnimCtx } from "./models";
 import { ImageCache } from "./photocache";
-import { mailModule } from "./mailmodels";
+import { linkSlab } from "./slabmodels";
 import { nameModel } from "./namemodel";
 import { constructionModel } from "./constructionmodels";
 import { ftcModel } from "./ftcmodels";
@@ -1668,12 +1668,12 @@ export function sceneryModel(id: string, footprint: Footprint | undefined, prop:
       return deskMatModel(w, d);
     case "kdname":
       return nameModel();
-    case "kdmail-email":
-      return mailModule("email");
-    case "kdmail-linkedin":
-      return mailModule("linkedin");
-    case "kdmail-github":
-      return mailModule("github");
+    case "kdslab-email":
+      return linkSlab("email");
+    case "kdslab-linkedin":
+      return linkSlab("linkedin");
+    case "kdslab-github":
+      return linkSlab("github");
   }
   return null;
 }

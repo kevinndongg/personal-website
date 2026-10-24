@@ -138,7 +138,7 @@ const zones = [
     actions: contactLinks.map((l) => ({ ...l, external: !l.href.startsWith("mailto:") })),
     accent: "#8a5a35",
   },
-  // the contact links: a mailbox module each, which opens its link when it is pressed (no card)
+  // the contact links: a slab each, which opens its link when it is pressed (no card)
   ...contactLinks.map((l) => ({
     id: l.label.toLowerCase(),
     kind: "link" as const,

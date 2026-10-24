@@ -1,5 +1,5 @@
 // Where the name is: big raised letters lying flat in the open yard (clicking them opens a card about you), and below them a
-// cluster mailbox of three modules, one per link. World px, on the 768 px map, centred on it. It sits clear of every project
+// low slab of three link plates, one per link. World px, on the 768 px map, centred on it. It sits clear of every project
 // area (the Racing area ends at y = 272, the gallery starts at y = 592). Plain numbers only, so that world.ts and scenes.ts can
 // use it without pulling in three.
 import { NAME_BOX } from "./namepath";
@@ -17,14 +17,14 @@ export const NAME_SCALE = NAME.letters / (NAME_BOX.x1 - NAME_BOX.x0);
 /** Capitals to the bottom of the g's tail. */
 export const NAME_H = (NAME_BOX.y1 - NAME_BOX.y0) * NAME_SCALE;
 
-/** One mailbox module (a link each): its footprint, its sloped front, and the zone area round it. */
-export const MODULE = { w: 52, depth: 22, height: 46, frontHeight: 16, areaH: 40, areaBack: 4 };
+/** One slab (a link each): a low wedge, its footprint, its height at the back and the front, and the zone area round it. */
+export const SLAB = { w: 60, depth: 38, height: 12, frontHeight: 5, areaH: 52, areaBack: 4 };
 
-/** From the g's tail to the back of the mailbox. A 46-tall box hides about 29 px of ground behind it, so this keeps it clear. */
-const GAP = 32;
-const GROUP_H = NAME_H + GAP + MODULE.depth + (MODULE.areaH - MODULE.areaBack - MODULE.depth);
+/** From the g's tail to the back of the slab. The sun is low, so its shadow runs about 1.3 px north for every px of height: this keeps a 12-tall slab's clear of the name. */
+const GAP = 26;
+const GROUP_H = NAME_H + GAP + SLAB.depth + (SLAB.areaH - SLAB.areaBack - SLAB.depth);
 
-/** The top of the capital letters: the name and the mailbox, together, are centred on the map. */
+/** The top of the capital letters: the name and the slab, together, are centred on the map. */
 export const NAME_TOP = Math.round(384 - GROUP_H / 2);
 
 /** The baseline: capitals stand on it, and the tail of the g hangs below it. */
@@ -43,15 +43,15 @@ export function nameZone() {
   return { x: r.x - m, y: r.y - m, w: r.w + 2 * m, h: r.h + 2 * m };
 }
 
-/** The back edge of the mailbox's footprint. */
-export const MAIL_BACK = NAME_TOP + NAME_H + GAP;
+/** The back edge of the slab's footprint. */
+export const SLAB_BACK = NAME_TOP + NAME_H + GAP;
 
-const MAIL_IDS = ["email", "linkedin", "github"] as const;
+const SLAB_IDS = ["email", "linkedin", "github"] as const;
 
-/** The top-left corners of the zones: the name's, and the three modules' side by side (their areas touch, and do not overlap). */
+/** The top-left corners of the zones: the name's, and the three slabs' side by side (their areas touch, and do not overlap). */
 export const FIXED_AT: Record<string, { x: number; y: number }> = {
   hub: { x: nameZone().x, y: nameZone().y },
   ...Object.fromEntries(
-    MAIL_IDS.map((id, i) => [id, { x: NAME.cx - (3 * MODULE.w) / 2 + i * MODULE.w, y: MAIL_BACK - MODULE.areaBack }])
+    SLAB_IDS.map((id, i) => [id, { x: NAME.cx - (3 * SLAB.w) / 2 + i * SLAB.w, y: SLAB_BACK - SLAB.areaBack }])
   ),
 };
