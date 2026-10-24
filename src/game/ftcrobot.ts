@@ -24,8 +24,12 @@ const YELLOW = "#f2c230";
 export const ARM = {
   x: -5, // the shoulder pivot, at the back of the chassis (behind its centre)
   y: 4.9, // and its height above the floor, just clear of the deck (its top is at 3.8)
-  base: 6.5, // the length of the fixed stage of the slide (the second stage slides out of it)
+  base: 6.5, // the length of each stage of the slide: the fixed one, and each of those that slide out of it
 } as const;
+
+/** How many stages slide out (the fixed one makes it four): at the full 15 px of travel each slides 5 px, overlapping the one before by 1.5. */
+const SLIDING = 3;
+const DARK_JOINT = "#3d4048";
 
 /**
  * The head hangs from the end of the slide: how far in front of the wrist pivot a sample sits on the scoop, and how far below
@@ -161,13 +165,26 @@ export function robotModel(): Group {
   const shoulder = new Group();
   shoulder.position.set(ARM.x, ARM.y, 0);
   g.add(shoulder);
+  // The slide telescopes: one fixed stage and `SLIDING` stages that each slide out of the one before, every one a little
+  // narrower than its parent and sharing the travel equally. Each stage is `ARM.base` long, so it stays joined to its parent
+  // for as long as it has moved by less than that (they overlap by `ARM.base - extend / SLIDING`, which is about 1.5 px
+  // at the full 15 px reach): the arm has no gap in it however far it is out.
   shoulder.add(box(ARM.base, 1.4, 1.6, STEEL_DK, ARM.base / 2, -0.7, 0)); // the fixed stage of the slide
-  const stage2 = new Group(); // the stage that slides out
-  shoulder.add(stage2);
-  stage2.add(box(ARM.base, 1.1, 1.3, SILVER, ARM.base / 2, -0.55, 0));
+  const stages: Group[] = [];
+  let parent: Group = shoulder;
+  for (let i = 0; i < SLIDING; i++) {
+    const h = 1.2 - i * 0.2;
+    const d = 1.4 - i * 0.2;
+    const stage = new Group();
+    stage.add(box(ARM.base, h, d, i % 2 ? STEEL : SILVER, ARM.base / 2, -h / 2, 0));
+    stage.add(box(0.5, h + 0.3, d + 0.3, DARK_JOINT, ARM.base - 0.25, -(h + 0.3) / 2, 0)); // a collar where it comes out of its parent
+    parent.add(stage);
+    stages.push(stage);
+    parent = stage;
+  }
   const wrist = new Group();
   wrist.position.x = ARM.base;
-  stage2.add(wrist);
+  parent.add(wrist);
 
   // the head: a blue housing, the paddle wheel with its black fingers, and the scoop (the blue plate that lies on the floor).
   // It turns over its own length (`roll`), so that on the way over the top of the robot the scoop keeps its sample on top.
@@ -193,7 +210,9 @@ export function robotModel(): Group {
 
   const pose = (p: RobotPose) => {
     shoulder.rotation.z = p.pitch;
-    stage2.position.x = p.extend;
+    // each stage slides out of the last by an equal share, and never so far that it would come away from it (1 px overlap, at least)
+    const share = Math.min(p.extend, SLIDING * (ARM.base - 1)) / SLIDING;
+    for (const stage of stages) stage.position.x = share;
     wrist.rotation.z = p.head - p.pitch;
     head.rotation.x = p.roll;
     paddle.rotation.z = p.spin;
