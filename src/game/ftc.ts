@@ -121,18 +121,18 @@ export function ftcScene(ox: number, oy: number): Scene {
   );
   // the robot (red alliance, so it works the red basket) parks on the taped start square facing south and runs its scoring
   // loop: round to the submersible's west end, where it faces east and scoops a sample off the floor through the open end;
-  // then to the red basket in the corner, where it stops tight against the west wall, facing north with its back to the
-  // bucket, raises the arm straight up, leans it back over the top of the robot and tips the sample in, so it never has to
-  // turn round; and home. See robotcycle.ts. The waypoints keep it clear of the submersible's corner posts at x = -18.5 and
-  // of the samples along the front.
+  // then to the red basket in the corner, where it stops diagonally with its front to the north-east and its back to the
+  // bucket, pivots the arm up to vertical, extends it upwards, leans it back over the top of the robot and tips the sample
+  // in, so it never has to turn round; and home. See robotcycle.ts. The waypoints keep it clear of the submersible's corner
+  // posts at x = -18.5 and of the samples along the front.
   props.push({
     ...turned("ftc-robot-itd", f(0, 16), Math.PI / 2, 6.25),
     cycle: {
       intake: { at: f(-27, 36), target: f(-8, 36) },
-      score: { at: f(-51, 41), target: f(-50.9, 50.9), rim: 20 }, // the red basket's high bucket
+      score: { at: f(-44, 44), target: f(-50.9, 50.9), rim: 20 }, // the red basket's high bucket, in line behind the robot
       out: [f(-14, 17), f(-30, 22)],
-      over: [f(-38, 38.5)],
-      home: [f(-40, 31), f(-30, 22), f(-14, 17)],
+      over: [f(-36, 40.5)],
+      home: [f(-38, 32), f(-30, 22), f(-14, 17)],
     },
   });
 

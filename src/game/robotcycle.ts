@@ -1,7 +1,8 @@
-// The Into the Deep robot's scoring loop, forever: park, drive to the west end of the submersible, lower the arm and scoop a
-// sample off its floor with the front of the robot, fold the arm up with it, drive to the basket and stop with the robot's
-// back to it, swing the arm up and back over the top of the robot and tip the sample into the bucket behind it, fold up and
-// drive back to the start square. The robot never has to turn round: the sample goes over the top. Like drive.ts and errand.ts
+// The Into the Deep robot's scoring loop, forever: park, drive to the west end of the submersible, extend the arm forward and
+// scoop a sample off its floor with the front of the robot (the arm lies flat when retracted, so it only has to extend), retract
+// it, drive to the basket and stop diagonally, front to the north-east and back to the bucket, pivot the arm up to vertical,
+// extend it upwards and lean it back over the robot to tip the sample into the bucket behind it, then put the arm away and drive
+// back to the start square. The robot never has to turn round: the sample goes over the top. Like drive.ts and errand.ts
 // it only sets the prop's x, z and heading (the hover lift owns its height, so the robot rides the floor up and down), and it
 // poses the model through `userData.pose` (see ftcrobot.ts). It is a mecanum robot, so it turns while it drives rather than
 // pointing along its route.
@@ -87,12 +88,16 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
   const intakeAt: Pose = { ...intake.at, h: Math.atan2(intake.target.y - intake.at.y, intake.target.x - intake.at.x) };
   const scoreAt: Pose = { ...score.at, h: Math.atan2(score.at.y - score.target.y, score.at.x - score.target.x) };
   const intakeArm = reach(intakeAt, intakeAt.h, intake.target, FLOOR_Y + HEAD.drop, false);
-  const scoreArm = reach(scoreAt, scoreAt.h, score.target, score.rim + OVER_RIM, true);
-  // the arm goes up in two moves, as the real one does: straight up to its full height first, then it leans back over the bucket
-  const upArm: ArmPose = { pitch: Math.PI / 2, extend: scoreArm.extend, head: 0, roll: 0 };
+  // the pivot has to be one scoop's depth above where the sample is let go, which is a little over the bucket's rim
+  const scoreArm = reach(scoreAt, scoreAt.h, score.target, score.rim + OVER_RIM + HEAD.drop, true);
+  // the arm goes up in two moves, as the real one does: it pivots up to vertical with the slide still retracted, then extends
+  // straight up to its full height (the head swinging round to point back as it goes), and last it leans back a little over the
+  // bucket as the head tips
+  const vertArm: ArmPose = { ...STOWED, pitch: Math.PI / 2 };
+  const upArm: ArmPose = { pitch: Math.PI / 2, extend: scoreArm.extend, head: Math.PI, roll: Math.PI };
   const tipArm: ArmPose = { ...scoreArm, head: scoreArm.head + TIP };
   // coming back, the head carries on round the way it was going, so that it ends where it started without unwinding
-  const foldArm: ArmPose = { ...STOWED, head: TURN, roll: TURN };
+  const foldArm: ArmPose = { ...STOWED, head: STOWED.head + TURN, roll: TURN };
 
   const out = curve([home, ...cfg.out, intakeAt]);
   const over = curve([intakeAt, ...cfg.over, scoreAt]);
@@ -105,14 +110,14 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
   const phases: Phase[] = [
     { dur: 0.4, at: home, arm: [STOWED, STOWED], carry: never },
     { dur: drive(out), route: { curve: out, h0: home.h, h1: intakeAt.h }, arm: [STOWED, STOWED], carry: never },
-    { dur: 0.7, at: intakeAt, arm: [STOWED, intakeArm], spin: true, carry: never }, // lowers the arm, the paddle starting up
-    { dur: 1.0, at: intakeAt, arm: [intakeArm, intakeArm], spin: true, carry: (u) => u > 0.55 }, // the sample rolls on
-    { dur: 0.6, at: intakeAt, arm: [intakeArm, STOWED], carry: always },
+    { dur: 0.8, at: intakeAt, arm: [STOWED, intakeArm], spin: true, carry: never }, // the slide just extends forward, the head dropping to the floor
+    { dur: 0.9, at: intakeAt, arm: [intakeArm, intakeArm], spin: true, carry: (u) => u > 0.55 }, // the sample rolls on
+    { dur: 0.7, at: intakeAt, arm: [intakeArm, STOWED], carry: always }, // and it retracts
     { dur: drive(over), route: { curve: over, h0: intakeAt.h, h1: scoreAt.h }, arm: [STOWED, STOWED], carry: always },
-    { dur: 0.9, at: scoreAt, arm: [STOWED, upArm], carry: always }, // straight up, and out to full height
-    { dur: 0.7, at: scoreAt, arm: [upArm, scoreArm], carry: always }, // then leans back over the top, over the bucket
-    { dur: 0.7, at: scoreAt, arm: [scoreArm, tipArm], carry: (u) => u < 0.5 }, // tips, and the sample slides out into the bucket
-    { dur: 0.8, at: scoreAt, arm: [tipArm, foldArm], carry: never },
+    { dur: 0.7, at: scoreAt, arm: [STOWED, vertArm], carry: always }, // the arm pivots up to vertical
+    { dur: 0.9, at: scoreAt, arm: [vertArm, upArm], carry: always }, // and extends upwards, the head swinging round to face the bucket
+    { dur: 0.8, at: scoreAt, arm: [upArm, tipArm], carry: (u) => u < 0.55 }, // leans back over it and tips: the sample slides out
+    { dur: 1.0, at: scoreAt, arm: [tipArm, foldArm], carry: never },
     { dur: drive(back), route: { curve: back, h0: scoreAt.h, h1: home.h }, arm: [STOWED, STOWED], carry: never },
   ];
   const total = phases.reduce((s, p) => s + p.dur, 0);

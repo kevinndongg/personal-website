@@ -16,15 +16,22 @@ const SILVER = "#c8ccd6";
 const RED = "#d8322c";
 const YELLOW = "#f2c230";
 
-/** Where the arm is fixed and what it is made of (px). The cycle works out how to reach a point from these. */
+/**
+ * Where the arm is fixed and what it is made of (px). The cycle works out how to reach a point from these. The shoulder pivot
+ * is at the back of the robot and, retracted, the slide lies flat along the deck pointing forward, so to intake it only has to
+ * extend; to score it pivots up to vertical and then extends upwards.
+ */
 export const ARM = {
-  x: 1, // the shoulder pivot, forward of the chassis centre
-  y: 5.5, // and its height above the floor
+  x: -5, // the shoulder pivot, at the back of the chassis (behind its centre)
+  y: 4.6, // and its height above the floor, just over the deck
   base: 6.5, // the length of the fixed stage of the slide (the second stage slides out of it)
 } as const;
 
-/** The head: how far in front of the wrist pivot a sample sits on the scoop, and how far below the pivot the scoop's underside is. */
-export const HEAD = { reach: 2.4, drop: 1.8 } as const;
+/**
+ * The head hangs from the end of the slide: how far in front of the wrist pivot a sample sits on the scoop, and how far below
+ * the pivot the scoop's underside is. The drop is what lets the scoop reach the floor from a slide lying level on the deck.
+ */
+export const HEAD = { reach: 2.4, drop: 3.4 } as const;
 
 /**
  * Arm joints, in radians and px: the slide's pitch (0 = level forward, up positive, past pi/2 = leaning back over the robot),
@@ -47,8 +54,8 @@ export interface RobotPose extends ArmPose {
 
 const deg = (d: number) => (d * Math.PI) / 180;
 
-/** The arm folded up for driving: the slide stands nearly upright in the middle of the deck, the head level at its top. */
-export const STOWED: ArmPose = { pitch: deg(82), extend: 0, head: 0, roll: 0 };
+/** The arm put away for driving: the slide retracted and lying flat along the deck, the head turned up at its front end. */
+export const STOWED: ArmPose = { pitch: 0, extend: 0, head: deg(90), roll: 0 };
 
 /** "6417" in white on the red plate, in a 3 x 5 pixel font. */
 function plateTexture() {
@@ -132,12 +139,10 @@ export function robotModel(): Group {
   g.add(box(0.4, 1.8, 10.6, BLACK, -HALF + 0.9, 4, 0));
 
   // ---- on the deck
-  g.add(box(3.2, 1.4, 4.2, "#2b2e38", -2.8, 3.8, 0)); // the electronics
-  g.add(box(0.4, 0.4, 0.4, "#4cd964", -1.2, 5.2, 1.3)); // a green status light
-  const sheet = box(0.15, 5, 5.5, "#e8eaee", -1, 3.8, 0); // the white sheet behind the arm
-  sheet.rotation.z = 0.25;
-  g.add(sheet);
-  g.add(hook(-3.2, 2.7), hook(-3.2, -2.7));
+  for (const s of [-1, 1]) g.add(box(3.2, 1.2, 1.8, "#2b2e38", -1.9, 3.8, s * 2.7)); // the electronics, either side of the arm
+  g.add(box(0.4, 0.4, 0.4, "#4cd964", -0.8, 5, 2.7)); // a green status light
+  g.add(box(3.4, 4.2, 0.15, "#e8eaee", -2.4, 3.8, -3.9)); // the white sheet, at one side
+  g.add(hook(0.4, 2.7), hook(0.4, -2.7));
 
   // ---- the hang slides: two grey stacks with a blue plate on each, one each side near the front
   for (const s of [-1, 1]) {
@@ -146,12 +151,11 @@ export function robotModel(): Group {
     g.add(box(1.3, 0.8, 1.7, BLUE, 2.8, 14.8, s * 4.6));
   }
 
-  // ---- the arm: a housing on the deck, then the shoulder, a telescoping slide, a wrist and the head
-  g.add(box(4.4, 2, 5.4, BLUE, 0.8, 3.8, 0));
-  for (const s of [-1, 1]) g.add(box(2.6, 3.4, 0.5, BLUE, 0.8, 3.8, s * 2.6));
+  // ---- the arm: two blue plates at the back of the deck holding the shoulder, a telescoping slide, a wrist and the head
+  for (const s of [-1, 1]) g.add(box(3.4, 3.2, 0.5, BLUE, -4.6, 3.8, s * 1.7));
   const pulley = cyl(1.4, 1.4, 0.5, SILVER, 0, 0, 0, 12); // the big round pulley on the shoulder
   pulley.rotation.x = Math.PI / 2;
-  pulley.position.set(ARM.x, ARM.y, 3.1);
+  pulley.position.set(ARM.x, ARM.y, 2.3);
   g.add(pulley);
 
   const shoulder = new Group();
@@ -169,11 +173,11 @@ export function robotModel(): Group {
   // It turns over its own length (`roll`), so that on the way over the top of the robot the scoop keeps its sample on top.
   const head = new Group();
   wrist.add(head);
-  head.add(box(1.8, 1.6, 2.6, BLUE, -0.1, -0.9, 0));
+  head.add(box(2, HEAD.drop + 0.3, 2.6, BLUE, 0, -HEAD.drop + 0.3, 0)); // the housing hangs from the wrist down to the scoop
   head.add(box(3.8, 0.35, 2.2, BLUE, 2.1, -HEAD.drop, 0));
   head.add(box(0.4, 0.2, 0.8, "#bfe9ff", 3.8, -HEAD.drop - 0.2, 0)); // the light under the scoop's tip
   const paddle = new Group();
-  paddle.position.set(0.9, -0.5, 1.5);
+  paddle.position.set(0.9, -HEAD.drop + 1.5, 1.6);
   const hubMesh = cyl(0.6, 0.6, 0.6, SILVER, 0, 0, 0, 8);
   hubMesh.rotation.x = Math.PI / 2;
   paddle.add(hubMesh);
