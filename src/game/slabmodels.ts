@@ -7,9 +7,9 @@ import type { AnimCtx } from "./models";
 import { SLAB } from "./name";
 
 // The link slabs: three low slabs side by side below the name, a link each. Each is its own model (and its own zone), so that
-// hovering or pressing one is exactly one plate. A slab is a low dark brown wedge, 12 tall at the back, with a large cream plate
+// hovering or pressing one is exactly one plate. A slab is a low dark brown wedge, 10 tall at the back, with a large cream plate
 // carrying the link's icon, standing in a bezel. The plate is dimmed at rest and brightens as it is hovered, and rises a little out
-// of its bezel. The slab is low so that its shadow (which runs north about 1.3 px for every px of height) stays off the name, and
+// of its bezel. The slab is low, so that its shadow (which runs north about 1.3 px for every px of height) stays short, and
 // its top leans only a little, so the plate is seen at nearly its true size. Same conventions as models.ts: 1 unit = 1 world px,
 // origin at the middle of the footprint on the ground, +z = south (the front, toward the camera).
 
@@ -22,32 +22,32 @@ const FH = SLAB.frontHeight;
 const SLOPE = Math.atan2(D, H - FH); // the top's lean, as the angle its frame is turned from the vertical
 const SL = Math.hypot(D, H - FH); // the sloped top's length
 
-const PLATE_W = 52;
-const PLATE_H = 34;
+const PLATE_W = 42;
+const PLATE_H = 27;
 const REST = 0.72; // how bright the plate is at rest (1 = full cream)
-const RISE = 3; // how far the plate rises out of its bezel on hover
-const PLATE_Z = 0.9; // where it sits at rest, above the top
-const BEZEL = 2.4; // how far the bezel stands above the top
+const RISE = 2.5; // how far the plate rises out of its bezel on hover
+const PLATE_Z = 0.8; // where it sits at rest, above the top
+const BEZEL = 2; // how far the bezel stands above the top
 
 /** A plate: cream, with its icon large in the site's dark brown and a thin inner border. */
 function plateTexture(id: IconId): CanvasTexture {
-  const w = 208;
-  const h = 136;
+  const w = 168;
+  const h = 108;
   const c = document.createElement("canvas");
   c.width = w;
   c.height = h;
   const ctx = c.getContext("2d")!;
   ctx.fillStyle = CREAM;
   ctx.beginPath();
-  ctx.roundRect(0, 0, w, h, 12);
+  ctx.roundRect(0, 0, w, h, 10);
   ctx.fill();
   ctx.strokeStyle = "#cdbf9d";
   ctx.lineWidth = 4;
   ctx.beginPath();
-  ctx.roundRect(7, 7, w - 14, h - 14, 8);
+  ctx.roundRect(6, 6, w - 12, h - 12, 6);
   ctx.stroke();
   ctx.fillStyle = ctx.strokeStyle = BROWN;
-  drawIcon(ctx, id, w / 2, h / 2, 3.3);
+  drawIcon(ctx, id, w / 2, h / 2, 2.7);
   const t = new CanvasTexture(c);
   t.minFilter = LinearFilter;
   t.anisotropy = 8;
@@ -84,8 +84,8 @@ export function linkSlab(id: IconId): Group {
   // the bezel: a dark rim round the plate, standing a little above it at rest. (box() puts the bottom of a box at y, so in this frame
   // each strip runs along the slope from y, and stands out of the top from z = 0 up to BEZEL, centred on BEZEL / 2.)
   const rim = "#2a1c12";
-  const gap = 1.2; // between the plate and the rim
-  const t = 2.4; // the rim's width
+  const gap = 0.8; // between the plate and the rim
+  const t = 1.6; // the rim's width
   const outerW = PLATE_W + 2 * (gap + t);
   const outerH = PLATE_H + 2 * (gap + t);
   const y0 = midY - outerH / 2;

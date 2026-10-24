@@ -109,6 +109,11 @@ const SLOT_CELLS: Record<Slot, { col: "L" | "C" | "R"; row: "T" | "M" | "B" }> =
 const EDGE_PX = 3 * TILE;
 const BOTTOM_PX = 2 * TILE;
 
+/** Zones that sit a little off their slot: px to move them east and south. The top-right project is lowered to make room above it for the link slabs. */
+const SLOT_SHIFT: Record<string, { dx?: number; dy?: number }> = {
+  "temple-allen-internship": { dy: 40 },
+};
+
 function snap(v: number) {
   return Math.round(v / TILE) * TILE;
 }
@@ -136,7 +141,10 @@ function layoutZones(inputs: ZoneInput[]): Zone[] {
     const fixed = FIXED_AT[input.id];
     const slot = fixed ? undefined : (ZONE_SLOTS[input.id] ?? spare.shift() ?? "LM");
     // the Racing garage sits right against the border wall
-    const { x, y } = fixed ?? slotOrigin(slot!, w, h, variant === "garage" ? TILE : EDGE_PX);
+    const origin = fixed ?? slotOrigin(slot!, w, h, variant === "garage" ? TILE : EDGE_PX);
+    const shift = fixed ? undefined : SLOT_SHIFT[input.id];
+    const x = origin.x + (shift?.dx ?? 0);
+    const y = origin.y + (shift?.dy ?? 0);
     return {
       ...input,
       variant,

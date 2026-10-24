@@ -576,7 +576,8 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
 
   function updateLabels() {
     world.zones.forEach((zone, i) => {
-      const show = !panel.isOpen && zone.id === hoveredId && zone.kind !== "link"; // (a button has no name pill)
+      // (a link slab has no name pill, and neither has the name itself: it would only say the name again over the lettering)
+      const show = !panel.isOpen && zone.id === hoveredId && zone.kind !== "link" && zone.kind !== "about";
       // a label only needs placing while it is showing or fading out (placing asks the page for the canvas's size,
       // which makes the browser do layout work, and this runs for every project on every frame)
       if (show || labels[i].classList.contains("visible")) {
