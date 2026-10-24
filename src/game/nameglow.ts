@@ -1,61 +1,40 @@
 import { AdditiveBlending, CanvasTexture, Group, LinearFilter, Mesh, MeshBasicMaterial, PlaneGeometry } from "three";
 import type { AnimCtx } from "./models";
-import { NAME, NAME_H, NAME_SCALE } from "./name";
-import { NAME_BOX, NAME_PATH } from "./namepath";
+import { NAME, NAME_H } from "./name";
 
-// The light on the ground under the name when it is hovered: a soft warm halo that follows the letters' own shape (not a
-// rectangle), added to the ground, like the halo under the formula car when it is hovered. It is a flat plane of its own in the
-// name's zone, so the hover lift that raises the letters does not raise it. The letters lift on top of it and cover its middle, so
-// what shows is the light spilling out round and between them. Same conventions as models.ts: 1 unit = 1 world px, origin at the
-// middle of the name's footprint on the ground (the letters' model has the same origin).
+// The light on the ground under the name when it is hovered: one soft warm pool of light over the whole name, an oval that fades
+// out at its edge (no letter shapes, no rectangle), added to the ground, like the halo under the formula car when it is hovered.
+// It is a flat plane of its own in the name's zone, so the hover lift that raises the letters does not raise it. The letters lift
+// on top of it, so the light shows round and between them. Same conventions as models.ts: 1 unit = 1 world px, origin at the middle
+// of the name's footprint on the ground (the letters' model has the same origin).
 
 const WARM = "255,217,166"; // the car's halo colour
-const PAD = 44; // map px of glow beyond the name's footprint, on every side
+const PAD_X = 56; // map px of glow beyond the name's footprint, to the left and right
+const PAD_Y = 60; // ... and to the north and south (the name is low and wide, so this is what makes the pool look round and not squashed)
 const RES = 2; // texture px per map px
 const STRENGTH = 0.55; // opacity at full hover; it breathes a little round this (see below)
+const PEAK = 0.5; // the light's alpha at the middle of the pool (the car's is 1)
 const HEIGHT = 0.2; // above the ground's shadow and leaf layers, which lie a few hundredths up
 
 /**
- * The glow, drawn once from the name's baked outline: its silhouette blurred twice (a tight halo and a wide one), and a faint, wide,
- * soft pool of light behind them. The blur is done with a shadow of the shape drawn off the canvas, which every browser does.
+ * An oval of warm light, brightest in the middle and fading to nothing at its edge. It is kept well under the car's halo (which peaks
+ * at 1): the letters are beige, so a stronger light would bring the ground near the middle up to their own colour and lose them.
  */
-function glowTexture(): CanvasTexture {
-  const W = Math.round((NAME.letters + 2 * PAD) * RES);
-  const H = Math.round((NAME_H + 2 * PAD) * RES);
+function poolTexture(): CanvasTexture {
+  const W = Math.round((NAME.letters + 2 * PAD_X) * RES);
+  const H = Math.round((NAME_H + 2 * PAD_Y) * RES);
   const c = document.createElement("canvas");
   c.width = W;
   c.height = H;
   const ctx = c.getContext("2d")!;
-
-  // a faint pool of light under the whole name
-  ctx.save();
   ctx.translate(W / 2, H / 2);
-  ctx.scale(1, H / W);
-  const pool = ctx.createRadialGradient(0, 0, 0, 0, 0, W / 2);
-  pool.addColorStop(0, `rgba(${WARM},0.14)`);
-  pool.addColorStop(1, `rgba(${WARM},0)`);
-  ctx.fillStyle = pool;
+  ctx.scale(1, H / W); // a circle, squashed into an oval that fills the canvas
+  const fade = ctx.createRadialGradient(0, 0, 0, 0, 0, W / 2);
+  fade.addColorStop(0, `rgba(${WARM},${PEAK})`);
+  fade.addColorStop(0.55, `rgba(${WARM},${PEAK * 0.6})`);
+  fade.addColorStop(1, `rgba(${WARM},0)`);
+  ctx.fillStyle = fade;
   ctx.fillRect(-W / 2, -W / 2, W, W);
-  ctx.restore();
-
-  // the halos: the silhouette, drawn a canvas-width off to the left, with its shadow (blurred) landing back in place
-  const path = new Path2D(NAME_PATH);
-  const halo = (blur: number, alpha: number) => {
-    ctx.save();
-    ctx.shadowColor = `rgba(${WARM},${alpha})`;
-    ctx.shadowBlur = blur * RES;
-    ctx.shadowOffsetX = W;
-    ctx.translate(-W + W / 2, (PAD + NAME_BOX.y1 * NAME_SCALE) * RES); // (the shapes are y-up, with the baseline at y = 0)
-    ctx.scale(NAME_SCALE * RES, -NAME_SCALE * RES);
-    ctx.translate(-(NAME_BOX.x0 + NAME_BOX.x1) / 2, 0);
-    ctx.fillStyle = "#000";
-    ctx.fill(path);
-    ctx.restore();
-  };
-  halo(22, 0.55); // wide and soft
-  halo(22, 0.55);
-  halo(8, 0.9); // tight, bright round the edges
-
   const t = new CanvasTexture(c);
   t.minFilter = LinearFilter;
   t.generateMipmaps = false;
@@ -65,13 +44,13 @@ function glowTexture(): CanvasTexture {
 export function nameGlowModel(): Group {
   const g = new Group();
   const mat = new MeshBasicMaterial({
-    map: glowTexture(),
+    map: poolTexture(),
     transparent: true,
     opacity: 0,
     blending: AdditiveBlending,
     depthWrite: false,
   });
-  const glow = new Mesh(new PlaneGeometry(NAME.letters + 2 * PAD, NAME_H + 2 * PAD), mat);
+  const glow = new Mesh(new PlaneGeometry(NAME.letters + 2 * PAD_X, NAME_H + 2 * PAD_Y), mat);
   glow.rotation.x = -Math.PI / 2; // lie flat, reading upright from the south
   glow.position.y = HEIGHT;
   glow.renderOrder = 1;

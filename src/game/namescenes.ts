@@ -12,7 +12,7 @@ export function nameScene(ox: number, oy: number): Scene {
   const footprint = { kind: "rect" as const, w: NAME.letters, h: NAME_H };
   const props: Prop[] = [
     { sprite: "kdname", ...at(z.w / 2, m + NAME_H), solid: footprint },
-    // the light on the ground that comes up under the letters when they are hovered (a flat prop of its own, see nameglow.ts)
+    // the pool of light on the ground that comes up under the letters when they are hovered (a flat prop of its own, see nameglow.ts)
     { sprite: "kdnameglow", ...at(z.w / 2, m + NAME_H), solid: footprint },
   ];
   return {
@@ -21,7 +21,7 @@ export function nameScene(ox: number, oy: number): Scene {
     labelAt: { x: ox + z.w / 2, y: oy + m },
     labelHeight: 22,
     height: 14,
-    // the letters rise on hover, and a halo of their own shape comes up on the ground (nameglow.ts); no square patch of light
+    // the letters rise on hover, and a soft oval pool of light comes up on the ground under them (nameglow.ts); no square patch of light
     hover: { glow: 0 },
     props,
     decals: [],
