@@ -210,8 +210,20 @@ const zones = [
     <canvas data-canvas aria-label="A miniature diorama of my projects. Click a building to open its summary."></canvas>
     <div data-labels class="labels" aria-hidden="true"></div>
 
-    <div class="banner" data-banner aria-hidden="true">Kevin's Workshop</div>
-    <p class="hint" data-hint>Pick an area to look inside</p>
+    <!-- a page torn from a notebook, with an arrow drawn toward the racing area (see `placeHint` in src/game/main.ts) -->
+    <p class="hint" data-hint>
+      <span class="hint-body">
+        <span class="hint-shade"><span class="hint-paper" data-hint-paper>Pick an area to <span class="scribble">look inside</span></span></span>
+        <svg class="hint-arrow side" viewBox="0 0 52 30" aria-hidden="true">
+          <path pathLength="1" d="M3 17 C 14 10, 24 22, 36 14 S 44 15, 47 15"></path>
+          <path pathLength="1" d="M39 7 C 43 10, 46 13, 48 15 C 45 18, 42 21, 38 24"></path>
+        </svg>
+        <svg class="hint-arrow down" viewBox="0 0 30 52" aria-hidden="true">
+          <path pathLength="1" d="M17 3 C 10 14, 22 24, 14 36 S 15 44, 15 47"></path>
+          <path pathLength="1" d="M7 39 C 10 43, 13 46, 15 48 C 18 45, 21 42, 24 38"></path>
+        </svg>
+      </span>
+    </p>
 
     <!-- announces the photo on the table (the title and place are drawn on the film, which a screen reader cannot read) -->
     <p class="sr-only" data-live aria-live="polite"></p>

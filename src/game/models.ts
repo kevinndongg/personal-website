@@ -269,7 +269,12 @@ export function garageModel(w: number, d: number): Group {
   const rw = roofW + 4;
   const rd = d + 4;
   g.add(rbox(rw, 3, rd, "#e6e8ee", cx, H, 0, 0.9));
-  g.add(rbox(1.4, 3.1, rd, TEAM_RED, cx + rw / 2 - 0.7, H - 0.05, 0, 0.5));
+  // (the lip stands proud of the slab on every face, so none of its faces share a plane with the slab's and z-fight as the camera zooms)
+  const lip = 0.15;
+  const lipW = 1.4;
+  const lipH = 3.22;
+  g.add(rbox(lipW, lipH, rd + 2 * lip, TEAM_RED, cx + rw / 2 + lip - lipW / 2, H - 0.1, 0, 0.5)); // east, towards the bay
+  g.add(rbox(rw + 2 * lip - lipW, lipH, lipW, TEAM_RED, cx - lipW / 2, H - 0.1, rd / 2 + lip - lipW / 2, 0.5)); // south, towards the tent
   const lw = 74;
   const logo = mesh(
     new PlaneGeometry(lw, lw * LOGO_ASPECT),

@@ -1459,7 +1459,8 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     // A different page. Looking at the page (on the map or open), the film slides: the page that was there runs off one
     // side as the new page runs in from the other (forward is the lever's way: it goes left). Looking at a photo there is
     // no slide (the view is already panning to the next photo): the new photos take the place of the old ones, each fading
-    // in over the one it replaces. Only the first paint, and reduced motion, dip out and back instead.
+    // in over the one it replaces. The first paint is there at once (the loading screen has hidden its warm-up); only
+    // reduced motion, and a page change that cannot slide, dip out and back.
     const looking = rig.mode === "photo";
     const canSlide = !looking && !instant && shownPage >= 0 && count > 0;
     const wantPage = rig.page;
@@ -1481,6 +1482,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
         slide = null;
         how = "dip";
         fade += (0 - fade) * (instant ? 1 : 1 - Math.exp(-dt * 24));
+        if (shownPage < 0) fade = 1; // the first page is shown as it is painted, not faded in once the scene is on
         if (fade < 0.05 || shownPage < 0) {
           shownPage = wantPage;
           dirty = true;
