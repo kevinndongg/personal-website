@@ -1,27 +1,37 @@
-// The Into the Deep robot's scoring loop, forever: park, drive to the west end of the submersible, extend the arm forward and
-// scoop a sample off its floor with the front of the robot (the arm lies flat when retracted, so it only has to extend), retract
-// it, drive to the basket and stop diagonally, front to the north-east and back to the bucket, pivot the arm up to vertical,
-// extend it upwards and lean it back over the robot to tip the sample into the bucket behind it, then put the arm away and drive
-// back to the start square. The robot never has to turn round: the sample goes over the top. Like drive.ts and errand.ts
-// it only sets the prop's x, z and heading (the hover lift owns its height, so the robot rides the floor up and down), and it
-// poses the model through `userData.pose` (see ftcrobot.ts). It is a mecanum robot, so it turns while it drives rather than
-// pointing along its route.
+// The Into the Deep robot's loop, forever: it parks for a moment, drives to the west end of the submersible, and from then on it
+// does two jobs in turn. Each job: extend the arm forward to a sample lying in the submersible (the arm lies flat when
+// retracted, so it only has to extend) and roll it onto the scoop, retract, drive to a basket and stop diagonally with its back
+// to the bucket, pivot the arm up to vertical, extend it upwards and lean it back over the robot to tip the sample into the
+// bucket behind it, then put the arm away. The first job takes a red sample to the red basket; the second takes a yellow one
+// from the south side of the submersible to the blue basket. The robot never has to turn round: the sample goes over the top.
+//
+// The game pieces are persistent. The sample the robot takes vanishes from the floor as it rolls onto the scoop and a new one
+// grows back in the same spot once the robot has driven away with it; the one it drops shows on top of the basket's pile until
+// the robot has driven off, and then shrinks away, so the next lap can do it again. That is `ftcField` (ftcfield.ts), which is
+// worked out every frame from where the robot is in its loop, so it can never be left wrong by a skipped frame.
+//
+// Like drive.ts and errand.ts it only sets the prop's x, z and heading (the hover lift owns its height, so the robot rides the
+// floor up and down), and it poses the model through `userData.pose` (see ftcrobot.ts). It is a mecanum robot, so it turns while
+// it drives rather than pointing along its route.
 import { CatmullRomCurve3, Vector3, type Group } from "three";
+import { ftcField } from "./ftcfield";
 import { ARM, HEAD, STOWED } from "./ftcrobot";
 import type { ArmPose, RobotPose } from "./ftcrobot";
 import type { AnimCtx } from "./models";
-import type { RobotCycle } from "./scenes";
+import type { RobotCycle, RobotJob } from "./scenes";
 
 const SPEED = 36; // px/s along the route (the robot eases out of and into each stop)
 const SPIN_RATE = 14; // rad/s of the paddle wheel while it is running
 const FLOOR_Y = 1.2; // the top of the submersible's floor plate, where the scoop lies
 const OVER_RIM = 2.5; // how far above the bucket's rim the head holds the sample
 const TIP = (60 * Math.PI) / 180; // the head tipped nose down to slide the sample out
+const YELLOW = "#f2c230";
 
 const smooth = (k: number) => {
   const c = Math.min(1, Math.max(0, k));
   return c * c * (3 - 2 * c);
 };
+const ramp = (t: number, t0: number, dur: number) => smooth((t - t0) / dur);
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const mix = (a: ArmPose, b: ArmPose, k: number): ArmPose => ({
@@ -59,6 +69,13 @@ interface Pose {
   h: number; // heading, radians in the world plane (y = south)
 }
 
+/** Something that happens to the field at a moment in a phase (`offset` seconds in), for one of the samples or baskets. */
+interface Mark {
+  what: "pick" | "spawn" | "drop" | "clear";
+  index: number; // the sample (`ftcField.sample`) or the basket (`ftcField.dropped`)
+  offset: number;
+}
+
 interface Phase {
   dur: number;
   /** Where the robot stands (a stop). */
@@ -67,8 +84,15 @@ interface Phase {
   route?: { curve: CatmullRomCurve3; h0: number; h1: number };
   arm: [ArmPose, ArmPose];
   spin?: boolean;
-  carry: (u: number) => boolean; // whether a sample is on the scoop, through the phase
+  /** Whether a sample is on the scoop, through the phase, its colour, and how far it has rolled onto the scoop. */
+  carry: (u: number) => boolean;
+  color?: string;
+  slide?: (u: number) => number;
+  mark?: Mark;
 }
+
+/** How long each thing that happens to the field takes. */
+const FADE = { pick: 0.3, spawn: 0.4, drop: 0.3, clear: 0.4 };
 
 export function attachCycle(model: Group, cfg: RobotCycle) {
   const home: Pose = { x: model.position.x, y: model.position.z, h: -model.rotation.y };
@@ -81,67 +105,162 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
     c.arcLengthDivisions = 600;
     return c;
   };
-
-  const { intake, score } = cfg;
-  // at the submersible the front of the robot faces the sample; at the basket its back does
-  const intakeAt: Pose = { ...intake.at, h: Math.atan2(intake.target.y - intake.at.y, intake.target.x - intake.at.x) };
-  const scoreAt: Pose = { ...score.at, h: Math.atan2(score.at.y - score.target.y, score.at.x - score.target.x) };
-  const intakeArm = reach(intakeAt, intakeAt.h, intake.target, FLOOR_Y + HEAD.drop, false);
-  // the pivot has to be one scoop's depth above where the sample is let go, which is a little over the bucket's rim
-  const scoreArm = reach(scoreAt, scoreAt.h, score.target, score.rim + OVER_RIM + HEAD.drop, true);
-  // the arm goes up in two moves, as the real one does: it pivots up to vertical with the slide still retracted, then extends
-  // straight up to its full height (the head swinging round to point back as it goes), and last it leans back a little over the
-  // bucket as the head tips
-  const vertArm: ArmPose = { ...STOWED, pitch: Math.PI / 2 };
-  const upArm: ArmPose = { pitch: Math.PI / 2, extend: scoreArm.extend, head: Math.PI, roll: Math.PI };
-  const tipArm: ArmPose = { ...scoreArm, head: scoreArm.head + TIP };
-  // Putting the arm away takes care, because the head hangs below the end of the slide and would go through the robot's
-  // bumper, deck or hooks if it turned while the slide was near them. So the head always turns while it is clear (high
-  // above the robot, or well out in front of it), and only then does the slide pivot down or retract.
-  // After the deposit the head turns back the short way round (head -150 deg, roll to 0), up in the air, to the folded pose.
-  const turnedArm: ArmPose = { ...tipArm, head: STOWED.head, roll: 0 };
-  // Before the intake the slide extends with the head folded up, and only then does the head drop to the floor.
-  const reachedArm: ArmPose = { ...STOWED, extend: intakeArm.extend };
-
-  const out = curve([home, ...cfg.out, intakeAt]);
-  const over = curve([intakeAt, ...cfg.over, scoreAt]);
-  const back = curve([scoreAt, ...cfg.home, home]);
   const drive = (c: CatmullRomCurve3) => Math.max(1.4, c.getLength() / SPEED);
   const never = () => false;
   const always = () => true;
 
-  // about 10 s a lap: the real robot takes 7.5 s from basket to basket, slowed down a little so that every move can be followed
-  const phases: Phase[] = [
+  /** Everything about one job that depends on where its stops are. */
+  const prepare = (job: RobotJob) => {
+    const { intake, score } = job;
+    // at the submersible the front of the robot faces the sample; at the basket its back does
+    const intakeAt: Pose = { ...intake.at, h: Math.atan2(intake.target.y - intake.at.y, intake.target.x - intake.at.x) };
+    const scoreAt: Pose = { ...score.at, h: Math.atan2(score.at.y - score.target.y, score.at.x - score.target.x) };
+    const intakeArm = reach(intakeAt, intakeAt.h, intake.target, FLOOR_Y + HEAD.drop, false);
+    // the pivot has to be one scoop's depth above where the sample is let go, which is a little over the bucket's rim
+    const scoreArm = reach(scoreAt, scoreAt.h, score.target, score.rim + OVER_RIM + HEAD.drop, true);
+    // The arm goes up in two moves, as the real one does: it pivots up to vertical with the slide still retracted, then extends
+    // straight up to its full height (the head swinging round to point back as it goes), and last it leans back a little over
+    // the bucket as the head tips.
+    const vertArm: ArmPose = { ...STOWED, pitch: Math.PI / 2 };
+    const upArm: ArmPose = { pitch: Math.PI / 2, extend: scoreArm.extend, head: Math.PI, roll: Math.PI };
+    const tipArm: ArmPose = { ...scoreArm, head: scoreArm.head + TIP };
+    // Putting the arm away takes care, because the head hangs below the end of the slide and would go through the robot's
+    // bumper, deck or hooks if it turned while the slide was near them. So the head always turns while it is clear (high above
+    // the robot, or well out in front of it), and only then does the slide pivot down or retract. After the deposit the head
+    // turns back the short way round (head -150 deg, roll to 0), up in the air, to the folded pose; before the intake the slide
+    // extends with the head folded up, and only then does the head drop to the floor.
+    const turnedArm: ArmPose = { ...tipArm, head: STOWED.head, roll: 0 };
+    const reachedArm: ArmPose = { ...STOWED, extend: intakeArm.extend };
+    return { job, intakeAt, scoreAt, intakeArm, vertArm, upArm, tipArm, turnedArm, reachedArm };
+  };
+  const jobs = cfg.jobs.map(prepare);
+
+  /** Pick up: the slide extends, the head drops, the sample rolls on, and it curls up and retracts. */
+  const intakePhases = (j: ReturnType<typeof prepare>): Phase[] => {
+    const color = j.job.intake.color;
+    const slot = j.job.intake.slot;
+    return [
+      { dur: 0.45, at: j.intakeAt, arm: [STOWED, j.reachedArm], carry: never }, // the slide just extends forward, no pivoting
+      { dur: 0.25, at: j.intakeAt, arm: [j.reachedArm, j.intakeArm], spin: true, carry: never }, // the head drops to the floor
+      {
+        dur: 0.85,
+        at: j.intakeAt,
+        arm: [j.intakeArm, j.intakeArm],
+        spin: true,
+        // the sample on the floor shrinks away as the paddle rolls it up the scoop
+        carry: (u) => u > 0.3,
+        slide: (u) => smooth((u - 0.3) / 0.4),
+        color,
+        mark: { what: "pick", index: slot, offset: 0.3 * 0.85 },
+      },
+      { dur: 0.3, at: j.intakeAt, arm: [j.intakeArm, j.reachedArm], carry: always, color }, // the head curls up, out in front of the robot
+      { dur: 0.45, at: j.intakeAt, arm: [j.reachedArm, STOWED], carry: always, color }, // and then the slide retracts
+    ];
+  };
+
+  /** Drop it in: the arm pivots up, extends upwards, leans back and tips; the head turns, and the arm pivots down and retracts. */
+  const depositPhases = (j: ReturnType<typeof prepare>): Phase[] => {
+    const color = j.job.intake.color;
+    return [
+      { dur: 0.7, at: j.scoreAt, arm: [STOWED, j.vertArm], carry: always, color }, // the arm pivots up to vertical
+      { dur: 0.9, at: j.scoreAt, arm: [j.vertArm, j.upArm], carry: always, color }, // and extends upwards, the head swinging round to face the bucket
+      {
+        dur: 0.8,
+        at: j.scoreAt,
+        arm: [j.upArm, j.tipArm],
+        carry: (u) => u < 0.55, // leans back over the bucket and tips: the sample slides out
+        color,
+        mark: { what: "drop", index: j.job.score.basket, offset: 0.55 * 0.8 },
+      },
+      { dur: 0.45, at: j.scoreAt, arm: [j.tipArm, j.turnedArm], carry: never }, // the head turns back the short way, still up in the air
+      { dur: 0.65, at: j.scoreAt, arm: [j.turnedArm, STOWED], carry: never }, // and then the arm pivots down and retracts
+    ];
+  };
+
+  // the loop: job 0, the way to job 1, job 1, the way back to job 0
+  const loop: Phase[] = [];
+  jobs.forEach((j, n) => {
+    const next = jobs[(n + 1) % jobs.length];
+    const color = j.job.intake.color;
+    const over = curve([j.intakeAt, ...j.job.over, j.scoreAt]);
+    const between = curve([j.scoreAt, ...cfg.between[n], next.intakeAt]);
+    loop.push(...intakePhases(j));
+    loop.push({
+      dur: drive(over),
+      route: { curve: over, h0: j.intakeAt.h, h1: j.scoreAt.h },
+      arm: [STOWED, STOWED],
+      carry: always,
+      color,
+      mark: { what: "spawn", index: j.job.intake.slot, offset: 0.2 }, // a new sample grows back once the robot has set off with this one
+    });
+    loop.push(...depositPhases(j));
+    loop.push({
+      dur: drive(between),
+      route: { curve: between, h0: j.scoreAt.h, h1: next.intakeAt.h },
+      arm: [STOWED, STOWED],
+      carry: never,
+      mark: { what: "clear", index: j.job.score.basket, offset: 0.1 }, // and the sample it dropped goes once the robot has driven off
+    });
+  });
+  const loopTotal = loop.reduce((s, p) => s + p.dur, 0);
+
+  // the way in, once: parked for a moment, then to the first job's intake stop
+  const first = jobs[0];
+  const intro: Phase[] = [
     { dur: 0.4, at: home, arm: [STOWED, STOWED], carry: never },
-    { dur: drive(out), route: { curve: out, h0: home.h, h1: intakeAt.h }, arm: [STOWED, STOWED], carry: never },
-    { dur: 0.45, at: intakeAt, arm: [STOWED, reachedArm], carry: never }, // the slide just extends forward, no pivoting
-    { dur: 0.25, at: intakeAt, arm: [reachedArm, intakeArm], spin: true, carry: never }, // the head drops to the floor
-    { dur: 0.85, at: intakeAt, arm: [intakeArm, intakeArm], spin: true, carry: (u) => u > 0.55 }, // the sample rolls on
-    { dur: 0.3, at: intakeAt, arm: [intakeArm, reachedArm], carry: always }, // the head curls up, out in front of the robot
-    { dur: 0.45, at: intakeAt, arm: [reachedArm, STOWED], carry: always }, // and then the slide retracts
-    { dur: drive(over), route: { curve: over, h0: intakeAt.h, h1: scoreAt.h }, arm: [STOWED, STOWED], carry: always },
-    { dur: 0.7, at: scoreAt, arm: [STOWED, vertArm], carry: always }, // the arm pivots up to vertical
-    { dur: 0.9, at: scoreAt, arm: [vertArm, upArm], carry: always }, // and extends upwards, the head swinging round to face the bucket
-    { dur: 0.8, at: scoreAt, arm: [upArm, tipArm], carry: (u) => u < 0.55 }, // leans back over it and tips: the sample slides out
-    { dur: 0.45, at: scoreAt, arm: [tipArm, turnedArm], carry: never }, // the head turns back the short way, still up in the air
-    { dur: 0.65, at: scoreAt, arm: [turnedArm, STOWED], carry: never }, // and then the arm pivots down and retracts
-    { dur: drive(back), route: { curve: back, h0: scoreAt.h, h1: home.h }, arm: [STOWED, STOWED], carry: never },
+    {
+      dur: drive(curve([home, ...cfg.intro, first.intakeAt])),
+      route: { curve: curve([home, ...cfg.intro, first.intakeAt]), h0: home.h, h1: first.intakeAt.h },
+      arm: [STOWED, STOWED],
+      carry: never,
+    },
   ];
-  const total = phases.reduce((s, p) => s + p.dur, 0);
+  const introTotal = intro.reduce((s, p) => s + p.dur, 0);
+
+  // when, in the loop, each thing happens to the field
+  const events: { what: Mark["what"]; index: number; at: number }[] = [];
+  let clock = 0;
+  for (const p of loop) {
+    if (p.mark) events.push({ what: p.mark.what, index: p.mark.index, at: clock + p.mark.offset });
+    clock += p.dur;
+  }
+
+  /** The field at `tl` seconds into the loop: a sample taken is gone until its replacement grows in; a dropped one is there until cleared. */
+  const field = (tl: number) => {
+    const sample = [1, 1];
+    const dropped = [0, 0];
+    for (const ev of events) {
+      if (ev.what === "pick") sample[ev.index] -= ramp(tl, ev.at, FADE.pick);
+      else if (ev.what === "spawn") sample[ev.index] += ramp(tl, ev.at, FADE.spawn);
+      else if (ev.what === "drop") dropped[ev.index] += ramp(tl, ev.at, FADE.drop);
+      else dropped[ev.index] -= ramp(tl, ev.at, FADE.clear);
+    }
+    ftcField.sample[0] = Math.min(1, Math.max(0, sample[0]));
+    ftcField.sample[1] = Math.min(1, Math.max(0, sample[1]));
+    ftcField.dropped[0] = Math.min(1, Math.max(0, dropped[0]));
+    ftcField.dropped[1] = Math.min(1, Math.max(0, dropped[1]));
+  };
 
   let lastT = -1;
   let spinning = 0; // 0..1, how fast the paddle is going
   let spin = 0; // its angle
 
   model.userData.animate = ({ t }: AnimCtx) => {
-    if (t <= 0) return; // reduced motion: parked, the arm folded
+    if (t <= 0) return; // reduced motion: parked, the arm folded, every sample where it was
     const dt = lastT < 0 ? 0 : Math.min(0.1, Math.max(0, t - lastT));
     lastT = t;
 
-    let e = t % total;
+    // which phase, and how far through it
+    let list = intro;
+    let e = t;
+    if (t >= introTotal) {
+      list = loop;
+      e = (t - introTotal) % loopTotal;
+      field(e);
+    } else field(0);
     let i = 0;
-    while (i < phases.length - 1 && e >= phases[i].dur) e -= phases[i++].dur;
-    const ph = phases[i];
+    while (i < list.length - 1 && e >= list[i].dur) e -= list[i++].dur;
+    const ph = list[i];
     const u = e / ph.dur;
     const k = smooth(u);
 
@@ -159,6 +278,12 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
     spinning += ((ph.spin ? 1 : 0) - spinning) * (1 - Math.exp(-dt * 6));
     spin += dt * SPIN_RATE * spinning;
     const pose = model.userData.pose as ((p: RobotPose) => void) | undefined;
-    pose?.({ ...mix(ph.arm[0], ph.arm[1], k), spin, carrying: ph.carry(u) });
+    pose?.({
+      ...mix(ph.arm[0], ph.arm[1], k),
+      spin,
+      carrying: ph.carry(u),
+      carryColor: ph.color ?? YELLOW,
+      slide: ph.slide ? ph.slide(u) : 1,
+    });
   };
 }

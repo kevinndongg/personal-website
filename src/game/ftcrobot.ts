@@ -54,6 +54,9 @@ export interface ArmPose {
 export interface RobotPose extends ArmPose {
   spin: number; // the paddle wheel's angle
   carrying: boolean; // a sample on the scoop
+  carryColor: string; // and its colour
+  /** 0..1: how far a sample that has just been picked up has rolled back along the scoop (0 at its tip, 1 in its place). */
+  slide: number;
 }
 
 const deg = (d: number) => (d * Math.PI) / 180;
@@ -217,8 +220,10 @@ export function robotModel(): Group {
     head.rotation.x = p.roll;
     paddle.rotation.z = p.spin;
     sample.visible = p.carrying;
+    sample.material = toon(p.carryColor);
+    sample.position.x = 4.6 - 2.2 * p.slide; // from the scoop's tip back to where it rests
   };
   g.userData.pose = pose;
-  pose({ ...STOWED, spin: 0, carrying: false });
+  pose({ ...STOWED, spin: 0, carrying: false, carryColor: YELLOW, slide: 1 });
   return g;
 }

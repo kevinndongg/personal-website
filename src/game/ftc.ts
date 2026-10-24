@@ -1,3 +1,4 @@
+import { SAMPLE_COLORS, TAKEN, submersibleSamples } from "./ftcfield";
 import type { Decal, Footprint, Prop, Scene } from "./scenes";
 
 // The FTC area: one square competition field split into three wedges, one per season, with the duck mascot, the driver
@@ -17,9 +18,8 @@ export const H = 204;
 const FIELD = { x: 8, y: 22, size: 120 };
 
 /**
- * The field's floor, relative to the field's centre (x east, y south): six by six foam tiles, a tape line from the centre
- * to each of the three wedge boundaries (the 30 degree rays meet the side walls at `K`), and the taped square where each
- * season's robot will start, on a tile that has no pole or element in it.
+ * The field's floor, relative to the field's centre (x east, y south): six by six foam tiles, and a tape line from the
+ * centre to each of the three wedge boundaries (the 30 degree rays meet the side walls at `K`).
  */
 const HALF = FIELD.size / 2;
 const K = HALF * Math.tan(Math.PI / 6);
@@ -31,13 +31,6 @@ export const FLOOR = {
     [{ x: 0, y: 0 }, { x: HALF, y: K }],
     [{ x: 0, y: 0 }, { x: -HALF, y: K }],
   ],
-  marks: (
-    [
-      [-50, -30],
-      [30, -30],
-      [0, 16],
-    ] as const
-  ).map(([x, y]) => ({ x: x - 9, y: y - 9, w: 18, h: 18 })),
 };
 
 const circle = (r: number): Footprint => ({ kind: "circle", r });
@@ -110,29 +103,47 @@ export function ftcScene(ox: number, oy: number): Scene {
     round("ftc-pixel-g", f(41, -54), 3)
   );
 
-  // ---- Into the Deep (front wedge): the submersible in the middle, a basket in each front corner, samples along the front
-  props.push(block("ftc-submersible", f(0, 36), 40, 14));
+  // ---- Into the Deep (front wedge): the submersible in the middle of the fifth tile row (counting from the back), and a basket in
+  // each front corner. The floor in front of it is left clear: the robot drives along it.
+  const SUB = { y: 30, w: 40, d: 14 };
+  props.push(block("ftc-submersible", f(0, SUB.y), SUB.w, SUB.d));
   // the baskets stand tight in the corners with their buckets towards the middle of the field
   props.push(turned("ftc-basket-red", f(-54, 54), -Math.PI / 4, 4), turned("ftc-basket-blue", f(54, 54), (-3 * Math.PI) / 4, 4));
-  props.push(
-    block("ftc-samples-red", f(-26, 52), 20, 4),
-    block("ftc-samples-yellow", f(0, 52), 20, 4),
-    block("ftc-samples-blue", f(26, 52), 20, 4)
-  );
-  // the robot (red alliance, so it works the red basket) parks on the taped start square facing south and runs its scoring
-  // loop: round to the submersible's west end, where it faces east and scoops a sample off the floor through the open end;
-  // then to the red basket in the corner, where it stops diagonally with its front to the north-east and its back to the
-  // bucket, pivots the arm up to vertical, extends it upwards, leans it back over the top of the robot and tips the sample
-  // in, so it never has to turn round; and home. See robotcycle.ts. The waypoints keep it clear of the submersible's corner
-  // posts at x = -18.5 and of the samples along the front.
+
+  // The robot parks facing south and then runs its loop for good, two jobs in turn (robotcycle.ts). The samples it takes are two
+  // of those lying in the submersible (the layout is shared with the model, ftcfield.ts): a red one at the west end, and a yellow
+  // one just in from the south side.
+  const spots = submersibleSamples(SUB.w, SUB.d);
+  const sampleAt = (n: number) => f(spots[n].x, SUB.y + spots[n].z);
+  const left = sampleAt(TAKEN.left);
+  const right = sampleAt(TAKEN.right);
+  const bucket = (side: 1 | -1) => f(side * 50.9, 50.9); // the high bucket of the basket on that side (red is west, blue east)
   props.push({
     ...turned("ftc-robot-itd", f(0, 16), Math.PI / 2, 6.25),
     cycle: {
-      intake: { at: f(-27, 36), target: f(-8, 36) },
-      score: { at: f(-44, 44), target: f(-50.9, 50.9), rim: 20 }, // the red basket's high bucket, in line behind the robot
-      out: [f(-14, 17), f(-30, 22)],
-      over: [f(-36, 40.5)],
-      home: [f(-38, 32), f(-30, 22), f(-14, 17)],
+      // Round the submersible's north-west corner to its west end, keeping well back from its rails (the robot swings wide as it turns).
+      intro: [f(-10, 11), f(-34, 17)],
+      jobs: [
+        {
+          // The red sample, from the submersible's west end with the robot facing east, to the red basket in the south-west corner,
+          // where the robot stands diagonally, front to the north-east, the bucket directly behind it.
+          intake: { at: f(-28.5, SUB.y), target: left, slot: 0, color: SAMPLE_COLORS.red },
+          over: [f(-36, 37.5)],
+          score: { at: f(-44, 44), target: bucket(-1), rim: 20, basket: 0 },
+        },
+        {
+          // The yellow sample, from the south side of the submersible with the robot facing north along its south barrier, to the
+          // blue basket in the south-east corner, where the robot faces 70 degrees west of north, the bucket directly behind it.
+          intake: { at: f(spots[TAKEN.right].x, 45.5), target: right, slot: 1, color: SAMPLE_COLORS.yellow },
+          over: [f(26, 46.5)],
+          score: { at: f(41.7, 47.6), target: bucket(1), rim: 20, basket: 1 },
+        },
+      ],
+      // Along the south corridor, east and then back west, keeping clear of the submersible's posts, the baskets' feet and the walls.
+      between: [
+        [f(-30, 47), f(-10, 47)],
+        [f(30, 48), f(0, 48), f(-18, 47), f(-33, 43), f(-34, 36)],
+      ],
     },
   });
 
