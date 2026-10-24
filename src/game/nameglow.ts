@@ -9,10 +9,10 @@ import { NAME, NAME_H } from "./name";
 // of the name's footprint on the ground (the letters' model has the same origin).
 
 const WARM = "255,217,166"; // the car's halo colour
-const PAD_X = 56; // map px of glow beyond the name's footprint, to the left and right
-const PAD_Y = 60; // ... and to the north and south (the name is low and wide, so this is what makes the pool look round and not squashed)
+const PAD_X = 45; // map px of glow beyond the name's footprint, to the left and right
+const PAD_Y = 30; // ... and to the north and south (the name is low and wide, so this is what makes the pool look round and not squashed)
 const RES = 2; // texture px per map px
-const STRENGTH = 0.2; // opacity at full hover: steady, with no pulse
+const STRENGTH = 0.5; // opacity at full hover: steady, with no pulse
 const PEAK = 0.4; // the light's alpha at the middle of the pool (the car's is 1)
 const HEIGHT = 0.2; // above the ground's shadow and leaf layers, which lie a few hundredths up
 
