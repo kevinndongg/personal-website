@@ -12,6 +12,8 @@ import {
   Vector3,
 } from "three";
 import { FLOOR } from "./ftc";
+import { TAKEN, ftcField, submersibleSamples } from "./ftcfield";
+import { robotModel } from "./ftcrobot";
 import { box, canvasOf, cyl, fillRect, mesh, nearestTexture, toon } from "./models";
 import type { AnimCtx } from "./models";
 
@@ -126,14 +128,14 @@ function picture(w: number, h: number, canvas: HTMLCanvasElement, twoSided = fal
 const SHEET_Y = 0.13;
 
 /**
- * The field's floor: foam tiles, the tape between the wedges and the taped robot start squares, as a flat sheet just above
+ * The field's floor: foam tiles and the tape between the wedges, as a flat sheet just above
  * the ground, on a thin slab that only shows once the floor has risen. It lies over the ground's shadow catcher and leaf
  * shade, so it brings its own (`liftOverlay`): the ground's would flicker against it as it passes their height on the way
  * up and down. It is not flagged `flat`, so it lifts with the rest of the field when hovered.
  */
 function floorModel(): Group {
   const g = new Group();
-  const { size, tiles, tape, marks } = FLOOR;
+  const { size, tiles, tape } = FLOOR;
   const S = 2; // texels per px
   const [c, ctx] = canvasOf(size * S, size * S);
   ctx.scale(S, S);
@@ -151,9 +153,6 @@ function floorModel(): Group {
     line.forEach((p, i) => (i ? ctx.lineTo(p.x + h, p.y + h) : ctx.moveTo(p.x + h, p.y + h)));
     ctx.stroke();
   }
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([3, 2]);
-  for (const m of marks) ctx.strokeRect(m.x + h + 0.75, m.y + h + 0.75, m.w - 1.5, m.h - 1.5);
   const tex = new CanvasTexture(c);
   tex.minFilter = LinearFilter;
   tex.generateMipmaps = false;
@@ -315,21 +314,11 @@ function pixelModel(color: string): Group {
 
 // ---- Into the Deep: the submersible, the baskets and the samples
 
-/** A small repeatable generator (mulberry32): the same seed always gives the same run of numbers in 0..1. */
-function seeded(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /**
  * The submersible: an open box of four posts and two rectangles of rails, a gold bar at the back and a silver one at the
- * front, standing on a dark floor that is covered in samples of all three colours lying every which way.
+ * front, standing on a dark floor that is covered in samples of all three colours lying every which way. Two of the samples
+ * are the ones the robot takes: they shrink away when it picks them up and grow back in the same place once it has gone
+ * (`ftcField.sample`, written by robotcycle.ts).
  */
 function submersibleModel(w: number, d: number): Group {
   const g = new Group();
@@ -338,53 +327,91 @@ function submersibleModel(w: number, d: number): Group {
   const TOP = 16.2; // the bottom of the top rails
   g.add(box(w, 1.2, d, DARK, 0, 0, 0)); // the floor
 
-  // a jittered grid of samples, the same on every load
-  const rand = seeded(2025);
-  const colors = [RED, BLUE, GOLD];
-  const cols = 6;
-  const rows = 4;
-  for (let i = 0; i < cols; i++)
-    for (let j = 0; j < rows; j++) {
-      const x = ((i - (cols - 1) / 2) * (2 * (hx - 4))) / (cols - 1) + (rand() - 0.5) * 1.8;
-      const z = ((j - (rows - 1) / 2) * (2 * (hz - 2))) / (rows - 1) + (rand() - 0.5) * 0.8;
-      const s = box(3.8, 1.6, 1.6, colors[Math.floor(rand() * colors.length)], x, 1.2, z);
-      s.rotation.y = (rand() - 0.5) * 1.3;
-      g.add(s);
-    }
+  // the samples, a jittered grid that is the same on every load (and in the scene, which aims the robot at two of them)
+  const taken: Mesh[] = [];
+  submersibleSamples(w, d).forEach((spot, n) => {
+    const s = box(3.8, 1.6, 1.6, spot.color, spot.x, 1.2, spot.z);
+    s.rotation.y = spot.yaw;
+    g.add(s);
+    if (n === TAKEN.left) taken[0] = s;
+    if (n === TAKEN.right) taken[1] = s;
+  });
+  g.userData.animate = () => {
+    taken.forEach((s, i) => {
+      const p = ftcField.sample[i];
+      s.visible = p > 0.02;
+      s.scale.setScalar(Math.max(0.001, p));
+      s.position.y = 1.2 + 0.8 * p; // it shrinks towards the floor, not towards its own middle
+    });
+  };
 
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(box(1.4, TOP + 1 - 1.2, 1.4, STEEL, sx * hx, 1.2, sz * hz)); // posts
   for (const y of [1.2, TOP]) {
     for (const sz of [-1, 1]) g.add(box(2 * hx, 1, 1, STEEL, 0, y, sz * hz)); // rails along the length
     for (const sx of [-1, 1]) g.add(box(1, 1, 2 * hz, STEEL, sx * hx, y, 0)); // and across each end
   }
-  g.add(box(2 * hx, 1, 1, GOLD, 0, 11.5, -hz)); // the high bar at the back, the low one at the front
-  g.add(box(2 * hx, 1, 1, "#c8ccd6", 0, 6.5, hz));
+  // the high bar at the back, the low one at the front: the low one is high enough for the robot's arm to reach in under it
+  // with its head folded up (which stands 8.6 px above the floor), as it does to the sample on the south side
+  g.add(box(2 * hx, 1, 1, GOLD, 0, 12.5, -hz));
+  g.add(box(2 * hx, 1, 1, "#c8ccd6", 0, 9, hz));
   return g;
 }
 
 /**
  * A basket stand: a tall grey post with a coloured strip down its back edge, and two clear square buckets (wider at the
  * top) bracketed to its front, one high and one low. Faces +x, the side the buckets are on; the strip is on -x.
+ * It always holds a few samples (three in the high bucket, two in the low one, `held`, the first three for the high bucket),
+ * and the sample the robot drops lands on top of the high pile (`dropped`, shown by `ftcField.dropped[index]`).
  */
-function basketModel(stripe: string): Group {
+function basketModel(stripe: string, index: number, held: string[], dropped: string): Group {
   const g = new Group();
-  const glass = new MeshLambertMaterial({ color: "#d6ecff", transparent: true, opacity: 0.55 });
+  // clear plastic: faint enough that the samples inside show in their own colours (and not washed over by it)
+  const glass = new MeshLambertMaterial({ color: "#eaf5ff", transparent: true, opacity: 0.16, depthWrite: false });
   g.add(box(6, 0.8, 6, DARK, 0, 0, 0)); // the foot
   g.add(box(1.6, 22, 1.6, STEEL, 0, 0.8, 0));
   g.add(box(0.7, 22, 2.2, stripe, -1.1, 0.8, 0));
   g.add(box(1.8, 0.8, 1.8, DARK, 0, 22.8, 0));
   const bucket = (y: number) => {
     g.add(box(2.4, 0.7, 1.2, DARK, 1.6, y, 0)); // the bracket
-    // a square frustum: four sides, 5 wide at the bottom and 7 at the top, turned to line up with the axes
-    const geo = new CylinderGeometry(4.95, 3.54, 5, 4);
+    // a square frustum with no top and no bottom (an open bucket, so that you can see down into it): four sides, 5 wide at
+    // the bottom and 7 at the top, turned to line up with the axes
+    const geo = new CylinderGeometry(4.95, 3.54, 5, 4, 1, true);
     geo.rotateY(Math.PI / 4);
     const b = mesh(geo, glass, 4.4, y + 2.5, 0);
     b.castShadow = false;
     g.add(b);
     g.add(box(5, 0.3, 5, "#8fb3d6", 4.4, y, 0)); // its floor
+    // the rim, and the four edges, as thin lines of clear plastic, so the bucket still reads as one
+    for (const s of [-1, 1]) {
+      g.add(box(7.2, 0.3, 0.3, "#e6f3ff", 4.4, y + 4.85, s * 3.5));
+      g.add(box(0.3, 0.3, 7.2, "#e6f3ff", 4.4 + s * 3.5, y + 4.85, 0));
+    }
   };
   bucket(15);
   bucket(7.5);
+
+  // what the buckets hold, lying on the floor of each (a bucket's floor is at its `y` plus 0.3)
+  const lie = (color: string, y: number, z: number, yaw: number) => {
+    const s = box(3.8, 1.6, 1.6, color, 4.4, y, z);
+    s.rotation.y = yaw;
+    g.add(s);
+    return s;
+  };
+  lie(held[0], 15.3, -0.9, 0.08); // the high bucket: two side by side, one across them, the pile's top a little under the rim
+  lie(held[1], 15.3, 0.9, -0.1);
+  lie(held[2], 16.9, 0, Math.PI / 2 + 0.1);
+  lie(held[3], 7.8, -0.9, 0.05); // the low bucket: two side by side
+  lie(held[4], 7.8, 0.9, -0.08);
+  // the sample the robot drops in, on top of the high pile: it falls in from just above and shrinks out again when it is taken away
+  // (lying across the way the robot's head points, as it was on the scoop, so along the bucket's width)
+  const top = lie(dropped, 18.5, 0, Math.PI / 2 + 0.12);
+  top.visible = false;
+  g.userData.animate = () => {
+    const p = ftcField.dropped[index];
+    top.visible = p > 0.02;
+    top.scale.setScalar(Math.max(0.001, p));
+    top.position.y = 18.5 + 0.8 * p + (1 - p) * 3;
+  };
   return g;
 }
 
@@ -643,6 +670,8 @@ export function ftcModel(id: string, w: number, d: number): Group | null {
   switch (key) {
     case "floor":
       return floorModel();
+    case "robot-itd":
+      return robotModel();
     case "wall":
       return wallModel(w, d);
     case "pp-g":
@@ -674,9 +703,9 @@ export function ftcModel(id: string, w: number, d: number): Group | null {
     case "submersible":
       return submersibleModel(w, d);
     case "basket-red":
-      return basketModel(RED);
+      return basketModel(RED, 0, [RED, GOLD, RED, GOLD, RED], RED);
     case "basket-blue":
-      return basketModel(BLUE);
+      return basketModel(BLUE, 1, [BLUE, GOLD, BLUE, GOLD, BLUE], GOLD);
     // the stored pieces: stacks of cones and pixels, piles of samples
     case "cone-stack-red":
       return coneStack(RED, 6);

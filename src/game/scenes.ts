@@ -44,6 +44,34 @@ export interface Prop {
   drive?: { x: number; y: number }[];
   /** A trip the prop makes now and then, one way (world px, from where it starts out of sight to where it stops). See errand.ts. */
   errand?: { x: number; y: number }[];
+  /** A robot that works the field on its own, over and over (the Into the Deep robot). See robotcycle.ts. */
+  cycle?: RobotCycle;
+}
+
+/** What the Into the Deep robot does, all in world px: two jobs it does in turn, forever, and the way between them. */
+export interface RobotCycle {
+  /** Waypoints on the way from where it is parked to the first job's intake stop (it only parks the first time). */
+  intro: { x: number; y: number }[];
+  /** The two jobs, done in turn: the first, then the second, then the first again. */
+  jobs: [RobotJob, RobotJob];
+  /** Waypoints from the first job's scoring stop to the second job's intake stop, and from the second's back to the first's. */
+  between: [{ x: number; y: number }[], { x: number; y: number }[]];
+}
+
+/** Pick a sample up off the submersible's floor, take it to a basket and drop it in. */
+export interface RobotJob {
+  /**
+   * Where it stands to pick up, with its front to `target`, the point on the floor the scoop goes to; which of the two samples
+   * it takes (`slot`, an index into `ftcField.sample`, see ftcfield.ts) and its colour.
+   */
+  intake: { at: { x: number; y: number }; target: { x: number; y: number }; slot: number; color: string };
+  /** Waypoints from the intake stop to the scoring stop. */
+  over: { x: number; y: number }[];
+  /**
+   * Where it stands to score, with its back to `target`, the bucket it reaches over; the height of that bucket's rim; and which
+   * basket it is (`basket`, an index into `ftcField.dropped`).
+   */
+  score: { at: { x: number; y: number }; target: { x: number; y: number }; rim: number; basket: number };
 }
 
 export interface PropFocus {
