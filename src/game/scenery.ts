@@ -161,6 +161,8 @@ const STUCK_LEVER = 0.16;
 const STUCK_KNOB = 0.07;
 const STUCK_HIT = 0.07; // seconds to reach the stop
 const STUCK_LET_GO = 0.3; // seconds into the stroke when it is let go
+/** Where the advance lever is parked (its yaw on the camera's top plate); it swings from here to 0 on each stroke. */
+export const LEVER_REST_YAW = -2.1;
 
 /** How far a control gets in a stroke that hits the end of the roll: `amount` at the stop, a short rattle, then back. */
 function stuck(k: number, amount: number) {
@@ -238,6 +240,16 @@ export class FilmRig {
    * cleared for good by the first use).
    */
   invite = false;
+  /** How far the lever and the rewind knob are lit by the offer just now, 0..1 (set by the camera model, read by the page's note). */
+  glowLever = 0;
+  glowKnob = 0;
+  /**
+   * The viewer has turned the roll and not yet looked into a photo: the photos' outlines pulse softly to say they can be
+   * clicked. Set from outside; `glowPhotos` (0..1) is how lit they are just now, set by the table, for the page's note to
+   * breathe with.
+   */
+  invitePhotos = false;
+  glowPhotos = 0;
   /** Counts the strokes that hit the end of the roll (so the page can show it when the camera is off screen). */
   stuckCount = 0;
   /** The viewer has used the gallery this visit (a control, a photo, a key, the wheel or a swipe). Set from outside. */
@@ -599,7 +611,7 @@ function omCameraModel(rig: FilmRig): Group {
   g.add(shutter);
   const lever = new Group();
   lever.position.set(bx - 2, 24.2, 15.5); // pivot on the top plate; at rest it is parked across the middle of the plate
-  lever.rotation.y = -2.1;
+  lever.rotation.y = LEVER_REST_YAW;
   lever.userData.part = "lever";
   lever.add(box(2.2, 0.7, 11, LEVER_ARM, 0, 0, 5.5));
   lever.add(box(3.2, 1.3, 3.4, LEVER_TIP, 0, -0.1, 11));
@@ -641,7 +653,7 @@ function omCameraModel(rig: FilmRig): Group {
     // the side of the body (the advanced place), holds a moment, then eases back to where it started. Going back, the
     // lever stays put and the rewind knob makes a full turn instead.
     rig.step(t);
-    lever.rotation.y = -2.1 * (1 - rig.lever);
+    lever.rotation.y = LEVER_REST_YAW * (1 - rig.lever);
     knob.rotation.y = -Math.PI * 2 * rig.knob;
     const elapsed = Math.max(0, t - lastT);
     const k = 1 - Math.exp(-elapsed * 14);
@@ -657,6 +669,8 @@ function omCameraModel(rig: FilmRig): Group {
       const offered = c.phase === null ? 0 : breath * (t <= 0 ? 0.45 : swell(pulse, c.phase));
       const lit = Math.max(c.glow, offered);
       c.mat.color.copy(c.base).lerp(AMBER, lit);
+      if (c.hint === "lever") rig.glowLever = offered; // (the arm and the tip are lit alike)
+      else if (c.hint === "rewind") rig.glowKnob = offered;
       // the knob and lever shine (they give off light, not just a different colour), more so before they have been used
       if (c.shine) c.mat.emissive.copy(AMBER).multiplyScalar(lit * (SHINE + SHINE_FIRST * fresh));
     }
@@ -1442,6 +1456,17 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     o.place(r.x, r.z, r.w + 1.4, r.h + 1.4);
   };
 
+  // The invitation: every photo of the page has an outline of its own that pulses softly while `rig.invitePhotos` is on
+  // (the same outline as the one under the pointer, so it reads as "these can be clicked").
+  const invited = Array.from({ length: PAGE_SLOTS }, (_, slot) => {
+    const o = makeOutline("#fff6dc");
+    const r = slotRect[slot];
+    if (r) o.place(r.x, r.z, r.w + 1.4, r.h + 1.4);
+    return o;
+  });
+  let photoAmt = 0; // 0..1: how far the invitation is on (eased)
+  let photoPulse = 0; // where its pulse is in its round, in radians
+
   const off = new Color("#6f7176");
   const on = new Color("#e8e0c8");
   let lastT = 0;
@@ -1601,6 +1626,17 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     const overSlot = over !== null ? shown.indexOf(over) : -1;
     hovered.mat.opacity = overSlot >= 0 && rig.mode === "page" && !slide ? 0.95 * focus * fade : 0;
     if (overSlot >= 0) outlineSlot(hovered, overSlot);
+
+    // the invitation: all the photos' outlines breathing together (steady when the clock is held, with reduced motion)
+    photoAmt += ((rig.invitePhotos ? 1 : 0) - photoAmt) * k;
+    if (!rig.invitePhotos && photoAmt < 0.002) photoAmt = 0;
+    photoPulse += dt * 2.3; // about a breath every 2.7 s
+    const swell = instant ? 0.45 : 0.5 + 0.5 * Math.sin(photoPulse);
+    rig.glowPhotos = photoAmt * swell;
+    const photoLit = rig.mode === "page" && !slide ? photoAmt * (0.2 + 0.7 * swell) * focus * fade : 0;
+    invited.forEach((o, slot) => {
+      o.mat.opacity = shown[slot] >= 0 ? photoLit : 0;
+    });
   };
   return g;
 }
