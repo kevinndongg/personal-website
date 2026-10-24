@@ -196,32 +196,19 @@ export function robotModel(): Group {
   head.add(box(2, HEAD.drop + 0.3, 2.6, BLUE, 0, -HEAD.drop + 0.3, 0)); // the housing hangs from the wrist down to the scoop
   head.add(box(3.8, 0.35, 2.2, BLUE, 2.1, -HEAD.drop, 0));
   head.add(box(0.4, 0.2, 0.8, "#bfe9ff", 3.8, -HEAD.drop - 0.2, 0)); // the light under the scoop's tip
-  // The paddle wheel is up at the back of the head, round the wrist pivot, on one side, with a round blue plate (and a screw) over
-  // its outside so that only the tips of the black fingers show round it; the other side has the same plate and no wheel.
+  // The paddle wheel is on one side of the head, low down by the scoop where its fingers sweep a sample up onto it.
   const paddle = new Group();
-  paddle.position.set(0.9, -0.9, 1.65);
+  paddle.position.set(0.9, -HEAD.drop + 1.5, 1.6);
   const hubMesh = cyl(0.6, 0.6, 0.6, SILVER, 0, 0, 0, 8);
   hubMesh.rotation.x = Math.PI / 2;
   paddle.add(hubMesh);
   for (let i = 0; i < 6; i++) {
     const finger = new Group(); // each finger points out from the hub at its own angle
     finger.rotation.z = (i * Math.PI) / 3;
-    finger.add(box(0.4, 1.2, 0.5, "#111114", 0, 0.3, 0));
+    finger.add(box(0.35, 1, 0.5, "#111114", 0, 0.3, 0));
     paddle.add(finger);
   }
   head.add(paddle);
-  for (const s of [-1, 1]) {
-    const plate = cyl(1.3, 1.3, 0.3, BLUE, 0, 0, 0, 14);
-    plate.rotation.x = Math.PI / 2;
-    plate.position.set(0.9, -0.9, s * (s > 0 ? 2.15 : 1.45));
-    head.add(plate);
-    if (s > 0) {
-      const screw = cyl(0.3, 0.3, 0.2, SILVER, 0, 0, 0, 8);
-      screw.rotation.x = Math.PI / 2;
-      screw.position.set(0.9, -0.9, 2.4);
-      head.add(screw);
-    }
-  }
   const sample = box(3.8, 1.6, 1.6, YELLOW, 2.4, -HEAD.drop + 0.35, 0); // the sample on the scoop
   head.add(sample);
 
