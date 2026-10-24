@@ -187,6 +187,35 @@ html:has(.game) body {
   opacity: 0;
 }
 
+/* says what a contact button just did ("Copied ..."), where the hint is */
+.toast {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  margin: 0;
+  padding: 8px 16px;
+  transform: translate(-50%, 6px);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--paper);
+  background: rgba(36, 26, 18, 0.78);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border-radius: 999px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 240ms var(--ease),
+    transform 240ms var(--ease);
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 /*
  * The paper's shadow, on a wrapper of its own: a filter is applied before `clip-path`, so on the paper itself the torn edge
  * would cut the shadow off. It follows the torn edge (a filter, not a box-shadow), and a faint warm light comes up with the glow.
@@ -737,6 +766,7 @@ html:has(.game) body {
     stroke-dashoffset: 0;
   }
   .panel,
+  .toast,
   .zone-label {
     transition: opacity 120ms;
   }

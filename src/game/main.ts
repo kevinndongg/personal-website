@@ -1,6 +1,6 @@
 import { navigate } from "astro:transitions/client";
 import type { Intro } from "./intro";
-import { Panel } from "./panel";
+import { Panel, openAction } from "./panel";
 import type { PanelSide } from "./panel";
 import { Renderer3D } from "./render3d";
 import { filmRig } from "./scenery";
@@ -206,6 +206,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
   }
 
   function open(zone: Zone, fromUrl = false) {
+    if (zone.kind === "link") return; // a button on the ground opens its link when pressed, never a card
     const side = sideFor(zone);
     // the gallery is a roll with a start and an end: opening it begins at the start (a turn of the window, which opens it
     // again, does not)
@@ -435,6 +436,48 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     { signal }
   );
 
+  // The toast: a line that says what a button just did.
+  const toast = document.createElement("p");
+  toast.className = "toast";
+  toast.setAttribute("role", "status");
+  root.append(toast);
+  let toastTimer: ReturnType<typeof setTimeout> | undefined;
+  function say(text: string) {
+    toast.textContent = text;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("show"), 2800);
+  }
+
+  /**
+   * Opens a contact link. A mailto: goes nowhere on a computer with no mail app registered, and the page cannot tell, so it
+   * also copies the address and says so: the visitor has it either way.
+   */
+  function followLink(label: string, href: string) {
+    const mail = href.startsWith("mailto:");
+    openAction({ label, href, external: !mail });
+    if (!mail) return;
+    const address = decodeURIComponent(href.slice("mailto:".length).split("?")[0]);
+    navigator.clipboard?.writeText(address).then(
+      () => say(`Copied ${address}`),
+      () => say(address)
+    ) ?? say(address);
+  }
+
+  // A contact button opens its link on the click (not the press, which browsers do not always count as a user's go-ahead
+  // for a new tab). A tap on a touch screen is a click too: there is no hover step.
+  canvas.addEventListener(
+    "click",
+    (e) => {
+      if (e.button !== 0 || panel.isOpen) return;
+      const hit = renderer.pick(e.clientX, e.clientY);
+      const zone = hit ? zoneAt(hit.x, hit.y) : null;
+      if (zone?.kind !== "link" || !zone.href) return;
+      followLink(zone.label, zone.href);
+    },
+    { signal }
+  );
+
   // A swipe, zoomed into a photo, does what the arrow keys do (the photo is dragged along: swiping left shows the one to
   // the right). A short touch is a tap, which goes back to the page.
   const SWIPE_PX = 40;
@@ -533,7 +576,8 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
 
   function updateLabels() {
     world.zones.forEach((zone, i) => {
-      const show = !panel.isOpen && zone.id === hoveredId;
+      // (a link slab has no name pill, and neither has the name itself: it would only say the name again over the lettering)
+      const show = !panel.isOpen && zone.id === hoveredId && zone.kind !== "link" && zone.kind !== "about";
       // a label only needs placing while it is showing or fading out (placing asks the page for the canvas's size,
       // which makes the browser do layout work, and this runs for every project on every frame)
       if (show || labels[i].classList.contains("visible")) {
@@ -709,6 +753,8 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
   return () => {
     if (import.meta.env.DEV) console.info(`[game] scene #${sceneId} stopped`);
     cancelAnimationFrame(raf);
+    clearTimeout(toastTimer);
+    toast.remove();
     intro?.cancel();
     for (const zone of world.zones) if (zone.kind === "gallery") filmRig(zone).onFrame = undefined;
     panel.destroy();

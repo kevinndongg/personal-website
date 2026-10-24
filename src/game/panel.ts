@@ -10,7 +10,14 @@ export type PanelSide = "left" | "right" | "bottom";
  */
 const isLinkOnly = (zone: Zone) => zone.kind === "gallery";
 
-const KIND_LABEL: Record<string, string> = { project: "Project", gallery: "Photography", contact: "Get in touch" };
+const KIND_LABEL: Record<string, string> = { project: "Project", gallery: "Photography", about: "About me" };
+
+/** Follows a link: external ones in a new tab, mailto: in this window, the rest through the site's router. */
+export function openAction(a: ZoneAction) {
+  if (a.external) window.open(a.href, "_blank", "noopener,noreferrer");
+  else if (a.href.startsWith("mailto:")) location.href = a.href;
+  else navigate(a.href);
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string) {
   const node = document.createElement(tag);
@@ -151,16 +158,11 @@ export class Panel {
     this.tags.hidden = !zone.techStack?.length;
 
     this.actions.replaceChildren();
-    const open = (a: ZoneAction) => {
-      if (a.external) window.open(a.href, "_blank", "noopener,noreferrer");
-      else if (a.href.startsWith("mailto:")) location.href = a.href;
-      else navigate(a.href);
-    };
     const actions: ZoneAction[] = zone.actions ?? [];
     actions.forEach((a, i) => {
-      const b = el("button", i === 0 && zone.kind !== "contact" ? "btn primary" : "btn", a.label);
+      const b = el("button", i === 0 ? "btn primary" : "btn", a.label);
       b.type = "button";
-      b.addEventListener("click", () => open(a));
+      b.addEventListener("click", () => openAction(a));
       this.actions.append(b);
     });
     this.actions.hidden = actions.length === 0;

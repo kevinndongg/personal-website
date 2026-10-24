@@ -20,7 +20,9 @@ import type { Zone, ZonePhoto } from "./world";
 import { box, cyl, mesh, toon } from "./models";
 import type { AnimCtx } from "./models";
 import { ImageCache } from "./photocache";
-import { plaquesModel } from "./contactmodels";
+import { linkSlab } from "./slabmodels";
+import { nameGlowModel } from "./nameglow";
+import { nameModel } from "./namemodel";
 import { constructionModel } from "./constructionmodels";
 import { ftcModel } from "./ftcmodels";
 
@@ -1667,8 +1669,16 @@ export function sceneryModel(id: string, footprint: Footprint | undefined, prop:
       return lightTableModel(w, d, zone, rig);
     case "deskmat":
       return deskMatModel(w, d);
-    case "plaques":
-      return plaquesModel(w);
+    case "kdname":
+      return nameModel();
+    case "kdnameglow":
+      return nameGlowModel();
+    case "kdslab-email":
+      return linkSlab("email");
+    case "kdslab-linkedin":
+      return linkSlab("linkedin");
+    case "kdslab-github":
+      return linkSlab("github");
   }
   return null;
 }
