@@ -11,7 +11,7 @@ import type { ArmPose, RobotPose } from "./ftcrobot";
 import type { AnimCtx } from "./models";
 import type { RobotCycle } from "./scenes";
 
-const SPEED = 24; // px/s along the route (the robot eases out of and into each stop)
+const SPEED = 36; // px/s along the route (the robot eases out of and into each stop)
 const SPIN_RATE = 14; // rad/s of the paddle wheel while it is running
 const FLOOR_Y = 1.2; // the top of the submersible's floor plate, where the scoop lies
 const OVER_RIM = 2.5; // how far above the bucket's rim the head holds the sample
@@ -88,6 +88,8 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
   const scoreAt: Pose = { ...score.at, h: Math.atan2(score.at.y - score.target.y, score.at.x - score.target.x) };
   const intakeArm = reach(intakeAt, intakeAt.h, intake.target, FLOOR_Y + HEAD.drop, false);
   const scoreArm = reach(scoreAt, scoreAt.h, score.target, score.rim + OVER_RIM, true);
+  // the arm goes up in two moves, as the real one does: straight up to its full height first, then it leans back over the bucket
+  const upArm: ArmPose = { pitch: Math.PI / 2, extend: scoreArm.extend, head: 0, roll: 0 };
   const tipArm: ArmPose = { ...scoreArm, head: scoreArm.head + TIP };
   // coming back, the head carries on round the way it was going, so that it ends where it started without unwinding
   const foldArm: ArmPose = { ...STOWED, head: TURN, roll: TURN };
@@ -95,20 +97,22 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
   const out = curve([home, ...cfg.out, intakeAt]);
   const over = curve([intakeAt, ...cfg.over, scoreAt]);
   const back = curve([scoreAt, ...cfg.home, home]);
-  const drive = (c: CatmullRomCurve3) => Math.max(1.8, c.getLength() / SPEED);
+  const drive = (c: CatmullRomCurve3) => Math.max(1.4, c.getLength() / SPEED);
   const never = () => false;
   const always = () => true;
 
+  // about 10 s a lap: the real robot takes 7.5 s from basket to basket, slowed down a little so that every move can be followed
   const phases: Phase[] = [
-    { dur: 1.5, at: home, arm: [STOWED, STOWED], carry: never },
+    { dur: 0.4, at: home, arm: [STOWED, STOWED], carry: never },
     { dur: drive(out), route: { curve: out, h0: home.h, h1: intakeAt.h }, arm: [STOWED, STOWED], carry: never },
-    { dur: 1.2, at: intakeAt, arm: [STOWED, intakeArm], spin: true, carry: never }, // lowers the arm, the paddle starting up
-    { dur: 1.6, at: intakeAt, arm: [intakeArm, intakeArm], spin: true, carry: (u) => u > 0.55 }, // the sample rolls on
-    { dur: 1.0, at: intakeAt, arm: [intakeArm, STOWED], carry: always },
+    { dur: 0.7, at: intakeAt, arm: [STOWED, intakeArm], spin: true, carry: never }, // lowers the arm, the paddle starting up
+    { dur: 1.0, at: intakeAt, arm: [intakeArm, intakeArm], spin: true, carry: (u) => u > 0.55 }, // the sample rolls on
+    { dur: 0.6, at: intakeAt, arm: [intakeArm, STOWED], carry: always },
     { dur: drive(over), route: { curve: over, h0: intakeAt.h, h1: scoreAt.h }, arm: [STOWED, STOWED], carry: always },
-    { dur: 2.0, at: scoreAt, arm: [STOWED, scoreArm], carry: always }, // up, back over the top of the robot
-    { dur: 0.9, at: scoreAt, arm: [scoreArm, tipArm], carry: (u) => u < 0.5 }, // tips, and the sample slides out into the bucket
-    { dur: 1.2, at: scoreAt, arm: [tipArm, foldArm], carry: never },
+    { dur: 0.9, at: scoreAt, arm: [STOWED, upArm], carry: always }, // straight up, and out to full height
+    { dur: 0.7, at: scoreAt, arm: [upArm, scoreArm], carry: always }, // then leans back over the top, over the bucket
+    { dur: 0.7, at: scoreAt, arm: [scoreArm, tipArm], carry: (u) => u < 0.5 }, // tips, and the sample slides out into the bucket
+    { dur: 0.8, at: scoreAt, arm: [tipArm, foldArm], carry: never },
     { dur: drive(back), route: { curve: back, h0: scoreAt.h, h1: home.h }, arm: [STOWED, STOWED], carry: never },
   ];
   const total = phases.reduce((s, p) => s + p.dur, 0);
