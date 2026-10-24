@@ -49,6 +49,10 @@ export function submersibleSamples(w: number, d: number): SampleSpot[] {
     }
   out[TAKEN.left].color = SAMPLE_COLORS.red;
   out[TAKEN.right].color = SAMPLE_COLORS.yellow;
+  // The robot picks both up with the scoop across them, so they lie across the way it comes at them: the left one, which it
+  // approaches from the west (facing east), north-south; the right one, which it approaches from the south, east-west.
+  out[TAKEN.left].yaw = Math.PI / 2;
+  out[TAKEN.right].yaw = 0;
   return out;
 }
 

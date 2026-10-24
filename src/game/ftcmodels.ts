@@ -403,7 +403,8 @@ function basketModel(stripe: string, index: number, held: string[], dropped: str
   lie(held[3], 7.8, -0.9, 0.05); // the low bucket: two side by side
   lie(held[4], 7.8, 0.9, -0.08);
   // the sample the robot drops in, on top of the high pile: it falls in from just above and shrinks out again when it is taken away
-  const top = lie(dropped, 18.5, 0, 0.15);
+  // (lying across the way the robot's head points, as it was on the scoop, so along the bucket's width)
+  const top = lie(dropped, 18.5, 0, Math.PI / 2 + 0.12);
   top.visible = false;
   g.userData.animate = () => {
     const p = ftcField.dropped[index];

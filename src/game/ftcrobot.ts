@@ -194,7 +194,7 @@ export function robotModel(): Group {
   const head = new Group();
   wrist.add(head);
   head.add(box(2, HEAD.drop + 0.3, 2.6, BLUE, 0, -HEAD.drop + 0.3, 0)); // the housing hangs from the wrist down to the scoop
-  head.add(box(3.8, 0.35, 2.2, BLUE, 2.1, -HEAD.drop, 0));
+  head.add(box(3.8, 0.35, 4.2, BLUE, 2.1, -HEAD.drop, 0)); // the scoop is as wide as a sample is long, since the sample lies across it
   head.add(box(0.4, 0.2, 0.8, "#bfe9ff", 3.8, -HEAD.drop - 0.2, 0)); // the light under the scoop's tip
   // The paddle wheel is on one side of the head, low down by the scoop where its fingers sweep a sample up onto it.
   const paddle = new Group();
@@ -222,15 +222,16 @@ export function robotModel(): Group {
     paddle.rotation.z = p.spin;
     sample.visible = p.carrying;
     sample.material = toon(p.carryColor);
-    // How folded up the head is (1 with the scoop standing upright at the front of the arm, 0 with it level, pointing either
-    // way). With the scoop on end a sample lying on it would stand on end too, so as the head folds the sample moves across
-    // onto the top of the head's housing instead, lying flat against the scoop with its long side across the robot, left to
-    // right, as it does in the photos of the arm standing upright with a sample on top; it turns to lie so as the head folds.
+    // The sample always lies across the head (its long side along the robot's width, left to right), whether it is on the
+    // scoop being rolled up or tipped out, or carried. How folded up the head is: 1 with the scoop standing upright at the
+    // front of the arm, 0 with it level, pointing either way. With the scoop on end a sample lying on it would stand on end
+    // too, so as the head folds the sample moves across onto the top of the head's housing instead, lying flat against the
+    // scoop, as it does in the photos of the arm standing upright with a sample on top.
     const fold = Math.max(0, 1 - Math.abs(p.head - Math.PI / 2) / (Math.PI / 2)) * Math.max(0, 1 - p.roll / Math.PI);
     const onScoop = 4.6 - 2.2 * p.slide; // from the scoop's tip back to where it rests
     sample.position.x = onScoop + (1.8 - onScoop) * fold;
     sample.position.y = -HEAD.drop + 1.15 + (-2.55 - (-HEAD.drop + 1.15)) * fold;
-    sample.rotation.y = fold * (Math.PI / 2);
+    sample.rotation.y = Math.PI / 2;
   };
   g.userData.pose = pose;
   pose({ ...STOWED, spin: 0, carrying: false, carryColor: YELLOW, slide: 1 });
