@@ -12,6 +12,7 @@ import {
   Vector3,
 } from "three";
 import { FLOOR } from "./ftc";
+import { robotModel } from "./ftcrobot";
 import { box, canvasOf, cyl, fillRect, mesh, nearestTexture, toon } from "./models";
 import type { AnimCtx } from "./models";
 
@@ -643,6 +644,8 @@ export function ftcModel(id: string, w: number, d: number): Group | null {
   switch (key) {
     case "floor":
       return floorModel();
+    case "robot-itd":
+      return robotModel();
     case "wall":
       return wallModel(w, d);
     case "pp-g":

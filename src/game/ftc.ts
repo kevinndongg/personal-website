@@ -119,6 +119,17 @@ export function ftcScene(ox: number, oy: number): Scene {
     block("ftc-samples-yellow", f(0, 52), 20, 4),
     block("ftc-samples-blue", f(26, 52), 20, 4)
   );
+  // the robot (red alliance, so it works the red basket) parks on the taped start square facing south and runs its scoring
+  // loop: up to the submersible's north side to scoop a sample off its floor, round its west end to the corner, over the
+  // bucket, and home. See robotcycle.ts; the waypoints keep it clear of the submersible's corner post at (-18.5, 30.5).
+  props.push({
+    ...turned("ftc-robot-itd", f(0, 16), Math.PI / 2, 6.25),
+    cycle: {
+      intake: { at: f(0, 21), target: f(0, 37) },
+      score: { at: f(-46, 41), target: f(-50.9, 50.9), rim: 20 }, // the red basket's high bucket
+      via: [f(-12, 19), f(-28, 22), f(-39, 32)],
+    },
+  });
 
   // ---- above the field: the match clock, centred, just behind the north wall
   props.push(block("ftc-scoreboard", at(cx, 10), 32, 8));

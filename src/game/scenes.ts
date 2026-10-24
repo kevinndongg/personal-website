@@ -44,6 +44,18 @@ export interface Prop {
   drive?: { x: number; y: number }[];
   /** A trip the prop makes now and then, one way (world px, from where it starts out of sight to where it stops). See errand.ts. */
   errand?: { x: number; y: number }[];
+  /** A robot that works the field on its own, over and over (the Into the Deep robot). See robotcycle.ts. */
+  cycle?: RobotCycle;
+}
+
+/** What the Into the Deep robot does, all in world px: where it stands and what it reaches for, and the way round between. */
+export interface RobotCycle {
+  /** Where it stands to pick up, and the point on the floor the scoop goes to. */
+  intake: { at: { x: number; y: number }; target: { x: number; y: number } };
+  /** Where it stands to score, the bucket it reaches over, and the height of that bucket's rim. */
+  score: { at: { x: number; y: number }; target: { x: number; y: number }; rim: number };
+  /** Waypoints on the way from the first stop to the second (and back the same way). */
+  via: { x: number; y: number }[];
 }
 
 export interface PropFocus {
