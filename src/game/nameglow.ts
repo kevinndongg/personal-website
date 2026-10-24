@@ -12,8 +12,8 @@ const WARM = "255,217,166"; // the car's halo colour
 const PAD_X = 56; // map px of glow beyond the name's footprint, to the left and right
 const PAD_Y = 60; // ... and to the north and south (the name is low and wide, so this is what makes the pool look round and not squashed)
 const RES = 2; // texture px per map px
-const STRENGTH = 0.55; // opacity at full hover; it breathes a little round this (see below)
-const PEAK = 0.5; // the light's alpha at the middle of the pool (the car's is 1)
+const STRENGTH = 0.2; // opacity at full hover: steady, with no pulse
+const PEAK = 0.4; // the light's alpha at the middle of the pool (the car's is 1)
 const HEIGHT = 0.2; // above the ground's shadow and leaf layers, which lie a few hundredths up
 
 /**
@@ -60,8 +60,8 @@ export function nameGlowModel(): Group {
   g.add(glow);
   g.userData.flat = true; // a light on the ground does not rise with the letters
 
-  g.userData.animate = ({ hover, t }: AnimCtx) => {
-    mat.opacity = hover * (STRENGTH + 0.15 * Math.sin(t * 4)); // a gentle breath, so that it reads as live (steady when motion is reduced: t is 0)
+  g.userData.animate = ({ hover }: AnimCtx) => {
+    mat.opacity = hover * STRENGTH; // it comes up and goes down with the hover (already eased), and is steady in between
     glow.visible = hover > 0.001;
   };
   return g;
