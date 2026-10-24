@@ -26,11 +26,17 @@ export const ARM = {
 /** The head: how far in front of the wrist pivot a sample sits on the scoop, and how far below the pivot the scoop's underside is. */
 export const HEAD = { reach: 2.4, drop: 1.8 } as const;
 
-/** Arm joints, in radians and px: the slide's pitch (0 = level forward, up positive), how far it is extended, and the pitch of the head in the world. */
+/**
+ * Arm joints, in radians and px: the slide's pitch (0 = level forward, up positive, past pi/2 = leaning back over the robot),
+ * how far it is extended, and the head's pitch in the world.
+ */
 export interface ArmPose {
   pitch: number;
   extend: number;
-  head: number; // 0 = the scoop level, negative = tipped forward
+  /** 0 = the scoop level and pointing forward, pi = level and pointing back, negative / past pi = tipped nose down. */
+  head: number;
+  /** Turns the head over its length: 0 = the scoop's top side up; pi with `head` = pi keeps it up while it points backward. */
+  roll: number;
 }
 
 /** What `userData.pose` is given each frame. */
@@ -42,7 +48,7 @@ export interface RobotPose extends ArmPose {
 const deg = (d: number) => (d * Math.PI) / 180;
 
 /** The arm folded up for driving: the slide stands nearly upright in the middle of the deck, the head level at its top. */
-export const STOWED: ArmPose = { pitch: deg(82), extend: 0, head: 0 };
+export const STOWED: ArmPose = { pitch: deg(82), extend: 0, head: 0, roll: 0 };
 
 /** "6417" in white on the red plate, in a 3 x 5 pixel font. */
 function plateTexture() {
@@ -52,11 +58,11 @@ function plateTexture() {
     "1": "010110010010111",
     "7": "111001010010010",
   };
-  const [c, ctx] = canvasOf(20, 6);
-  fillRect(ctx, 0, 0, 20, 6, RED);
+  const [c, ctx] = canvasOf(20, 9);
+  fillRect(ctx, 0, 0, 20, 9, RED);
   ctx.fillStyle = "#f4f4f4";
   [..."6417"].forEach((ch, n) => {
-    for (let i = 0; i < 15; i++) if (digits[ch][i] === "1") ctx.fillRect(2 + n * 4 + (i % 3), 0 + Math.floor(i / 3), 1, 1);
+    for (let i = 0; i < 15; i++) if (digits[ch][i] === "1") ctx.fillRect(3 + n * 4 + (i % 3), 2 + Math.floor(i / 3), 1, 1);
   });
   return nearestTexture(c);
 }
@@ -101,13 +107,19 @@ export function robotModel(): Group {
 
   // ---- the chassis
   g.add(box(11.6, 0.8, 10, PANEL, 0, 0.9, 0)); // the floor plate between the wheels
-  for (const sx of [-4.3, 4.3]) for (const sz of [-5.6, 5.6]) g.add(wheel(sx, sz));
+  for (const sx of [-4.3, 4.3]) for (const sz of [-5.15, 5.15]) g.add(wheel(sx, sz)); // inside the side plates
   for (const s of [-1, 1]) {
-    g.add(box(10.2, 2.6, 0.3, BLACK, 0, 1, s * 4.9)); // the black mesh panels between the wheels
-    g.add(box(10.4, 1.8, 0.3, BLACK, 0, 3.8, s * 5.4)); // and the upper panel that carries the logos
-    g.add(box(10.6, 0.5, 0.6, BLUE, 0, 5.6, s * 5.4)); // topped with a blue rail
+    // the side: the red number plate over the rear wheel (its outer face is the robot's outer face), the black mesh over the front one
+    g.add(box(5.9, 3.4, 0.4, RED, -3.1, 0.4, s * 6.05));
+    g.add(box(6.2, 3.4, 0.4, BLACK, 3.05, 0.4, s * 6.05));
+    const plate = new Mesh(new PlaneGeometry(5.2, 2.34), new MeshBasicMaterial({ map: plateTexture() }));
+    plate.position.set(-3.1, 2.1, s * 6.27);
+    if (s < 0) plate.rotation.y = Math.PI;
+    g.add(plate);
+    g.add(box(10.4, 1.8, 0.4, BLACK, 0, 3.8, s * 6.05)); // above them, the upper panel that carries the logos
+    g.add(box(10.6, 0.5, 0.5, BLUE, 0, 5.6, s * 6)); // topped with a blue rail
     const logos = new Mesh(new PlaneGeometry(9, 1.5), new MeshBasicMaterial({ map: logoTexture() }));
-    logos.position.set(0, 4.7, s * 5.58);
+    logos.position.set(0, 4.7, s * 6.27);
     if (s < 0) logos.rotation.y = Math.PI;
     g.add(logos);
   }
@@ -115,12 +127,9 @@ export function robotModel(): Group {
   g.add(box(0.8, 3, 11.6, BLUE, HALF - 0.4, 0.8, 0)); // the front bumper plate
   g.add(box(1.8, 1.4, 10.4, BLUE, HALF - 1.1, 1, 0)); // the wide magnetic hang hook across the lower front
   g.add(box(0.15, 0.7, 3, "#b8bcc4", HALF + 0.05, 1.35, 0)); // with its silver label
-  g.add(box(0.6, 3.2, 11.6, RED, -HALF + 0.3, 0.8, 0)); // the back: a red plate over the rear mesh
+  g.add(box(0.6, 3.2, 11.6, BLACK, -HALF + 0.3, 0.8, 0)); // the back: black mesh, with a blue bumper rail along its foot
+  g.add(box(0.7, 0.8, 11.6, BLUE, -HALF + 0.35, 0.8, 0));
   g.add(box(0.4, 1.8, 10.6, BLACK, -HALF + 0.9, 4, 0));
-  const plate = new Mesh(new PlaneGeometry(9, 2.7), new MeshBasicMaterial({ map: plateTexture() }));
-  plate.rotation.y = -Math.PI / 2; // faces backwards
-  plate.position.set(-HALF - 0.02, 2.4, 0);
-  g.add(plate);
 
   // ---- on the deck
   g.add(box(3.2, 1.4, 4.2, "#2b2e38", -2.8, 3.8, 0)); // the electronics
@@ -156,10 +165,13 @@ export function robotModel(): Group {
   wrist.position.x = ARM.base;
   stage2.add(wrist);
 
-  // the head: a blue housing, the paddle wheel with its black fingers, and the scoop (the blue plate that lies on the floor)
-  wrist.add(box(1.8, 1.6, 2.6, BLUE, -0.1, -0.9, 0));
-  wrist.add(box(3.8, 0.35, 2.2, BLUE, 2.1, -HEAD.drop, 0));
-  wrist.add(box(0.4, 0.2, 0.8, "#bfe9ff", 3.8, -HEAD.drop - 0.2, 0)); // the light under the scoop's tip
+  // the head: a blue housing, the paddle wheel with its black fingers, and the scoop (the blue plate that lies on the floor).
+  // It turns over its own length (`roll`), so that on the way over the top of the robot the scoop keeps its sample on top.
+  const head = new Group();
+  wrist.add(head);
+  head.add(box(1.8, 1.6, 2.6, BLUE, -0.1, -0.9, 0));
+  head.add(box(3.8, 0.35, 2.2, BLUE, 2.1, -HEAD.drop, 0));
+  head.add(box(0.4, 0.2, 0.8, "#bfe9ff", 3.8, -HEAD.drop - 0.2, 0)); // the light under the scoop's tip
   const paddle = new Group();
   paddle.position.set(0.9, -0.5, 1.5);
   const hubMesh = cyl(0.6, 0.6, 0.6, SILVER, 0, 0, 0, 8);
@@ -171,14 +183,15 @@ export function robotModel(): Group {
     finger.add(box(0.35, 1, 0.5, "#111114", 0, 0.3, 0));
     paddle.add(finger);
   }
-  wrist.add(paddle);
+  head.add(paddle);
   const sample = box(3.8, 1.6, 1.6, YELLOW, 2.4, -HEAD.drop + 0.35, 0); // the sample on the scoop
-  wrist.add(sample);
+  head.add(sample);
 
   const pose = (p: RobotPose) => {
     shoulder.rotation.z = p.pitch;
     stage2.position.x = p.extend;
     wrist.rotation.z = p.head - p.pitch;
+    head.rotation.x = p.roll;
     paddle.rotation.z = p.spin;
     sample.visible = p.carrying;
   };

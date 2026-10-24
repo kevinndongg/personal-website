@@ -1,7 +1,10 @@
-// The Into the Deep robot's scoring loop, forever: park, drive up to the submersible, lower the arm and scoop a sample off its
-// floor, fold the arm up with it, drive round to the basket, raise the arm over the bucket, tip the sample in, fold up and drive
-// back to the start square. Like drive.ts and errand.ts it only sets the prop's x, z and heading (the hover lift owns its
-// height, so the robot rides the floor up and down), and it poses the model through `userData.pose` (see ftcrobot.ts).
+// The Into the Deep robot's scoring loop, forever: park, drive to the west end of the submersible, lower the arm and scoop a
+// sample off its floor with the front of the robot, fold the arm up with it, drive to the basket and stop with the robot's
+// back to it, swing the arm up and back over the top of the robot and tip the sample into the bucket behind it, fold up and
+// drive back to the start square. The robot never has to turn round: the sample goes over the top. Like drive.ts and errand.ts
+// it only sets the prop's x, z and heading (the hover lift owns its height, so the robot rides the floor up and down), and it
+// poses the model through `userData.pose` (see ftcrobot.ts). It is a mecanum robot, so it turns while it drives rather than
+// pointing along its route.
 import { CatmullRomCurve3, Vector3, type Group } from "three";
 import { ARM, HEAD, STOWED } from "./ftcrobot";
 import type { ArmPose, RobotPose } from "./ftcrobot";
@@ -12,7 +15,8 @@ const SPEED = 24; // px/s along the route (the robot eases out of and into each 
 const SPIN_RATE = 14; // rad/s of the paddle wheel while it is running
 const FLOOR_Y = 1.2; // the top of the submersible's floor plate, where the scoop lies
 const OVER_RIM = 2.5; // how far above the bucket's rim the head holds the sample
-const DUMP = (-60 * Math.PI) / 180; // the head tipped forward to slide the sample out
+const TIP = (60 * Math.PI) / 180; // the head tipped nose down to slide the sample out
+const TURN = Math.PI * 2;
 
 const smooth = (k: number) => {
   const c = Math.min(1, Math.max(0, k));
@@ -24,18 +28,29 @@ const mix = (a: ArmPose, b: ArmPose, k: number): ArmPose => ({
   pitch: lerp(a.pitch, b.pitch, k),
   extend: lerp(a.extend, b.extend, k),
   head: lerp(a.head, b.head, k),
+  roll: lerp(a.roll, b.roll, k),
 });
 
 /**
- * The arm pose that puts the wrist pivot over `target` (world px) at `height`, for a robot standing at `at` facing `heading`:
- * the pivot is held back from the target by `HEAD.reach`, so the sample on the scoop ends up on it.
+ * The arm pose that puts the sample on the scoop over `target` (world px) at `height`, for a robot standing at `at` facing
+ * `heading`. In front (`back` false) the scoop points forward, so the wrist pivot is held `HEAD.reach` short of the target;
+ * behind (`back` true) the arm leans over the top of the robot and the scoop points backward, so the pivot is that far in front
+ * of it, and the head is turned over so that the sample stays on top.
  */
-function reach(at: { x: number; y: number }, heading: number, target: { x: number; y: number }, height: number): ArmPose {
-  const sx = at.x + Math.cos(heading) * ARM.x;
-  const sy = at.y + Math.sin(heading) * ARM.x;
-  const d = Math.max(0.1, Math.hypot(target.x - sx, target.y - sy) - HEAD.reach);
+function reach(at: { x: number; y: number }, heading: number, target: { x: number; y: number }, height: number, back: boolean): ArmPose {
+  const fx = Math.cos(heading);
+  const fy = Math.sin(heading);
+  const sx = at.x + fx * ARM.x;
+  const sy = at.y + fy * ARM.x;
+  const along = (target.x - sx) * fx + (target.y - sy) * fy; // negative: behind the shoulder
+  const d = back ? along + HEAD.reach : along - HEAD.reach;
   const h = height - ARM.y;
-  return { pitch: Math.atan2(h, d), extend: Math.max(0, Math.hypot(d, h) - ARM.base), head: 0 };
+  return {
+    pitch: Math.atan2(h, d), // past a quarter turn when the target is behind
+    extend: Math.max(0, Math.hypot(d, h) - ARM.base),
+    head: back ? Math.PI : 0,
+    roll: back ? Math.PI : 0,
+  };
 }
 
 interface Pose {
@@ -46,8 +61,9 @@ interface Pose {
 
 interface Phase {
   dur: number;
-  /** Where the robot stands (a stop), or the route it drives (then `at` is not used). */
+  /** Where the robot stands (a stop). */
   at?: Pose;
+  /** Or the route it drives, turning from the heading it sets off with to the one it stops with. */
   route?: { curve: CatmullRomCurve3; h0: number; h1: number };
   arm: [ArmPose, ArmPose];
   spin?: boolean;
@@ -66,17 +82,19 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
     return c;
   };
 
-  const { intake, score, via } = cfg;
-  // at each stop the robot faces what it is working on
+  const { intake, score } = cfg;
+  // at the submersible the front of the robot faces the sample; at the basket its back does
   const intakeAt: Pose = { ...intake.at, h: Math.atan2(intake.target.y - intake.at.y, intake.target.x - intake.at.x) };
-  const scoreAt: Pose = { ...score.at, h: Math.atan2(score.target.y - score.at.y, score.target.x - score.at.x) };
-  const intakeArm = reach(intakeAt, intakeAt.h, intake.target, FLOOR_Y + HEAD.drop);
-  const scoreArm = reach(scoreAt, scoreAt.h, score.target, score.rim + OVER_RIM);
-  const dumpArm: ArmPose = { ...scoreArm, head: DUMP };
+  const scoreAt: Pose = { ...score.at, h: Math.atan2(score.at.y - score.target.y, score.at.x - score.target.x) };
+  const intakeArm = reach(intakeAt, intakeAt.h, intake.target, FLOOR_Y + HEAD.drop, false);
+  const scoreArm = reach(scoreAt, scoreAt.h, score.target, score.rim + OVER_RIM, true);
+  const tipArm: ArmPose = { ...scoreArm, head: scoreArm.head + TIP };
+  // coming back, the head carries on round the way it was going, so that it ends where it started without unwinding
+  const foldArm: ArmPose = { ...STOWED, head: TURN, roll: TURN };
 
-  const out = curve([home, intakeAt]);
-  const mid = curve([intakeAt, ...via, scoreAt]);
-  const back = curve([scoreAt, ...[...via].reverse(), home]);
+  const out = curve([home, ...cfg.out, intakeAt]);
+  const over = curve([intakeAt, ...cfg.over, scoreAt]);
+  const back = curve([scoreAt, ...cfg.home, home]);
   const drive = (c: CatmullRomCurve3) => Math.max(1.8, c.getLength() / SPEED);
   const never = () => false;
   const always = () => true;
@@ -87,10 +105,10 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
     { dur: 1.2, at: intakeAt, arm: [STOWED, intakeArm], spin: true, carry: never }, // lowers the arm, the paddle starting up
     { dur: 1.6, at: intakeAt, arm: [intakeArm, intakeArm], spin: true, carry: (u) => u > 0.55 }, // the sample rolls on
     { dur: 1.0, at: intakeAt, arm: [intakeArm, STOWED], carry: always },
-    { dur: drive(mid), route: { curve: mid, h0: intakeAt.h, h1: scoreAt.h }, arm: [STOWED, STOWED], carry: always },
-    { dur: 1.8, at: scoreAt, arm: [STOWED, scoreArm], carry: always },
-    { dur: 0.9, at: scoreAt, arm: [scoreArm, dumpArm], carry: (u) => u < 0.5 }, // tips, and the sample slides out over the bucket
-    { dur: 1.0, at: scoreAt, arm: [dumpArm, STOWED], carry: never },
+    { dur: drive(over), route: { curve: over, h0: intakeAt.h, h1: scoreAt.h }, arm: [STOWED, STOWED], carry: always },
+    { dur: 2.0, at: scoreAt, arm: [STOWED, scoreArm], carry: always }, // up, back over the top of the robot
+    { dur: 0.9, at: scoreAt, arm: [scoreArm, tipArm], carry: (u) => u < 0.5 }, // tips, and the sample slides out into the bucket
+    { dur: 1.2, at: scoreAt, arm: [tipArm, foldArm], carry: never },
     { dur: drive(back), route: { curve: back, h0: scoreAt.h, h1: home.h }, arm: [STOWED, STOWED], carry: never },
   ];
   const total = phases.reduce((s, p) => s + p.dur, 0);
@@ -113,12 +131,8 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
 
     let at: Pose;
     if (ph.route) {
-      // follow the route, turning from the heading it set off with onto the way it is going, and onto the heading it stops with
       const p = ph.route.curve.getPointAt(k);
-      const d = ph.route.curve.getTangentAt(k);
-      let h = ph.route.h0 + wrap(Math.atan2(d.z, d.x) - ph.route.h0) * smooth(k / 0.2);
-      h += wrap(ph.route.h1 - h) * smooth((k - 0.75) / 0.25);
-      at = { x: p.x, y: p.z, h };
+      at = { x: p.x, y: p.z, h: ph.route.h0 + wrap(ph.route.h1 - ph.route.h0) * k };
     } else {
       at = ph.at!;
     }

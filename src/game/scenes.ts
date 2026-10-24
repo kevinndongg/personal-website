@@ -50,12 +50,14 @@ export interface Prop {
 
 /** What the Into the Deep robot does, all in world px: where it stands and what it reaches for, and the way round between. */
 export interface RobotCycle {
-  /** Where it stands to pick up, and the point on the floor the scoop goes to. */
+  /** Where it stands to pick up, with its front to the point on the floor the scoop goes to. */
   intake: { at: { x: number; y: number }; target: { x: number; y: number } };
-  /** Where it stands to score, the bucket it reaches over, and the height of that bucket's rim. */
+  /** Where it stands to score, with its back to the bucket it reaches over, and the height of that bucket's rim. */
   score: { at: { x: number; y: number }; target: { x: number; y: number }; rim: number };
-  /** Waypoints on the way from the first stop to the second (and back the same way). */
-  via: { x: number; y: number }[];
+  /** Waypoints on the way from the start square to the intake stop, from there to the scoring stop, and from there home. */
+  out: { x: number; y: number }[];
+  over: { x: number; y: number }[];
+  home: { x: number; y: number }[];
 }
 
 export interface PropFocus {
