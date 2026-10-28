@@ -342,6 +342,10 @@ export class Renderer3D {
   private slab!: Mesh;
   private width = 1;
   private height = 1;
+  private sun!: DirectionalLight;
+  private disposed = false;
+  /** What the last scene draw cost, kept because `renderer.info` is reset by the post pass that follows it (dev only). */
+  private drawn = { calls: 0, triangles: 0 };
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -397,17 +401,24 @@ export class Renderer3D {
     // low warm sun from the front-left (long soft shadows toward the back-right) plus a cool sky fill
     scene.add(new HemisphereLight("#d8e4ff", "#8d826f", 0.95));
     scene.add(new AmbientLight("#ffffff", 0.22));
-    const sun = new DirectionalLight("#ffd9a6", 2.4);
+    const sun = (this.sun = new DirectionalLight("#ffd9a6", 2.4));
     sun.position.set(mapSize / 2 - 420, 300, mapSize / 2 + 380);
     sun.target.position.copy(this.center);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(4096, 4096);
     sun.shadow.radius = 4;
+    // The shadow map is fitted to what can cast a shadow onto what is seen, in the sun's own view (x across, y up it). The
+    // map is 768 across and tall, and the sun looks at it from the front-left, 28 degrees up, so the map's footprint there
+    // is 1084 x 630 (heights up to 260 added: the cranes are 78, and a zoomed project's props grow). The photography page,
+    // zoomed, shows the region round the table, which reaches a little past the map to the right. The numbers below are
+    // that, with a margin, and the map has the same 3 texels a unit as the square 1360 x 1360 one it replaced, in about half
+    // the texels. (If the map, the sun or the tallest prop changes, work these out again: project the corners of the map's
+    // box onto the sun's right and up axes.)
     const cam = sun.shadow.camera;
-    cam.left = -680;
-    cam.right = 680;
-    cam.top = 680;
-    cam.bottom = -680;
+    cam.left = -590;
+    cam.right = 630;
+    cam.top = 490;
+    cam.bottom = -300;
+    sun.shadow.mapSize.set(3664, 2384); // (3 texels a unit across the 1220 x 790 window)
     cam.near = 50;
     cam.far = 1700;
     sun.shadow.bias = -0.0004;
@@ -948,6 +959,7 @@ export class Renderer3D {
   }
 
   draw(time: number) {
+    if (this.disposed) return;
     const { renderer } = this;
 
     // ease the camera toward its target (a gentle exponential approach: quick start, soft landing)
@@ -1085,8 +1097,15 @@ export class Renderer3D {
     // scene -> multisampled target, then the grade / grain pass to the screen
     renderer.setRenderTarget(this.colorTarget);
     renderer.render(this.scene, this.camera);
+    if (import.meta.env.DEV) this.drawn = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
     renderer.setRenderTarget(null);
     renderer.render(this.quadScene, this.quadCamera);
+  }
+
+  /** Dev probe: draw calls (the shadow pass counts) and triangles of the last scene draw, and what the GPU is holding. */
+  stats() {
+    const { memory } = this.renderer.info;
+    return { ...this.drawn, geometries: memory.geometries, textures: memory.textures };
   }
 
   /** Puts a texture on the GPU now, instead of in the first frame that draws with it. */
@@ -1099,6 +1118,7 @@ export class Renderer3D {
    * the first one the viewer sees does not have to. Asynchronous: the page keeps painting while it compiles.
    */
   async warm() {
+    if (this.disposed) return;
     try {
       await this.renderer.compileAsync(this.scene, this.camera);
     } catch {
@@ -1112,14 +1132,29 @@ export class Renderer3D {
     this.draw(this.lastTime);
   }
 
+  /**
+   * Lets go of everything the scene put on the GPU, and the context itself: a new scene is built (with a context of its
+   * own) every time the page is visited, and a browser only allows so many at once.
+   */
   dispose() {
-    if (this.invite) {
-      const material = this.invite.mesh.material as MeshBasicMaterial;
-      material.map?.dispose();
-      material.dispose();
-      this.invite.mesh.geometry.dispose();
-    }
-    this.renderer.dispose();
+    this.disposed = true;
+    // (the geometries, materials and textures of the models; some are shared between scenes through the model caches, which
+    // is fine: what the GPU holds is per renderer, and the next scene uploads them again)
+    this.scene.traverse((o) => {
+      const m = o as Mesh;
+      if (!m.isMesh) return;
+      m.geometry.dispose();
+      for (const material of Array.isArray(m.material) ? m.material : [m.material]) {
+        for (const value of Object.values(material)) if ((value as Texture | null)?.isTexture) (value as Texture).dispose();
+        material.dispose();
+      }
+    });
+    for (const texture of [this.groundTex, this.edgeMask, this.dapple]) texture.dispose();
+    this.sun.shadow.map?.dispose();
+    this.quad.dispose();
+    this.quadScene.traverse((o) => (o as Mesh).geometry?.dispose());
     this.colorTarget.dispose();
+    this.renderer.dispose();
+    this.renderer.forceContextLoss();
   }
 }

@@ -232,6 +232,8 @@ export class FilmRig {
    * counts as done). Resolves when all have been. Set by the table model (the images and textures are its own).
    */
   warmUp?: (upload: (texture: Texture) => void, onPhoto?: (done: number, total: number) => void) => Promise<void>;
+  /** Lets go of the photos' textures and decoded bitmaps (the scene is being taken down). Set by the table model. */
+  dispose?: () => void;
   /** Whether the gallery is open (set by the camera model): the idle pass is quicker then. */
   isOpen = false;
   /**
@@ -1253,6 +1255,15 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
         setTimeout(resolve, 60); // (a hidden tab does not run animation frames)
       });
     }
+  };
+
+  rig.dispose = () => {
+    for (const e of textures.values()) {
+      e.small.dispose();
+      e.full?.dispose();
+      e.bitmap?.close();
+    }
+    textures.clear();
   };
 
   // ---- painting a page

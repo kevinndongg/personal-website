@@ -24,12 +24,14 @@ const fileOf = new Map<string, string>(); // a photo's url (below) -> the file i
 const reel = lightTableOrder(
   await Promise.all(
     sortPhotos(photos).map(async (p) => {
-      const { width, height } = p.data.image;
-      const src = (await getImage({ src: p.data.image, width: 1400 })).src;
+      // (the aspect comes from the image that is served, not from `p.data.image`: reading anything but `fsPath` off an imported
+      // image makes Astro keep the original, 10-15 MB each, in the build as well as the sizes made from it)
+      const image = await getImage({ src: p.data.image, width: 1400 });
+      const src = image.src;
       fileOf.set(src, (p.data.image as { fsPath?: string }).fsPath ?? "");
       return {
         src,
-        aspect: width / height,
+        aspect: Number(image.attributes.width) / Number(image.attributes.height),
         title: p.data.title,
         location: p.data.location,
       };

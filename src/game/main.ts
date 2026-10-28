@@ -711,6 +711,8 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
           if (z) open(z);
         },
         setHover: (id: string | null) => (hoveredId = id),
+        /** What the last scene draw cost (shadow pass included): draw calls and triangles, and what the GPU is holding. */
+        info: () => renderer.stats(),
         /** The last ~300 gaps between frames (ms), and the worst few. */
         frames: () => ({ gaps: [...gaps], worst: [...gaps].sort((a, b) => b - a).slice(0, 6).map((g) => Math.round(g)) }),
         /**
@@ -799,7 +801,12 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     clearTimeout(toastTimer);
     toast.remove();
     intro?.cancel();
-    for (const zone of world.zones) if (zone.kind === "gallery") filmRig(zone).onFrame = undefined;
+    for (const zone of world.zones) {
+      if (zone.kind !== "gallery") continue;
+      const rig = filmRig(zone);
+      rig.onFrame = undefined;
+      rig.dispose?.();
+    }
     panel.destroy();
     abort.abort();
     renderer.dispose();
