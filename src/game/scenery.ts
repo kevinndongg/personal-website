@@ -928,6 +928,8 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
   const clipL = new Plane();
   const clipR = new Plane();
   const clip = [clipL, clipR];
+  const across = new Vector3(); // (scratch for the planes, rebuilt every frame)
+  const edge = new Vector3();
   // The map's black and white is made as the film is drawn, not baked: one pair of values, shared by every film material
   // (`gray` 1 = black and white .. 0 = colour, `dim` = brightness), set each frame from how lit the table is. So the live
   // layers are what the map shows too, and the page slides there exactly as it does open.
@@ -1515,9 +1517,9 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     // the clip planes: the plate's left and right edges, in the world as it is now
     top.updateWorldMatrix(true, false);
     const me = top.matrixWorld;
-    const across = new Vector3(me.elements[0], me.elements[1], me.elements[2]).normalize();
-    clipL.setFromNormalAndCoplanarPoint(across, new Vector3(-plateW / 2, 0, 0).applyMatrix4(me));
-    clipR.setFromNormalAndCoplanarPoint(across.clone().negate(), new Vector3(plateW / 2, 0, 0).applyMatrix4(me));
+    across.set(me.elements[0], me.elements[1], me.elements[2]).normalize();
+    clipL.setFromNormalAndCoplanarPoint(across, edge.set(-plateW / 2, 0, 0).applyMatrix4(me));
+    clipR.setFromNormalAndCoplanarPoint(across.negate(), edge.set(plateW / 2, 0, 0).applyMatrix4(me));
     // Photos at their own resolution, once the table is hovered or opened: one plane a frame (a mipmapped upload each), so
     // a page's six never land in one frame; a page that has just slid in sharpens within a few frames of arriving.
     if (hover > 0.5 || focus > 0.02 || looking) {

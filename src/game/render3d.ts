@@ -80,13 +80,19 @@ const POST_FS = `
     float outside = max(max(focusRect.x - vUv.x, vUv.x - focusRect.z), max(focusRect.y - vUv.y, vUv.y - focusRect.w));
     float away = smoothstep(0.0, 0.16, outside) * focusAmt; // 0 inside the focused box, 1 well outside
     float blur = away * 3.2; // radius in pixels
-    float bg = 1.0 - texture2D(tColor, vUv).a; // the scene clears to alpha 0, so this is how much of this pixel is the dark surface
-    vec3 c = scene(vUv) * 0.2270270270;
-    float w1 = 0.3162162162, w2 = 0.0702702703;
-    vec2 o1 = vec2(0.0, 1.3846153846) * texel.y * blur;
-    vec2 o2 = vec2(0.0, 3.2307692308) * texel.y * blur;
-    c += scene(vUv + o1) * w1 + scene(vUv - o1) * w1;
-    c += scene(vUv + o2) * w2 + scene(vUv - o2) * w2;
+    vec4 here = texture2D(tColor, vUv);
+    float bg = 1.0 - here.a; // the scene clears to alpha 0, so this is how much of this pixel is the dark surface
+    vec3 mid = here.rgb + bg * voidCol; // (this pixel, as scene(vUv) gives it)
+    vec3 c = mid;
+    // (the weights add up to 1, so with no blur the taps would only read this pixel again: skipped, the result is the same)
+    if (blur > 0.002) {
+      c *= 0.2270270270;
+      float w1 = 0.3162162162, w2 = 0.0702702703;
+      vec2 o1 = vec2(0.0, 1.3846153846) * texel.y * blur;
+      vec2 o2 = vec2(0.0, 3.2307692308) * texel.y * blur;
+      c += scene(vUv + o1) * w1 + scene(vUv - o1) * w1;
+      c += scene(vUv + o2) * w2 + scene(vUv - o2) * w2;
+    }
 
     // grade: slightly muted, warm highlights, cool green-teal shadows, a little contrast
     float l = dot(c, vec3(0.299, 0.587, 0.114));
@@ -112,7 +118,7 @@ const POST_FS = `
 
     // zoomed right into a photo: no grade at all (no muting, tint, exposure, vignette or grain), so the pixels on screen
     // are the photo's own; only the dimming away from it stays, for the margins round it
-    vec3 raw = scene(vUv) * (1.0 - 0.42 * away);
+    vec3 raw = mid * (1.0 - 0.42 * away);
     gl_FragColor = vec4(mix(c, raw, pure), 1.0);
   }
 `;
@@ -283,7 +289,7 @@ export class Renderer3D {
   /** The pulsing halo round the racing area that says "start here" (`on` until the viewer opens something). */
   private invite: { mesh: Mesh; on: boolean; amount: number } | null = null;
   /** Per-model animation callbacks (see `userData.animate` in models.ts) grouped by zone. */
-  private animators: { fn: (c: AnimCtx) => void; zoneId: string }[] = [];
+  private animators: { fn: (c: AnimCtx) => void; zoneId: string; pauseOnHover: boolean }[] = [];
   /** Props that grow and move while their project is zoomed into (`Prop.focus`), with the placement they start from. */
   private focusProps: {
     model: Object3D;
@@ -475,7 +481,9 @@ export class Renderer3D {
         if (p.errand) attachErrand(model, p.errand, Math.PI / 2); // (he stops facing south, toward the grill)
         if (p.cycle) attachCycle(model, p.cycle);
         model.traverse((o) => {
-          if (typeof o.userData.animate === "function") this.animators.push({ fn: o.userData.animate, zoneId: zone.id });
+          if (typeof o.userData.animate === "function") {
+            this.animators.push({ fn: o.userData.animate, zoneId: zone.id, pauseOnHover: !!zone.scene.animation?.pauseOnHover });
+          }
         });
         map.add(model);
         this.pickables.push(model);
@@ -849,6 +857,7 @@ export class Renderer3D {
   }
 
   private pulseNow = 0.5;
+  private scratch = new Vector3(); // (for the per-frame work in `draw`, which should not allocate)
 
   /** Where the halo is in its pulse, 0 (dimmest) to 1 (brightest): the note beside it breathes with this, so the two stay in step. */
   get invitePulse(): number {
@@ -1027,7 +1036,7 @@ export class Renderer3D {
     for (const a of this.animators) {
       const hover = this.hoverAmount.get(a.zoneId) ?? 0;
       const focus = this.zoneFocus.get(a.zoneId) ?? 0;
-      const pause = this.world.zones.find((z) => z.id === a.zoneId)?.scene.animation?.pauseOnHover && hover > 0.5;
+      const pause = a.pauseOnHover && hover > 0.5;
       if (!pause) this.frozenT.set(a.zoneId, time);
       a.fn({ t: this.reduceMotion ? 0 : (this.frozenT.get(a.zoneId) ?? time), hover, focus, pixel });
     }
@@ -1052,7 +1061,7 @@ export class Renderer3D {
         };
         if (pts) {
           // zoomed into one thing on the project (a photo on the table): keep that sharp, and let the rest fall back
-          for (const p of pts) take(p.clone().project(this.camera));
+          for (const p of pts) take(this.scratch.copy(p).project(this.camera));
         } else {
           for (const y of [0, zone.scene.height ?? 26]) {
             for (const [x, z] of [
@@ -1061,7 +1070,7 @@ export class Renderer3D {
               [a.x, a.y + a.h],
               [a.x + a.w, a.y + a.h],
             ]) {
-              take(new Vector3(x, y, z).project(this.camera));
+              take(this.scratch.set(x, y, z).project(this.camera));
             }
           }
         }

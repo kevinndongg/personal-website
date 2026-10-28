@@ -14,6 +14,30 @@ let sceneCount = 0; // dev only: how many times a scene has been started in this
 const nextPaint = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 
 /**
+ * Runs `fn` with the latest event at most once per frame. A pointer move is looked into by a raycast through the whole scene,
+ * and a fast mouse sends many of them between two frames, of which only the last can be seen.
+ */
+function oncePerFrame<E>(fn: (e: E) => void, signal: AbortSignal) {
+  let pending: E | null = null;
+  let id = 0;
+  return {
+    push(e: E) {
+      pending = e;
+      id ||= requestAnimationFrame(() => {
+        id = 0;
+        const e = pending;
+        pending = null;
+        if (e && !signal.aborted) fn(e);
+      });
+    },
+    /** Drops a move that has not been looked into yet (the pointer has left since). */
+    cancel() {
+      pending = null;
+    },
+  };
+}
+
+/**
  * The outline of a page torn out of a notebook, for a box `w` x `h` px, as a CSS polygon: every side ragged, and along the
  * left the half-holes the binding leaves. Seeded, so that a box of one size is torn the same way every time.
  */
@@ -60,17 +84,26 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     const hit = renderer.pick(e.clientX, e.clientY);
     return hit?.propId === "formula" && !!hit.zoneId && renderer.driveCar(hit.zoneId);
   };
+  const backdropMove = oncePerFrame((e: PointerEvent) => {
+    const onCar = renderer.pick(e.clientX, e.clientY)?.propId === "formula";
+    backdrop.style.cursor = onCar ? "pointer" : "";
+    renderer.hoverCar(onCar);
+  }, signal);
   backdrop.addEventListener(
     "pointermove",
     (e) => {
-      if (e.pointerType === "touch") return;
-      const onCar = renderer.pick(e.clientX, e.clientY)?.propId === "formula";
-      backdrop.style.cursor = onCar ? "pointer" : "";
-      renderer.hoverCar(onCar);
+      if (e.pointerType !== "touch") backdropMove.push(e);
     },
     { signal }
   );
-  backdrop.addEventListener("pointerleave", () => renderer.hoverCar(false), { signal });
+  backdrop.addEventListener(
+    "pointerleave",
+    () => {
+      backdropMove.cancel();
+      renderer.hoverCar(false);
+    },
+    { signal }
+  );
   const mapSize = world.w * TILE;
 
   let hoveredId: string | null = null; // project box under the pointer
@@ -360,35 +393,38 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     return true;
   };
 
+  const canvasMove = oncePerFrame((e: PointerEvent) => {
+    if (panel.isOpen) {
+      if (openZone?.kind === "gallery") {
+        const hit = renderer.pick(e.clientX, e.clientY);
+        lightControl(hit);
+        const zoomed = filmRig(openZone).mode === "photo";
+        canvas.style.cursor = zoomed
+          ? "zoom-out"
+          : control(hit) || photoUnder(hit) !== null
+            ? "pointer"
+            : onFilm(hit) || onCamera(hit)
+              ? "default"
+              : "zoom-out";
+      }
+      return;
+    }
+    const hit = renderer.pick(e.clientX, e.clientY);
+    hoveredId = hit ? (zoneAt(hit.x, hit.y)?.id ?? null) : null;
+    canvas.style.cursor = hoveredId ? "pointer" : "default";
+    renderer.hoverCar(hit?.propId === "formula");
+  }, signal);
   canvas.addEventListener(
     "pointermove",
     (e) => {
-      if (e.pointerType === "touch") return;
-      if (panel.isOpen) {
-        if (openZone?.kind === "gallery") {
-          const hit = renderer.pick(e.clientX, e.clientY);
-          lightControl(hit);
-          const zoomed = filmRig(openZone).mode === "photo";
-          canvas.style.cursor = zoomed
-            ? "zoom-out"
-            : control(hit) || photoUnder(hit) !== null
-              ? "pointer"
-              : onFilm(hit) || onCamera(hit)
-                ? "default"
-                : "zoom-out";
-        }
-        return;
-      }
-      const hit = renderer.pick(e.clientX, e.clientY);
-      hoveredId = hit ? (zoneAt(hit.x, hit.y)?.id ?? null) : null;
-      canvas.style.cursor = hoveredId ? "pointer" : "default";
-      renderer.hoverCar(hit?.propId === "formula");
+      if (e.pointerType !== "touch") canvasMove.push(e);
     },
     { signal }
   );
   canvas.addEventListener(
     "pointerleave",
     () => {
+      canvasMove.cancel();
       renderer.hoverCar(false);
       if (!panel.isOpen) hoveredId = null;
       else lightControl(null);
@@ -620,6 +656,8 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
   // one step (a 100 ms frame is nearly half of it): the zoom out of a project is heavy to draw halfway, and it showed up as
   // smooth, then a jump near the end. Capped like this a slow stretch just plays slower instead.
   const MAX_STEP = 1 / 30;
+  const PULSE_EVERY_MS = 30; // (a hair under 1/30 s, so a 60 Hz screen lands on every other frame, not every third)
+  let lastPulse = 0;
 
   // dev only: after a project is closed, what the zoom did frame by frame, to find stalls and jumps (`__game.lastClose()`)
   const gaps: number[] = []; // milliseconds between frames, newest last
@@ -636,7 +674,12 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     updateHover(dt);
     syncZoom();
     renderer.draw(time);
-    if (hint && !hint.classList.contains("gone")) hint.style.setProperty("--pulse", renderer.invitePulse.toFixed(3)); // (the note breathes with the glow)
+    // (the note breathes with the glow. Each new value repaints its filtered shadows on the main thread, and a 2.4 s breath
+    // is as smooth at 30 steps a second as at 60: so no more often than that)
+    if (hint && now - lastPulse >= PULSE_EVERY_MS && !hint.classList.contains("gone")) {
+      lastPulse = now;
+      hint.style.setProperty("--pulse", renderer.invitePulse.toFixed(3));
+    }
     updateLabels();
     if (import.meta.env.DEV) {
       gaps.push(gap);
