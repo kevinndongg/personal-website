@@ -26,6 +26,17 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
   return node;
 }
 
+/** The card is laid out for a window of this size; a larger window scales it up (to CARD_SCALE_MAX), a smaller one leaves it as is. */
+const CARD_BASE_W = 1440;
+const CARD_BASE_H = 820;
+const CARD_SCALE_MAX = 1.75;
+const CARD_WIDTH = 460;
+
+/** How much bigger than its base size the card is for this window: the limiting side decides, so a wide but short window gets no oversized card. */
+export function cardScale(w = innerWidth, h = innerHeight): number {
+  return Math.min(CARD_SCALE_MAX, Math.max(1, Math.min(w / CARD_BASE_W, h / CARD_BASE_H)));
+}
+
 /** The project card that slides in beside the zoomed-in project box (a bottom sheet on narrow screens). */
 export class Panel {
   private root: HTMLElement;
@@ -66,6 +77,7 @@ export class Panel {
     this.tags = root.querySelector("[data-tags]")!;
     this.actions = root.querySelector("[data-actions]")!;
     this.grip = root.querySelector("[data-grip]")!;
+    addEventListener("resize", () => this.fit(), { signal });
     root.querySelector("[data-close]")!.addEventListener("click", () => this.close(), { signal });
     backdrop.addEventListener(
       "pointerdown",
@@ -92,8 +104,15 @@ export class Panel {
     // the photography page has no card, so the scene may use the whole screen
     if (zone && isLinkOnly(zone)) return 0;
     if (side === "bottom") return 0.5;
-    const w = Math.min(460, innerWidth * 0.42);
+    const w = Math.min(CARD_WIDTH * cardScale(), innerWidth * 0.42);
     return Math.min(0.55, (w + Math.max(24, innerWidth * 0.03) + 16) / innerWidth);
+  }
+
+  /** Size the card for the window: the CSS reads --card-scale (the bottom sheet stays at its own size; the gallery link scales with the window). */
+  private fit() {
+    const sheet = this.root.dataset.side === "bottom" && this.root.dataset.variant !== "link";
+    const scale = sheet ? 1 : cardScale();
+    this.root.style.setProperty("--card-scale", String(+scale.toFixed(3)));
   }
 
   open(zone: Zone, side: PanelSide) {
@@ -104,6 +123,7 @@ export class Panel {
     this.setExpanded(false);
     this.root.dataset.side = side;
     this.root.dataset.variant = linkOnly ? "link" : "card";
+    this.fit();
     // the link sits over a scene that stays clickable (the camera's controls, the table), so nothing is dimmed or blocked
     this.root.setAttribute("aria-modal", String(!linkOnly));
     if (linkOnly && !empty) this.root.setAttribute("aria-label", `${zone.label}: link to the full gallery`);

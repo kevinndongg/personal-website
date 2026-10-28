@@ -390,9 +390,9 @@ html:has(.game) body {
 .panel[data-side="right"],
 .panel[data-side="left"] {
   top: 50%;
-  width: min(460px, 42vw);
+  width: min(calc(460px * var(--card-scale, 1)), 42vw);
   max-height: calc(100% - 48px);
-  border-radius: 18px;
+  border-radius: calc(18px * var(--card-scale, 1));
 }
 
 .panel[data-side="right"] {
@@ -455,13 +455,13 @@ html:has(.game) body {
 
 .close {
   position: absolute;
-  top: 14px;
-  right: 14px;
+  top: calc(14px * var(--card-scale, 1));
+  right: calc(14px * var(--card-scale, 1));
   z-index: 2;
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: calc(34px * var(--card-scale, 1));
+  height: calc(34px * var(--card-scale, 1));
   padding: 0;
   color: var(--ink);
   background: color-mix(in srgb, var(--paper) 86%, transparent);
@@ -484,15 +484,15 @@ html:has(.game) body {
 
 .body {
   display: grid;
-  gap: 12px;
-  padding: 20px 22px 22px;
+  gap: calc(12px * var(--card-scale, 1));
+  padding: calc(20px * var(--card-scale, 1)) calc(22px * var(--card-scale, 1)) calc(22px * var(--card-scale, 1));
 }
 
 .head {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
-  padding-right: 34px; /* clear of the close button */
+  gap: calc(14px * var(--card-scale, 1));
+  padding-right: calc(34px * var(--card-scale, 1)); /* clear of the close button */
 }
 
 .head[hidden],
@@ -505,23 +505,23 @@ html:has(.game) body {
   flex: none;
   width: auto;
   height: auto;
-  max-width: 112px;
-  max-height: 48px;
-  margin-top: 2px;
+  max-width: calc(112px * var(--card-scale, 1));
+  max-height: calc(48px * var(--card-scale, 1));
+  margin-top: calc(2px * var(--card-scale, 1));
   object-fit: contain;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--card-scale, 1));
 }
 
 .head-text {
   display: grid;
-  gap: 4px;
+  gap: calc(4px * var(--card-scale, 1));
   min-width: 0;
 }
 
 /* the date, under the role */
 .kicker {
-  margin: 2px 0 0;
-  font-size: 12px;
+  margin: calc(2px * var(--card-scale, 1)) 0 0;
+  font-size: calc(12px * var(--card-scale, 1));
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -532,7 +532,7 @@ html:has(.game) body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 10px;
+  gap: calc(6px * var(--card-scale, 1)) calc(10px * var(--card-scale, 1));
 }
 
 .head-meta[hidden],
@@ -543,15 +543,15 @@ html:has(.game) body {
 
 .org {
   margin: 0;
-  font-size: 13.5px;
+  font-size: calc(13.5px * var(--card-scale, 1));
   line-height: 1.4;
   color: var(--ink-soft);
 }
 
 /* a project still on the default site is not finished: say so */
 .badge {
-  padding: 2px 9px;
-  font-size: 11px;
+  padding: calc(2px * var(--card-scale, 1)) calc(9px * var(--card-scale, 1));
+  font-size: calc(11px * var(--card-scale, 1));
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -564,7 +564,7 @@ html:has(.game) body {
 .panel h2 {
   margin: 0;
   font-family: var(--font-display, serif);
-  font-size: clamp(24px, 2.2vw, 30px);
+  font-size: calc(clamp(24px, 2.2vw, 30px) * var(--card-scale, 1));
   font-weight: 500;
   line-height: 1.12;
   letter-spacing: -0.01em;
@@ -573,14 +573,14 @@ html:has(.game) body {
 
 .role {
   margin: 0;
-  font-size: 15px;
+  font-size: calc(15px * var(--card-scale, 1));
   font-weight: 500;
   color: var(--ink-soft);
 }
 
 .summary {
-  margin: 2px 0 0;
-  font-size: 15.5px;
+  margin: calc(2px * var(--card-scale, 1)) 0 0;
+  font-size: calc(15.5px * var(--card-scale, 1));
   line-height: 1.55;
   color: var(--ink);
 }
@@ -588,8 +588,8 @@ html:has(.game) body {
 /* the results: the part a recruiter actually wants */
 .bullets {
   display: grid;
-  gap: 9px;
-  margin: 2px 0 0;
+  gap: calc(9px * var(--card-scale, 1));
+  margin: calc(2px * var(--card-scale, 1)) 0 0;
   padding: 0;
   list-style: none;
 }
@@ -600,8 +600,8 @@ html:has(.game) body {
 
 .bullets li {
   position: relative;
-  padding-left: 16px;
-  font-size: 14.5px;
+  padding-left: calc(16px * var(--card-scale, 1));
+  font-size: calc(14.5px * var(--card-scale, 1));
   line-height: 1.5;
   color: var(--ink);
 }
@@ -611,8 +611,8 @@ html:has(.game) body {
   position: absolute;
   left: 1px;
   top: 0.62em;
-  width: 6px;
-  height: 6px;
+  width: calc(6px * var(--card-scale, 1));
+  height: calc(6px * var(--card-scale, 1));
   border-radius: 50%;
   background: var(--ink);
 }
@@ -620,8 +620,8 @@ html:has(.game) body {
 .tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin: 4px 0 0;
+  gap: calc(6px * var(--card-scale, 1));
+  margin: calc(4px * var(--card-scale, 1)) 0 0;
   padding: 0;
   list-style: none;
 }
@@ -631,8 +631,8 @@ html:has(.game) body {
 }
 
 .tag {
-  padding: 3px 10px;
-  font-size: 12.5px;
+  padding: calc(3px * var(--card-scale, 1)) calc(10px * var(--card-scale, 1));
+  font-size: calc(12.5px * var(--card-scale, 1));
   font-weight: 500;
   color: var(--ink-soft);
   background: var(--paper-2);
@@ -642,15 +642,15 @@ html:has(.game) body {
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
+  gap: calc(8px * var(--card-scale, 1));
+  margin-top: calc(10px * var(--card-scale, 1));
 }
 
 .btn {
   appearance: none;
-  padding: 10px 16px;
+  padding: calc(10px * var(--card-scale, 1)) calc(16px * var(--card-scale, 1));
   font: inherit;
-  font-size: 14.5px;
+  font-size: calc(14.5px * var(--card-scale, 1));
   font-weight: 600;
   color: var(--ink);
   background: transparent;
@@ -719,8 +719,8 @@ html:has(.game) body {
 }
 
 .panel[data-variant="link"] .btn {
-  padding: 8px 6px;
-  font-size: 14px;
+  padding: calc(8px * var(--card-scale, 1)) calc(6px * var(--card-scale, 1));
+  font-size: calc(14px * var(--card-scale, 1));
   font-weight: 500;
   color: #f5f1ea;
   background: none;
