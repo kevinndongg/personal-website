@@ -148,9 +148,10 @@ export function buildGroundLayer(world: World): HTMLCanvasElement {
     }
   }
 
-  // thin black border around each project area
+  // thin black border around each project area (a contact button is no area to look into: it stands on the plain yard)
   ctx.fillStyle = "#16161d";
   for (const z of world.zones) {
+    if (z.kind === "link" || z.kind === "about") continue; // (no black box round a slab or the name)
     const a = z.scene.area;
     ctx.fillRect(a.x, a.y, a.w, 2);
     ctx.fillRect(a.x, a.y + a.h - 2, a.w, 2);

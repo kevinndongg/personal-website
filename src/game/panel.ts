@@ -10,7 +10,14 @@ export type PanelSide = "left" | "right" | "bottom";
  */
 const isLinkOnly = (zone: Zone) => zone.kind === "gallery";
 
-const KIND_LABEL: Record<string, string> = { project: "Project", gallery: "Photography", contact: "Get in touch" };
+const KIND_LABEL: Record<string, string> = { project: "Project", gallery: "Photography", about: "About me" };
+
+/** Follows a link: external ones in a new tab, mailto: in this window, the rest through the site's router. */
+export function openAction(a: ZoneAction) {
+  if (a.external) window.open(a.href, "_blank", "noopener,noreferrer");
+  else if (a.href.startsWith("mailto:")) location.href = a.href;
+  else navigate(a.href);
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string) {
   const node = document.createElement(tag);
@@ -39,6 +46,8 @@ export class Panel {
   isOpen = false;
   /** Called when the panel closes (Esc, the close button or the backdrop). */
   onClose: () => void = () => {};
+  /** Asked when the backdrop is pressed: return true if the press was for something in the scene behind it (the panel stays). */
+  onBackdropPress: (e: PointerEvent) => boolean = () => false;
   /** Asked before Esc closes the panel: return true if it dealt with the key itself (e.g. zoomed back out a level). */
   beforeEscape: () => boolean = () => false;
 
@@ -58,7 +67,13 @@ export class Panel {
     this.actions = root.querySelector("[data-actions]")!;
     this.grip = root.querySelector("[data-grip]")!;
     root.querySelector("[data-close]")!.addEventListener("click", () => this.close(), { signal });
-    backdrop.addEventListener("pointerdown", () => this.close(), { signal });
+    backdrop.addEventListener(
+      "pointerdown",
+      (e) => {
+        if (!this.onBackdropPress(e)) this.close();
+      },
+      { signal }
+    );
     this.grip.addEventListener("click", () => this.setExpanded(!this.root.classList.contains("expanded")), { signal });
     document.addEventListener(
       "keydown",
@@ -152,16 +167,11 @@ export class Panel {
     this.tags.hidden = !zone.techStack?.length;
 
     this.actions.replaceChildren();
-    const open = (a: ZoneAction) => {
-      if (a.external) window.open(a.href, "_blank", "noopener,noreferrer");
-      else if (a.href.startsWith("mailto:")) location.href = a.href;
-      else navigate(a.href);
-    };
     const actions: ZoneAction[] = zone.actions ?? [];
     actions.forEach((a, i) => {
-      const b = el("button", i === 0 && zone.kind !== "contact" ? "btn primary" : "btn", a.label);
+      const b = el("button", i === 0 ? "btn primary" : "btn", a.label);
       b.type = "button";
-      b.addEventListener("click", () => open(a));
+      b.addEventListener("click", () => openAction(a));
       this.actions.append(b);
     });
     this.actions.hidden = actions.length === 0;

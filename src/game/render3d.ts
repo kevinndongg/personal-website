@@ -23,6 +23,7 @@ import {
   Scene,
   ShaderMaterial,
   ShadowMaterial,
+  Texture,
   UnsignedByteType,
   RGBAFormat,
   Vector2,
@@ -31,6 +32,9 @@ import {
   WebGLRenderTarget,
   WebGLRenderer,
 } from "three";
+import { attachLap } from "./drive";
+import { attachErrand } from "./errand";
+import { attachCycle } from "./robotcycle";
 import { GROUND_MARGIN, buildGroundLayer } from "./ground";
 import { createModel, tireModel, woodTexture } from "./models";
 import type { AnimCtx } from "./models";
@@ -143,6 +147,8 @@ function resolveFocus(f: PropFocus): ResolvedFocus {
 const VISUAL_SCALE: Record<string, number> = {
   cone: 1.3,
   person: 1.5,
+  typist: 1.5,
+  walker: 1.5,
   battery: 1.5,
   laptop: 1.6,
   tirestack: 1.4,
@@ -204,6 +210,37 @@ function blurredRectTexture(total: number, inner: number, blur: number): CanvasT
   return new CanvasTexture(c);
 }
 
+/** A soft warm halo just outside a rectangle (the glow that invites a click): `w` x `h` units, the rectangle `margin` in from each edge. */
+function haloTexture(w: number, h: number, margin: number): CanvasTexture {
+  const size = 512;
+  const k = size / w;
+  const c = document.createElement("canvas");
+  c.width = size;
+  c.height = Math.max(2, Math.round(h * k));
+  const ctx = c.getContext("2d")!;
+  // as in blurredRectTexture: only the shadow is wanted, so the outline is drawn far off-canvas and its shadow cast back in
+  const far = size * 4;
+  ctx.shadowColor = "rgb(255, 243, 214)";
+  ctx.shadowBlur = margin * 0.9 * k;
+  ctx.shadowOffsetX = far;
+  ctx.lineWidth = margin * 0.35 * k;
+  ctx.strokeStyle = "#fff";
+  ctx.beginPath();
+  ctx.rect(margin * k - far, margin * k, (w - 2 * margin) * k, (h - 2 * margin) * k);
+  ctx.stroke();
+  ctx.stroke(); // (twice: one pass of a shadow is too faint to read on the dark ground)
+  ctx.stroke();
+  // the glow is for the outside only: the inside of the outline is cleared, so the area itself stays as it is lit
+  ctx.shadowColor = "transparent";
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.beginPath();
+  ctx.rect(margin * k, margin * k, (w - 2 * margin) * k, (h - 2 * margin) * k);
+  ctx.fill();
+  return new CanvasTexture(c);
+}
+
 /** Alpha mask for the "fade" mode: opaque over the map, falling to transparent across the margin around it. */
 function fadeMaskTexture(total: number, inner: number): CanvasTexture {
   const size = 512;
@@ -243,6 +280,8 @@ export class Renderer3D {
   private pickables: Object3D[] = [];
   private zoneModels = new Map<string, Object3D[]>();
   private zoneGlow = new Map<string, Mesh>();
+  /** The pulsing halo round the racing area that says "start here" (`on` until the viewer opens something). */
+  private invite: { mesh: Mesh; on: boolean; amount: number } | null = null;
   /** Per-model animation callbacks (see `userData.animate` in models.ts) grouped by zone. */
   private animators: { fn: (c: AnimCtx) => void; zoneId: string }[] = [];
   /** Props that grow and move while their project is zoomed into (`Prop.focus`), with the placement they start from. */
@@ -431,6 +470,10 @@ export class Renderer3D {
         }
         model.userData.zoneId = zone.id;
         model.userData.sprite = p.sprite;
+        if (model.userData.liftOverlay) this.addLiftOverlay(model, model.userData.liftOverlay);
+        if (p.drive) attachLap(model, p.drive);
+        if (p.errand) attachErrand(model, p.errand, Math.PI / 2); // (he stops facing south, toward the grill)
+        if (p.cycle) attachCycle(model, p.cycle);
         model.traverse((o) => {
           if (typeof o.userData.animate === "function") this.animators.push({ fn: o.userData.animate, zoneId: zone.id });
         });
@@ -455,6 +498,25 @@ export class Renderer3D {
       glow.visible = false;
       map.add(glow);
       this.zoneGlow.set(zone.id, glow);
+    }
+
+    // the invitation: a halo round the racing area, pulsing until something is opened (see `setInvite`)
+    const racing = world.zones.find((z) => z.variant === "garage");
+    if (racing) {
+      const a = racing.scene.area;
+      const margin = TILE;
+      const w = a.w + 2 * margin;
+      const h = a.h + 2 * margin;
+      const mesh = new Mesh(
+        new PlaneGeometry(w, h),
+        new MeshBasicMaterial({ map: haloTexture(w, h, margin), transparent: true, opacity: 0, depthWrite: false })
+      );
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(a.x + a.w / 2, 0.13, a.y + a.h / 2);
+      mesh.renderOrder = 1;
+      mesh.visible = false;
+      map.add(mesh);
+      this.invite = { mesh, on: false, amount: 0 };
     }
 
     // yard tire piles
@@ -495,6 +557,35 @@ export class Renderer3D {
     this.slab = slab;
 
     this.edgeMask = fadeMaskTexture(mapSize + 2 * GROUND_MARGIN, mapSize);
+  }
+
+  /**
+   * A floor that rises with its project (a model with `userData.liftOverlay = { w, d, y }`) cannot use the ground's shadow
+   * catcher and leaf shade, which lie only a few hundredths above the ground: once it has risen it covers them, and while it is
+   * landing it passes through their height, where the two surfaces are too close to tell apart in depth and the shadows
+   * flicker. So the floor sheet rests above all of the ground's layers (at height `y` on the model, over the hover glow at
+   * 0.12 too), which can then never show through, and carries a catcher and a leaf shade of its own, covering the same patch
+   * of the map, at every height. They sit just above the sheet, so shadows and dapple stay on it, rising or at rest.
+   */
+  private addLiftOverlay(model: Object3D, { w, d, y }: { w: number; d: number; y: number }) {
+    const { mapSize } = this;
+    const catcher = new Mesh(new PlaneGeometry(w, d), new ShadowMaterial({ color: "#0b1220", opacity: 0.4 }));
+    catcher.rotation.x = -Math.PI / 2;
+    catcher.position.y = y + 0.02;
+    catcher.receiveShadow = true;
+    // the leaf shade takes the texture coordinates of this patch of the ground's, so it carries on from it
+    const geo = new PlaneGeometry(w, d);
+    const uv = geo.attributes.uv;
+    for (let i = 0; i < uv.count; i++) {
+      const x = model.position.x + (uv.getX(i) - 0.5) * w;
+      const z = model.position.z - (uv.getY(i) - 0.5) * d;
+      uv.setXY(i, x / mapSize, 1 - z / mapSize);
+    }
+    const leaves = new Mesh(geo, new MeshBasicMaterial({ map: this.dapple, transparent: true, opacity: 0.34, depthWrite: false }));
+    leaves.rotation.x = -Math.PI / 2;
+    leaves.position.y = y + 0.05;
+    leaves.renderOrder = 0.5;
+    model.add(catcher, leaves);
   }
 
   /** Switch how the map ends (see EdgeMode). Safe to call at any time. */
@@ -741,6 +832,34 @@ export class Renderer3D {
     return { x: x + (r.x - x) / scale, y: z + (r.y - z) / scale, w: r.w / scale, h: r.h / scale };
   }
 
+  /** Sends the zone's car round its lap. False when it is already out, or there is none (or motion is reduced). */
+  driveCar(zoneId: string): boolean {
+    if (this.reduceMotion) return false;
+    for (const m of this.zoneModels.get(zoneId) ?? []) {
+      if (typeof m.userData.drive === "function" && m.userData.drive()) return true;
+    }
+    return false;
+  }
+
+  /** Tells the zone's car whether the pointer is over it (it glows while it is parked and could be sent out). */
+  hoverCar(on: boolean) {
+    for (const list of this.zoneModels.values()) {
+      for (const m of list) if (typeof m.userData.drive === "function") m.userData.hovered = on;
+    }
+  }
+
+  private pulseNow = 0.5;
+
+  /** Where the halo is in its pulse, 0 (dimmest) to 1 (brightest): the note beside it breathes with this, so the two stay in step. */
+  get invitePulse(): number {
+    return this.pulseNow;
+  }
+
+  /** Turns the pulsing halo round the racing area on or off (it eases in and out). */
+  setInvite(on: boolean) {
+    if (this.invite) this.invite.on = on;
+  }
+
   /** Hover effect for one project box, `amount` 0..1: its props rise and its ground brightens. Works for any zone. */
   setHover(zoneId: string, amount: number) {
     this.hoverAmount.set(zoneId, amount);
@@ -836,6 +955,17 @@ export class Renderer3D {
     this.orient();
     this.pureAmt += ((this.focused && this.focusPts ? 1 : 0) - this.pureAmt) * k;
     this.applyView();
+
+    // the invitation's halo: a slow pulse (steady when motion is reduced), eased in and out as it is turned on and off
+    const invite = this.invite;
+    if (invite) {
+      invite.amount += ((invite.on ? 1 : 0) - invite.amount) * k;
+      if (!invite.on && invite.amount < 0.002) invite.amount = 0;
+      const pulse = this.reduceMotion ? 0.6 : 0.6 + 0.4 * Math.sin((time * Math.PI * 2) / 2.4);
+      this.pulseNow = (pulse - 0.2) / 0.8;
+      invite.mesh.visible = invite.amount > 0;
+      (invite.mesh.material as MeshBasicMaterial).opacity = invite.amount * pulse * 0.85;
+    }
 
     // drifting leaf-shade (a slow breeze across the yard)
     if (!this.reduceMotion) {
@@ -950,7 +1080,36 @@ export class Renderer3D {
     renderer.render(this.quadScene, this.quadCamera);
   }
 
+  /** Puts a texture on the GPU now, instead of in the first frame that draws with it. */
+  upload(texture: Texture) {
+    this.renderer.initTexture(texture);
+  }
+
+  /**
+   * Compiles the scene's shaders (in parallel, off the main thread, where the browser can) and then draws a frame, so that
+   * the first one the viewer sees does not have to. Asynchronous: the page keeps painting while it compiles.
+   */
+  async warm() {
+    try {
+      await this.renderer.compileAsync(this.scene, this.camera);
+    } catch {
+      this.renderer.compile(this.scene, this.camera);
+    }
+    // (a frame between the compile and the first draw: the draw allocates the shadow map and the render targets)
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+      setTimeout(resolve, 60);
+    });
+    this.draw(this.lastTime);
+  }
+
   dispose() {
+    if (this.invite) {
+      const material = this.invite.mesh.material as MeshBasicMaterial;
+      material.map?.dispose();
+      material.dispose();
+      this.invite.mesh.geometry.dispose();
+    }
     this.renderer.dispose();
     this.colorTarget.dispose();
   }

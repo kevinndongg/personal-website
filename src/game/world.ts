@@ -1,3 +1,4 @@
+import { FIXED_AT } from "./name";
 import { ZONE_FALLBACK_ACCENTS } from "./palette";
 import { buildScene, sceneSize } from "./scenes";
 import type { Decal, Rect, Scene, ZoneVariant } from "./scenes";
@@ -8,7 +9,10 @@ export const TILE = 16;
 export const WORLD_W = 48;
 export const WORLD_H = 48;
 
-export type ZoneKind = "project" | "gallery" | "contact";
+/**
+ * A "link" is a slab plate that opens its `href` when pressed (no panel); an "about" is the name, which opens a card about you.
+ */
+export type ZoneKind = "project" | "gallery" | "link" | "about";
 
 export interface ZoneAction {
   label: string;
@@ -86,10 +90,9 @@ export const ZONE_SLOTS: Record<string, Slot> = {
   "cmu-racing": "TL",
   "auton-lab-vision": "TM",
   "temple-allen-internship": "TR",
-  "uav-obstacle-detection": "RM",
+  "uav-obstacle-detection": "BL",
   ftc: "BR",
   gallery: "BM",
-  contact: "BL",
 };
 
 const SLOT_CELLS: Record<Slot, { col: "L" | "C" | "R"; row: "T" | "M" | "B" }> = {
@@ -106,6 +109,11 @@ const SLOT_CELLS: Record<Slot, { col: "L" | "C" | "R"; row: "T" | "M" | "B" }> =
 const EDGE_PX = 3 * TILE;
 const BOTTOM_PX = 2 * TILE;
 
+/** Zones that sit a little off their slot: px to move them east and south. The top-right project is lowered to make room above it for the link slabs. */
+const SLOT_SHIFT: Record<string, { dx?: number; dy?: number }> = {
+  "temple-allen-internship": { dy: 40 },
+};
+
 function snap(v: number) {
   return Math.round(v / TILE) * TILE;
 }
@@ -120,7 +128,7 @@ function slotOrigin(slot: Slot, w: number, h: number, edge: number) {
 
 function defaultVariant(input: ZoneInput): ZoneVariant {
   // a project without a scene of its own is still being built
-  return input.variant ?? (input.kind === "contact" ? "plaques" : input.kind === "project" ? "construction" : "building");
+  return input.variant ?? (input.kind === "link" ? "slab" : input.kind === "about" ? "name" : input.kind === "project" ? "construction" : "building");
 }
 
 function layoutZones(inputs: ZoneInput[]): Zone[] {
@@ -129,9 +137,14 @@ function layoutZones(inputs: ZoneInput[]): Zone[] {
   return inputs.map((input, i) => {
     const variant = defaultVariant(input);
     const { w, h } = sceneSize(variant);
-    const slot = ZONE_SLOTS[input.id] ?? spare.shift() ?? "LM";
+    // the name and its slabs have places of their own; everything else sits on the edge ring
+    const fixed = FIXED_AT[input.id];
+    const slot = fixed ? undefined : (ZONE_SLOTS[input.id] ?? spare.shift() ?? "LM");
     // the Racing garage sits right against the border wall
-    const { x, y } = slotOrigin(slot, w, h, variant === "garage" ? TILE : EDGE_PX);
+    const origin = fixed ?? slotOrigin(slot!, w, h, variant === "garage" ? TILE : EDGE_PX);
+    const shift = fixed ? undefined : SLOT_SHIFT[input.id];
+    const x = origin.x + (shift?.dx ?? 0);
+    const y = origin.y + (shift?.dy ?? 0);
     return {
       ...input,
       variant,

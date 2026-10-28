@@ -1,5 +1,6 @@
 import { navigate } from "astro:transitions/client";
-import { Panel } from "./panel";
+import type { Intro } from "./intro";
+import { Panel, openAction } from "./panel";
 import type { PanelSide } from "./panel";
 import { Renderer3D } from "./render3d";
 import { filmRig } from "./scenery";
@@ -9,25 +10,67 @@ import type { Zone, ZoneInput } from "./world";
 
 let sceneCount = 0; // dev only: how many times a scene has been started in this page
 
-/** Boots the scene inside `root`. Returns a teardown function. */
-export function startGame(root: HTMLElement): () => void {
+/** The next paint: a frame the viewer can see has been drawn (so a change made before it, to the loader, is on screen). */
+const nextPaint = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+
+/**
+ * The outline of a page torn out of a notebook, for a box `w` x `h` px, as a CSS polygon: every side ragged, and along the
+ * left the half-holes the binding leaves. Seeded, so that a box of one size is torn the same way every time.
+ */
+function tornOutline(w: number, h: number): string {
+  let seed = 7;
+  const rand = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296;
+  const JAG = 2.4; // how far a tear wanders in from the straight edge
+  const STEP = 8;
+  const pts: [number, number][] = [];
+  for (let x = 0; x < w; x += STEP) pts.push([x, rand() * JAG]); // top, left to right
+  for (let y = 0; y < h; y += STEP) pts.push([w - rand() * JAG, y]); // right, top to bottom
+  for (let x = w; x > 0; x -= STEP) pts.push([x, h - rand() * JAG]); // bottom, right to left
+  // left, bottom to top: a half-hole every PITCH px, torn ragged between them
+  const PITCH = 24;
+  const R = 4.5;
+  for (let cy = h - PITCH / 2; cy > R + 3; cy -= PITCH) {
+    pts.push([rand() * JAG, cy + R + 4]);
+    for (let a = 0.5; a >= -0.5; a -= 0.25) pts.push([R * Math.cos(a * Math.PI) + 0.5, cy + R * Math.sin(a * Math.PI) * 1.0]);
+  }
+  pts.push([rand() * JAG, rand() * JAG]);
+  return `polygon(${pts.map(([x, y]) => `${x.toFixed(1)}px ${y.toFixed(1)}px`).join(", ")})`;
+}
+
+/**
+ * Boots the scene inside `root`. Returns a teardown function. With a loader (`intro`) the scene is built behind it, and the
+ * view is only handed over (a linked project) once the photos are on the GPU at their own resolution.
+ */
+export function startGame(root: HTMLElement, intro: Intro | null = null): () => void {
   const sceneId = ++sceneCount;
   if (import.meta.env.DEV) console.info(`[game] scene #${sceneId} started`);
   const canvas = root.querySelector<HTMLCanvasElement>("[data-canvas]")!;
   const labelsEl = root.querySelector<HTMLElement>("[data-labels]")!;
   const hint = root.querySelector<HTMLElement>("[data-hint]");
-  const banner = root.querySelector<HTMLElement>("[data-banner]");
   const abort = new AbortController();
   const { signal } = abort;
 
   const inputs: ZoneInput[] = JSON.parse(root.dataset.zones ?? "[]");
   const world = generateWorld(inputs);
   const renderer = new Renderer3D(canvas, world);
-  const panel = new Panel(
-    root.querySelector<HTMLElement>("[data-panel]")!,
-    root.querySelector<HTMLElement>("[data-backdrop]")!,
-    signal
+  const backdrop = root.querySelector<HTMLElement>("[data-backdrop]")!;
+  const panel = new Panel(root.querySelector<HTMLElement>("[data-panel]")!, backdrop, signal);
+  // with a project open the backdrop lies over the scene, but the car behind it can still be clicked
+  panel.onBackdropPress = (e) => {
+    const hit = renderer.pick(e.clientX, e.clientY);
+    return hit?.propId === "formula" && !!hit.zoneId && renderer.driveCar(hit.zoneId);
+  };
+  backdrop.addEventListener(
+    "pointermove",
+    (e) => {
+      if (e.pointerType === "touch") return;
+      const onCar = renderer.pick(e.clientX, e.clientY)?.propId === "formula";
+      backdrop.style.cursor = onCar ? "pointer" : "";
+      renderer.hoverCar(onCar);
+    },
+    { signal }
   );
+  backdrop.addEventListener("pointerleave", () => renderer.hoverCar(false), { signal });
   const mapSize = world.w * TILE;
 
   let hoveredId: string | null = null; // project box under the pointer
@@ -69,8 +112,51 @@ export function startGame(root: HTMLElement): () => void {
       })
     : [];
 
+  // "Pick an area to look inside" is a torn page that stands to the left of the racing area, or above it on a narrow screen (or
+  // one with no room beside it), with an arrow drawn toward the area. Placed whenever the window changes: the camera is at its
+  // resting view then, and the hint is gone before it moves.
+  const racing = world.zones.find((z) => z.variant === "garage");
+  const paper = hint?.querySelector<HTMLElement>("[data-hint-paper]");
+  function placeHint() {
+    if (!hint || !racing) return; // (without a racing area the hint keeps its place at the top left)
+    const a = racing.scene.area;
+    const left = renderer.project(a.x, 0, a.y + a.h / 2);
+    const top = renderer.project(a.x + a.w / 2, 0, a.y);
+    const GAP = 8; // from the arrow's tip to the area
+    const narrow = innerWidth < 760 || innerWidth < innerHeight * 0.9;
+    const room = left.x - 16 - GAP;
+    const above = narrow || room < 160;
+    hint.style.maxWidth = above ? "" : `${room}px`;
+    hint.classList.toggle("above", above);
+    if (paper) paper.style.clipPath = tornOutline(paper.offsetWidth, paper.offsetHeight); // (its size is after any wrapping)
+    const w = hint.offsetWidth;
+    const h = hint.offsetHeight;
+    let x: number;
+    let y: number;
+    if (above) {
+      x = Math.min(Math.max(16, top.x - w / 2), innerWidth - 16 - w);
+      y = Math.max(16, top.y - GAP - h);
+      hint.style.setProperty("--ax", `${Math.min(Math.max(top.x - x, 24), w - 24)}px`);
+    } else {
+      x = left.x - GAP - w;
+      y = left.y - h / 2;
+    }
+    hint.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+  }
+  // the handwriting is not the same size as the font it stands in for until it has arrived: place the note again then
+  void document.fonts?.load("600 22px Caveat").then(() => {
+    if (!signal.aborted) placeHint();
+  });
+
+  /** The scene is on: the glow starts to pulse and the note is tossed down beside it. */
+  function invite() {
+    renderer.setInvite(true);
+    hint?.classList.add("shown");
+  }
+
   function resize() {
     renderer.resize(innerWidth, innerHeight);
+    placeHint();
   }
   resize();
   addEventListener("resize", resize, { signal });
@@ -80,11 +166,11 @@ export function startGame(root: HTMLElement): () => void {
     return world.zones.find((z) => rectContains(z.scene.area, x, y)) ?? null;
   }
 
-  // Deep links use the URL hash (/play#ftc), and the browser's Back button closes the panel again.
+  // Deep links use the URL hash (/#ftc), and the browser's Back button closes the panel again.
   //
   // The "#id" entry has to be pushed through Astro's router (`navigate`), not by assigning `location.hash`. The router
   // keeps its own idea of where the page is: if it was never told about "#id", then going back from it looks like a
-  // visit to /play from /play, so it re-fetches the page and swaps it in. That rebuilt the whole scene, and closing a
+  // visit to / from /, so it re-fetches the page and swaps it in. That rebuilt the whole scene, and closing a
   // project cut the zoom out off instead of easing it. (Keeping the router's popstate handler from running did not hold
   // up.) Told about the hash, the router treats going back from "#id" as the same-page move it is and does nothing.
   let ownEntry = false; // we pushed the "#id" history entry ourselves (so closing can pop it)
@@ -120,6 +206,7 @@ export function startGame(root: HTMLElement): () => void {
   }
 
   function open(zone: Zone, fromUrl = false) {
+    if (zone.kind === "link") return; // a button on the ground opens its link when pressed, never a card
     const side = sideFor(zone);
     // the gallery is a roll with a start and an end: opening it begins at the start (a turn of the window, which opens it
     // again, does not)
@@ -131,6 +218,7 @@ export function startGame(root: HTMLElement): () => void {
     panel.open(zone, side);
     hoveredId = zone.id;
     hint?.classList.add("gone");
+    renderer.setInvite(false);
     if (!fromUrl && location.hash.slice(1) !== zone.id) {
       ownEntry = true;
       void navigate(`#${zone.id}`);
@@ -189,8 +277,9 @@ export function startGame(root: HTMLElement): () => void {
   );
 
   // a shared link opens its panel right away (the camera eases in from the full map)
+  // (behind the loader it waits for the reveal, so the camera is seen easing in)
   const linked = zoneById(location.hash.slice(1));
-  if (linked) open(linked, true);
+  if (linked && !intro) open(linked, true);
 
   type Hit = { zoneId?: string; propId?: string; partId?: string; slot?: number } | null;
 
@@ -293,12 +382,14 @@ export function startGame(root: HTMLElement): () => void {
       const hit = renderer.pick(e.clientX, e.clientY);
       hoveredId = hit ? (zoneAt(hit.x, hit.y)?.id ?? null) : null;
       canvas.style.cursor = hoveredId ? "pointer" : "default";
+      renderer.hoverCar(hit?.propId === "formula");
     },
     { signal }
   );
   canvas.addEventListener(
     "pointerleave",
     () => {
+      renderer.hoverCar(false);
       if (!panel.isOpen) hoveredId = null;
       else lightControl(null);
     },
@@ -338,8 +429,51 @@ export function startGame(root: HTMLElement): () => void {
       }
       const hit = renderer.pick(e.clientX, e.clientY);
       if (!hit) return;
+      if (hit.propId === "formula" && hit.zoneId && renderer.driveCar(hit.zoneId)) return; // the parked car drives instead
       const zone = world.zones.find((z) => z.id === hit.zoneId) ?? zoneAt(hit.x, hit.y);
       if (zone) open(zone);
+    },
+    { signal }
+  );
+
+  // The toast: a line that says what a button just did.
+  const toast = document.createElement("p");
+  toast.className = "toast";
+  toast.setAttribute("role", "status");
+  root.append(toast);
+  let toastTimer: ReturnType<typeof setTimeout> | undefined;
+  function say(text: string) {
+    toast.textContent = text;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("show"), 2800);
+  }
+
+  /**
+   * Opens a contact link. A mailto: goes nowhere on a computer with no mail app registered, and the page cannot tell, so it
+   * also copies the address and says so: the visitor has it either way.
+   */
+  function followLink(label: string, href: string) {
+    const mail = href.startsWith("mailto:");
+    openAction({ label, href, external: !mail });
+    if (!mail) return;
+    const address = decodeURIComponent(href.slice("mailto:".length).split("?")[0]);
+    navigator.clipboard?.writeText(address).then(
+      () => say(`Copied ${address}`),
+      () => say(address)
+    ) ?? say(address);
+  }
+
+  // A contact button opens its link on the click (not the press, which browsers do not always count as a user's go-ahead
+  // for a new tab). A tap on a touch screen is a click too: there is no hover step.
+  canvas.addEventListener(
+    "click",
+    (e) => {
+      if (e.button !== 0 || panel.isOpen) return;
+      const hit = renderer.pick(e.clientX, e.clientY);
+      const zone = hit ? zoneAt(hit.x, hit.y) : null;
+      if (zone?.kind !== "link" || !zone.href) return;
+      followLink(zone.label, zone.href);
     },
     { signal }
   );
@@ -442,7 +576,8 @@ export function startGame(root: HTMLElement): () => void {
 
   function updateLabels() {
     world.zones.forEach((zone, i) => {
-      const show = !panel.isOpen && zone.id === hoveredId;
+      // (a link slab has no name pill, and neither has the name itself: it would only say the name again over the lettering)
+      const show = !panel.isOpen && zone.id === hoveredId && zone.kind !== "link" && zone.kind !== "about";
       // a label only needs placing while it is showing or fading out (placing asks the page for the canvas's size,
       // which makes the browser do layout work, and this runs for every project on every frame)
       if (show || labels[i].classList.contains("visible")) {
@@ -501,6 +636,7 @@ export function startGame(root: HTMLElement): () => void {
     updateHover(dt);
     syncZoom();
     renderer.draw(time);
+    if (hint && !hint.classList.contains("gone")) hint.style.setProperty("--pulse", renderer.invitePulse.toFixed(3)); // (the note breathes with the glow)
     updateLabels();
     if (import.meta.env.DEV) {
       gaps.push(gap);
@@ -516,7 +652,10 @@ export function startGame(root: HTMLElement): () => void {
       }
     }
   }
-  raf = requestAnimationFrame(frame);
+  // Behind a loading screen nothing is drawn each frame until it is gone: a render loop of the whole world (shadows, an
+  // MSAA target and a post pass) behind an opaque overlay is work the viewer cannot see, and it competes with the overlay
+  // for the main thread and the GPU, which shows as the loader's own jitter. The warm-up below draws what is needed once.
+  if (!intro) raf = requestAnimationFrame(frame);
 
   if (import.meta.env.DEV)
     Object.assign(window, {
@@ -575,13 +714,48 @@ export function startGame(root: HTMLElement): () => void {
       },
     });
 
-  banner?.classList.add("show");
-  const bannerTimer = setTimeout(() => banner?.classList.remove("show"), 3200);
+  if (!intro) {
+    if (!linked) invite();
+  } else {
+    // The loader is up and the scene is built behind it. What it waits for: the photos of the first two pages on the GPU at
+    // their own resolution (the table makes those lazily otherwise: on first hover), and the shaders compiled, so that
+    // what it reveals is finished and the first thing the viewer does is not a stall.
+    const rig = galleryZone ? filmRig(galleryZone) : null;
+    const prepare = async () => {
+      intro.stage("scene", 1);
+      await nextPaint(); // (so the loading screen has shown where it is before anything that blocks)
+      await rig?.warmUp?.(
+        (texture) => renderer.upload(texture),
+        (done, total) => intro.stage("gpu", 0.7 * (done / total))
+      );
+      intro.stage("gpu", 0.7);
+      await renderer.warm();
+      intro.stage("gpu", 1);
+      await nextPaint();
+    };
+    void (async () => {
+      try {
+        await Promise.race([prepare(), intro.timeout]);
+      } catch (error) {
+        console.error(error); // show the scene anyway: it works, it is just not fully warmed
+      }
+      if (signal.aborted) return;
+      await intro.finish();
+      if (signal.aborted) return;
+      // the world is on from here: its render loop starts (its clock from now, not from when it was built)
+      last = performance.now();
+      raf = requestAnimationFrame(frame);
+      if (linked) open(linked, true);
+      else invite();
+    })();
+  }
 
   return () => {
     if (import.meta.env.DEV) console.info(`[game] scene #${sceneId} stopped`);
     cancelAnimationFrame(raf);
-    clearTimeout(bannerTimer);
+    clearTimeout(toastTimer);
+    toast.remove();
+    intro?.cancel();
     for (const zone of world.zones) if (zone.kind === "gallery") filmRig(zone).onFrame = undefined;
     panel.destroy();
     abort.abort();

@@ -20,8 +20,11 @@ import type { Zone, ZonePhoto } from "./world";
 import { box, cyl, mesh, toon } from "./models";
 import type { AnimCtx } from "./models";
 import { ImageCache } from "./photocache";
-import { plaquesModel } from "./contactmodels";
+import { linkSlab } from "./slabmodels";
+import { nameGlowModel } from "./nameglow";
+import { nameModel } from "./namemodel";
 import { constructionModel } from "./constructionmodels";
+import { ftcModel } from "./ftcmodels";
 
 // Models for the photography area: an Olympus OM-1 and a light table. The table shows the photos a page at a time: six
 // frames of film laid out on it (two strips of two landscape photos, and one strip of two portrait ones). The camera is
@@ -223,6 +226,12 @@ export class FilmRig {
   hoverIndex: number | null = null;
   /** The four world-space corners of photo `index` on the table, for the view to frame (set by the table model). */
   photoCorners?: (index: number) => Vector3[];
+  /**
+   * Loads the photos of the first two pages and makes their full-size textures now (rather than when the table is first
+   * hovered), handing each to `upload` to put on the GPU. `onPhoto` hears as each is done (a photo that fails to load
+   * counts as done). Resolves when all have been. Set by the table model (the images and textures are its own).
+   */
+  warmUp?: (upload: (texture: Texture) => void, onPhoto?: (done: number, total: number) => void) => Promise<void>;
   /** Whether the gallery is open (set by the camera model): the idle pass is quicker then. */
   isOpen = false;
   /**
@@ -1112,6 +1121,11 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     canvas: HTMLCanvasElement;
     small: Texture;
     full?: Texture;
+    /**
+     * The photo decoded off the main thread, the right way up (a bitmap cannot be flipped as it is uploaded), when the
+     * warm-up made one: putting an `<img>` on the GPU is tens of milliseconds of the main thread each, a bitmap a few.
+     */
+    bitmap?: ImageBitmap;
   }
   const textures = new Map<string, PhotoTex>();
   /** The photo's textures, the small one made if it is not there yet (one `drawImage`, about a millisecond). */
@@ -1135,7 +1149,8 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
   const fullTex = (src: string, im: HTMLImageElement): Texture => {
     const e = photoTex(src, im);
     if (!e.full) {
-      const t = new Texture(im);
+      const t = new Texture(e.bitmap ?? im);
+      if (e.bitmap) t.flipY = false; // (it is already the right way up)
       t.generateMipmaps = true;
       t.minFilter = LinearMipmapLinearFilter;
       t.magFilter = LinearFilter;
@@ -1189,6 +1204,53 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
       new Vector3(hw, hh, 0).applyMatrix4(m.matrixWorld),
       new Vector3(-hw, hh, 0).applyMatrix4(m.matrixWorld),
     ];
+  };
+
+  // The first two pages' photos at their own resolution before anything is shown: the page that opens, and the one the lever
+  // turns to first. (Past those, photos are still brought in as the table is used: the gallery can have any number.)
+  rig.warmUp = async (upload, onPhoto) => {
+    const srcs = new Set<string>();
+    for (const page of [0, 1]) for (const i of rig.layout.pages[page] ?? []) if (i >= 0) srcs.add(photos[i].src);
+    const list = [...srcs];
+    // the images first: they arrive when they do (those already there do not wait), a failed one counts as there
+    await Promise.all(
+      list.map(
+        (src) =>
+          new Promise<void>((resolve) => {
+            if (images.get(src, () => resolve())) resolve();
+          })
+      )
+    );
+    // their pixels, decoded off the main thread and the right way up (all at once: it costs the page nothing)
+    const bitmaps = await Promise.all(
+      list.map(async (src) => {
+        const im = images.get(src);
+        if (!im?.naturalWidth || typeof createImageBitmap !== "function") return null;
+        try {
+          return await createImageBitmap(im, { imageOrientation: "flipY", premultiplyAlpha: "none", colorSpaceConversion: "none" });
+        } catch {
+          return null; // (the image itself is used instead)
+        }
+      })
+    );
+    // then their textures, one a frame: each upload is a copy to the GPU with its mipmaps made, and a page of them in one
+    // task is a stall that anything moving on the page (the loading screen) would show
+    let done = 0;
+    for (let n = 0; n < list.length; n++) {
+      const src = list[n];
+      const im = images.get(src);
+      if (im?.naturalWidth) {
+        const e = photoTex(src, im);
+        if (bitmaps[n] && !e.bitmap) e.bitmap = bitmaps[n]!;
+        else bitmaps[n]?.close();
+        upload(fullTex(src, im));
+      }
+      onPhoto?.(++done, list.length);
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+        setTimeout(resolve, 60); // (a hidden tab does not run animation frames)
+      });
+    }
   };
 
   // ---- painting a page
@@ -1259,6 +1321,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
       if (!keep.has(src)) {
         e.small.dispose();
         e.full?.dispose();
+        e.bitmap?.close();
         textures.delete(src);
       }
     }
@@ -1397,7 +1460,8 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     // A different page. Looking at the page (on the map or open), the film slides: the page that was there runs off one
     // side as the new page runs in from the other (forward is the lever's way: it goes left). Looking at a photo there is
     // no slide (the view is already panning to the next photo): the new photos take the place of the old ones, each fading
-    // in over the one it replaces. Only the first paint, and reduced motion, dip out and back instead.
+    // in over the one it replaces. The first paint is there at once (the loading screen has hidden its warm-up); only
+    // reduced motion, and a page change that cannot slide, dip out and back.
     const looking = rig.mode === "photo";
     const canSlide = !looking && !instant && shownPage >= 0 && count > 0;
     const wantPage = rig.page;
@@ -1419,6 +1483,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
         slide = null;
         how = "dip";
         fade += (0 - fade) * (instant ? 1 : 1 - Math.exp(-dt * 24));
+        if (shownPage < 0) fade = 1; // the first page is shown as it is painted, not faded in once the scene is on
         if (fade < 0.05 || shownPage < 0) {
           shownPage = wantPage;
           dirty = true;
@@ -1587,6 +1652,8 @@ export function sceneryModel(id: string, footprint: Footprint | undefined, prop:
   const d = footprint?.kind === "rect" ? footprint.h : 0;
   const site = constructionModel(id, w, d, prop, zones);
   if (site) return site;
+  const ftc = ftcModel(id, w, d);
+  if (ftc) return ftc;
   const zone = zones.find((z) => z.kind === "gallery");
   const rig = zone ? filmRig(zone) : new FilmRig();
   switch (id) {
@@ -1602,8 +1669,16 @@ export function sceneryModel(id: string, footprint: Footprint | undefined, prop:
       return lightTableModel(w, d, zone, rig);
     case "deskmat":
       return deskMatModel(w, d);
-    case "plaques":
-      return plaquesModel(w);
+    case "kdname":
+      return nameModel();
+    case "kdnameglow":
+      return nameGlowModel();
+    case "kdslab-email":
+      return linkSlab("email");
+    case "kdslab-linkedin":
+      return linkSlab("linkedin");
+    case "kdslab-github":
+      return linkSlab("github");
   }
   return null;
 }

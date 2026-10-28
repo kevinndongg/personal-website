@@ -37,7 +37,12 @@ export class ImageCache {
         if (entry.img.decode) entry.img.decode().then(done, done);
         else done();
       };
-      entry.img.onerror = () => entry.waiting.clear(); // it stays a grey frame
+      // it stays a grey frame; whoever was waiting is told so (the image is not there to get), so that nothing waits on it for good
+      entry.img.onerror = () => {
+        const callbacks = [...entry.waiting];
+        entry.waiting.clear();
+        for (const f of callbacks) f();
+      };
       entry.img.src = url;
       this.entries.set(url, entry);
       this.trim();

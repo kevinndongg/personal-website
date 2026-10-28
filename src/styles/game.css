@@ -164,53 +164,188 @@ html:has(.game) body {
   }
 }
 
-.banner {
+/*
+ * "Pick an area to look inside": a page torn out of a notebook, crumpled, with an arrow drawn on it toward the racing area.
+ * `.hint` only holds the place `placeHint` (src/game/main.ts) gives it, beside the racing area (above it on a phone), so
+ * that everything animated can use its own `transform`. `--pulse` (0..1) is the glow's own pulse, set every frame, so the
+ * note breathes in step with it.
+ */
+.hint {
+  --pulse: 0.5;
   position: absolute;
-  top: 16px;
-  left: 16px;
-  padding: 8px 16px;
-  font-family: var(--font-display, serif);
-  font-size: 17px;
-  font-weight: 500;
-  color: var(--ink);
-  background: color-mix(in srgb, var(--paper) 92%, transparent);
-  border-radius: 999px;
-  box-shadow: 0 6px 18px rgba(40, 24, 10, 0.22);
-  opacity: 0;
-  transform: translateY(-10px);
-  transition:
-    opacity 500ms var(--ease),
-    transform 500ms var(--ease);
+  top: 0;
+  left: 0;
+  margin: 0;
+  width: max-content;
+  max-width: calc(100vw - 32px);
   pointer-events: none;
 }
 
-.banner.show {
-  opacity: 1;
-  transform: none;
+.hint-body {
+  display: flex;
+  align-items: center;
+  opacity: 0;
 }
 
-.hint {
+/* says what a contact button just did ("Copied ..."), where the hint is */
+.toast {
   position: absolute;
   bottom: 22px;
   left: 50%;
   margin: 0;
   padding: 8px 16px;
-  transform: translateX(-50%);
+  transform: translate(-50%, 6px);
   font-size: 14px;
   font-weight: 500;
   letter-spacing: 0.01em;
   color: var(--paper);
-  background: rgba(36, 26, 18, 0.62);
+  background: rgba(36, 26, 18, 0.78);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
   border-radius: 999px;
   white-space: nowrap;
-  transition: opacity 400ms;
+  opacity: 0;
   pointer-events: none;
+  transition:
+    opacity 240ms var(--ease),
+    transform 240ms var(--ease);
 }
 
-.hint.gone {
-  opacity: 0;
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/*
+ * The paper's shadow, on a wrapper of its own: a filter is applied before `clip-path`, so on the paper itself the torn edge
+ * would cut the shadow off. It follows the torn edge (a filter, not a box-shadow), and a faint warm light comes up with the glow.
+ */
+.hint-shade {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  filter: drop-shadow(0 calc(3px + var(--pulse) * 3px) calc(4px + var(--pulse) * 4px) rgba(14, 8, 4, 0.5))
+    drop-shadow(0 0 calc(var(--pulse) * 12px) rgba(255, 228, 170, 0.3));
+}
+
+.hint.above .hint-body {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.hint-paper {
+  --tilt: -2.5deg;
+  position: relative;
+  display: block;
+  /* left: room for the margin line */
+  padding: 12px 20px 10px 36px;
+  font-family: var(--font-hand, cursive);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 24px;
+  text-align: left;
+  color: var(--ink);
+  background-color: #fffbee;
+  background-image:
+    /* the margin line */ linear-gradient(90deg, transparent 27px, rgba(190, 88, 78, 0.5) 27px 28.5px, transparent 28.5px),
+    /* the rules: each line of writing sits on one */ linear-gradient(to bottom, transparent 23px, rgba(86, 116, 158, 0.32) 23px),
+    /* the creases: a lit, noisy height map, multiplied over the paper */
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='200'%3E%3Cfilter id='c' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='turbulence' baseFrequency='0.022 0.03' numOctaves='3' seed='11'/%3E%3CfeDiffuseLighting surfaceScale='4.5' lighting-color='%23fff'%3E%3CfeDistantLight azimuth='235' elevation='70'/%3E%3C/feDiffuseLighting%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23c)'/%3E%3C/svg%3E");
+  background-size: auto, 100% 24px, 320px 200px;
+  background-position: 0 0, 0 12px, 0 0;
+  background-repeat: no-repeat, repeat-y, repeat;
+  background-blend-mode: normal, normal, multiply;
+  transform: rotate(calc(var(--tilt) + (var(--pulse) - 0.5) * 1.2deg)) scale(calc(1 + var(--pulse) * 0.03));
+}
+
+.hint.above .hint-paper {
+  --tilt: 1.5deg;
+}
+
+/* "look inside", underlined with a pen stroke */
+.hint-paper .scribble {
+  padding-bottom: 2px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 8' preserveAspectRatio='none'%3E%3Cpath d='M1 5 C 18 1, 34 7, 52 3 S 84 5, 99 2' fill='none' stroke='%233b2a20' stroke-width='1.8' stroke-linecap='round' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E")
+    0 100% / 100% 8px no-repeat;
+}
+
+/* the arrow, drawn in pen: one pointing right (note beside the area), one pointing down (note above it) */
+.hint-arrow {
+  flex: none;
+  display: none;
+  fill: none;
+  /* white, and lit like the ground around the racing area: the same warm light, centred on the stroke, pulsing with it */
+  stroke: #fffaf0;
+  filter: drop-shadow(0 0 calc(3px + var(--pulse) * 5px) rgba(255, 228, 170, 0.95));
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  overflow: visible;
+}
+
+.hint-arrow path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+.hint:not(.above) .hint-arrow.side {
+  display: block;
+  width: 52px;
+  height: 30px;
+  margin-left: 2px;
+  transform: translateX(calc(var(--pulse) * 4px));
+}
+
+.hint.above .hint-arrow.down {
+  display: block;
+  width: 30px;
+  height: 52px;
+  margin-top: 2px;
+  /* `--ax` (set by placeHint): where the arrow is along the note, so that it points at the area's middle */
+  margin-left: calc(var(--ax, 40px) - 15px);
+  transform: translateY(calc(var(--pulse) * 4px));
+}
+
+/* after the loading screen: the note is tossed down, then the arrow is drawn */
+.hint.shown .hint-body {
+  animation: hint-toss 700ms cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+
+.hint.shown .hint-arrow path {
+  animation: hint-draw 600ms 650ms ease-out forwards;
+}
+
+/* once an area is opened: it falls away */
+.hint.shown.gone .hint-body {
+  animation: hint-leave 380ms ease-in both;
+}
+
+@keyframes hint-toss {
+  0% {
+    opacity: 0;
+    transform: translateY(-14px) rotate(-8deg) scale(0.6);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes hint-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes hint-leave {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(12px) rotate(4deg) scale(0.92);
+  }
 }
 
 /* ---- the card that opens beside the zoomed-in building ---- */
@@ -614,11 +749,16 @@ html:has(.game) body {
   border: 0;
 }
 
-/* Plain-HTML fallback: visible without JS, screen-reader-only once the scene boots */
+/*
+  Plain-HTML fallback: a list of links, for when there is no scene: without JS (index.astro shows it in a <noscript>), or
+  when the scene cannot start (`.no-webgl`). It is NOT shown while the scene is on its way: with JS the page is the
+  loading screen, or, where that has already been seen, just the dark backdrop, never a cream page of links. Once the
+  scene is up it is for screen readers only.
+*/
 .fallback {
   position: absolute;
   inset: 0;
-  display: grid;
+  display: none;
   align-content: center;
   justify-items: center;
   gap: 12px;
@@ -632,7 +772,12 @@ html:has(.game) body {
   color: var(--color-accent, #8a5a35);
 }
 
+.game.no-webgl .fallback {
+  display: grid;
+}
+
 .game.ready .fallback {
+  display: grid;
   inset: auto;
   width: 1px;
   height: 1px;
@@ -642,8 +787,22 @@ html:has(.game) body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .banner,
+  .hint.shown .hint-body,
+  .hint.shown.gone .hint-body {
+    animation: none;
+    opacity: 1;
+    transition: opacity 120ms;
+  }
+  .hint.shown.gone .hint-body {
+    opacity: 0;
+  }
+  .hint-arrow path,
+  .hint.shown .hint-arrow path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
   .panel,
+  .toast,
   .zone-label {
     transition: opacity 120ms;
   }

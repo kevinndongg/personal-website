@@ -1,0 +1,341 @@
+/*
+  The loading screen (markup in pages/index.astro, the canister in components/FilmCanister.astro, driven by
+  game/intro.ts): a 35 mm film canister that stands at the left of a bar, and its film, pulled out of it to the right as
+  the world loads: the leader tongue first, then the frames. The frames carry the photos in black and white, and when
+  everything is in they turn to colour one after another (`.coloured`) before the whole thing slides away. As on a real
+  canister, the canister itself does not move: the film comes out of a slit in its side, and only the spool's knob turns.
+  Three things move with how far the film has been pulled (0 = inside the canister, 1 = out to the end of the bar): the
+  strip, the bar's fill and the knob. They are moved by `intro.ts` with Web Animations, following a spring that keeps its
+  velocity from one target to the next (motion.ts), so what is below is only where each one rests before it starts.
+
+  Sizes are in `cqw`, units of the reel's own width, so the film keeps its proportions from a phone to a desktop. (A
+  container's own `cqw` are the viewport's, not its own, so the reel only sets the width, and everything that is sized
+  is in the stage inside it.) Everything in the stage is placed from its bottom edge, which is where the canister
+  stands, so that the film, the lip and the canister cannot drift apart.
+*/
+
+.intro {
+  --film: #0c0a09; /* the film base, as on the light table (scenery.ts), a little darker so that it stays distinct from the backdrop */
+  --hole: #080706;
+  --amber: #e8a33d;
+  --backdrop: #18130f;
+  position: absolute;
+  inset: 0;
+  z-index: 50; /* above the canvas, labels, panel and the link list */
+  display: grid;
+  place-items: center;
+  /*
+    The light the canister is drawn in (FilmCanister.astro: its highlight is left of its middle, and its rim brightest at the
+    front) comes from up-left and in front, so the backdrop is brightest up-left of the loader, falling away to a darker
+    edge, with the shadows (below) falling the other way. Over it, a fine static noise at about 4% (the dither): a dark
+    gradient bands on many screens, and a little grain suits film. All of it is rastered once.
+  */
+  background-color: var(--backdrop);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 85% 78% at 42% 38%, #251e18 0%, #1e1914 28%, #18130f 58%, #100d0a 100%);
+  background-size:
+    160px 160px,
+    100% 100%;
+  /* how far the spool's knob turns over the whole pull (the real spool is small and turns far more: that would be a blur; this is
+     at most about 1.8 turns a second) */
+  --spin: 720deg;
+}
+
+.intro[hidden] {
+  display: none;
+}
+
+.intro-reel {
+  --band: 2cqw; /* film above and below the frames, with the holes (and the numbers) */
+  --gap: 0.8cqw;
+  --tongue: 4cqw; /* the leader's end, which leads */
+  /*
+    The canister is a drawing in units (FilmCanister.astro: the barrel is 82 across, and the drawing, with its margins, 90 by
+    166.8), and one of its units is this long. What is placed against it is given in them, and has to be kept in step with
+    that file: the film's top edge is 17.6 units from the drawing's top (just above the top face's middle: the film is
+    drawn as unrolled from the back of the barrel, where it is higher on the screen), and its start is 3 units
+    under the barrel's right edge (the barrel is whole; the film comes from behind it).
+  */
+  --u: 0.084cqw;
+  --stage-h: calc(var(--u) * 166.8);
+  --film-top: calc(var(--u) * 17.6);
+  --slit: calc(var(--u) * 79);
+  --film-w: calc(100cqw - var(--slit));
+  --frame-w: calc((var(--film-w) - var(--gap) - 0.6cqw - var(--tongue) - var(--n) * var(--gap)) / var(--n));
+  --film-h: calc(2 * var(--band) + var(--frame-w) * 0.75);
+  --far: 120cqw; /* (the film's shadow: its box is parked this far to the left, out of sight, and only its shadow is drawn) */
+  position: relative;
+  width: clamp(min(300px, 100vw - 32px), 90vw, 960px);
+  container-type: inline-size;
+}
+
+.intro-stage {
+  position: relative;
+  height: var(--stage-h);
+}
+
+/*
+  ---- the film. It comes out of a slit in the canister's side, a little inside its right edge, and passes in front of
+  that edge: the gate is drawn over the canister, starts at the slit, and cuts the film off where it is still inside.
+  The strip is as long as what is left of the bar from the slit, and the pull slides it from wholly inside
+  (translateX(-100%)) to its tongue at the end of the bar (0). Its last frame ends just clear of the slit's lip.
+*/
+.intro-gate {
+  position: absolute;
+  z-index: 2; /* under the canister (3): the film comes from behind the barrel */
+  left: var(--slit);
+  top: var(--film-top);
+  width: var(--film-w);
+  overflow: hidden;
+}
+
+/* the film turns away behind the barrel, out of the light: a fixed shade over its first part, which it slides through */
+.intro-gate::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.22) 1.8cqw, rgba(0, 0, 0, 0) 4.5cqw);
+  pointer-events: none;
+}
+
+.intro-strip {
+  position: relative;
+  box-sizing: border-box;
+  display: grid;
+  /* laid out as it comes out: the last frame next to the canister, frame 1 next to the tongue */
+  grid-template-columns: repeat(var(--n), minmax(0, 1fr)) var(--tongue);
+  column-gap: var(--gap);
+  align-items: center;
+  width: 100%;
+  padding: var(--band) 0 var(--band) calc(var(--gap) + 0.6cqw);
+  /*
+    The film base, in pieces, so that what is not film is not painted: the part between the bands, the bands' inner 60%, and
+    their outer 40% as film with the sprocket holes cut out of it (the holes are openings: the lit backdrop, and the film's
+    shadow, show through). All of it stops before the leader's tip, which paints its own (cut) shape.
+    (No clip-path, no filter, no container anywhere in the strip: a plain stack of boxes, images and gradients, which the
+    browser keeps as one texture and only moves.)
+  */
+  --tip: 2.4cqw;
+  --m: 0.25cqw; /* film outside a row of holes, at the strip's edge: a hole is enclosed, not a notch */
+  --h: 0.6cqw; /* a hole's height (it is 1.1 wide, a rectangle, at a pitch of 1.9) */
+  --solid: linear-gradient(var(--film), var(--film));
+  --holes: repeating-linear-gradient(90deg, var(--film) 0 0.4cqw, transparent 0.4cqw 1.5cqw, var(--film) 1.5cqw 1.9cqw);
+  background:
+    var(--solid) 0 calc(var(--m) + var(--h)) / calc(100% - var(--tip)) calc(100% - 2 * (var(--m) + var(--h))) no-repeat,
+    var(--solid) 0 0 / calc(100% - var(--tip)) var(--m) no-repeat,
+    var(--holes) 0 var(--m) / calc(100% - var(--tip)) var(--h) no-repeat,
+    var(--solid) 0 100% / calc(100% - var(--tip)) var(--m) no-repeat,
+    var(--holes) 0 calc(100% - var(--m)) / calc(100% - var(--tip)) var(--h) no-repeat;
+  /* inside the canister, until the pull begins: this is what the first paint shows, before any script has run, so it has to
+     be the hidden pose (the film's shadow, the bar's fill and the knob's strip each rest in theirs) */
+  transform: translateX(-100%);
+  will-change: transform;
+}
+
+/*
+  The film's shadow: the light is up-left and in front, so it falls down and to the right, soft and close (a wall just
+  behind). It comes out of the slit as the film does (its gate starts there, a little bigger all round for the blur), and
+  is moved by `intro.ts` with the strip, as a fourth part, so it travels with it exactly. It is drawn once: a `box-shadow`
+  on a box that sits out of sight (`--far` to the left) with the shadow offset by the same, so there is no filter on
+  anything that moves.
+*/
+.intro-shadow-gate {
+  position: absolute;
+  z-index: 1;
+  left: var(--slit);
+  top: calc(var(--film-top) - 3cqw);
+  width: calc(var(--film-w) + 3cqw);
+  height: calc(var(--film-h) + 6cqw);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.intro-film-shadow {
+  position: absolute;
+  top: 3cqw;
+  left: calc(var(--far) * -1);
+  width: var(--film-w);
+  height: var(--film-h);
+  box-shadow: calc(var(--far) + 0.55cqw) 0.75cqw 1.1cqw rgba(0, 0, 0, 0.5);
+  transform: translateX(-100%);
+  will-change: transform;
+}
+
+.intro-tongue {
+  align-self: stretch;
+}
+
+/* the leader's end, cut at the corners as film is: a trapezoid painted in the film colour (kept in step with --film), so
+   that outside it the strip is truly transparent */
+.intro-tip {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--tip);
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' preserveAspectRatio='none'%3E%3Cpolygon points='0,0 10,2 10,8 0,10' fill='%230c0a09'/%3E%3C/svg%3E")
+    0 0 / 100% 100% no-repeat;
+}
+
+.intro-frame {
+  position: relative;
+  margin: 0;
+}
+
+/* a frame holds its photo (small copies, inlined in the page): black and white while loading, with the colour one over it
+   at no opacity, which comes in at the end */
+.intro-window {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 3; /* the light table's windows */
+  overflow: hidden;
+  background: var(--hole);
+}
+
+.intro-window img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* it fills the whole frame */
+}
+
+.intro-window img.colour {
+  opacity: 0;
+  will-change: opacity; /* (its layer is made now, not in the frame the wave starts) */
+}
+
+/* a portrait photo is turned on its side, so that it fills the frame too (the window is 4:3, so its height is 3/4 of its
+   width: the photo is as wide as the window is tall, and as tall as it is wide) */
+.intro-frame.portrait .intro-window img {
+  inset: auto;
+  left: 50%;
+  top: 50%;
+  width: 75%;
+  height: 133.3334%;
+  transform: translate(-50%, -50%) rotate(-90deg);
+}
+
+/* everything is in: the colour copies come in over the black and white ones, one frame after another, frame 1 (by the
+   tongue) first (see `finish`) */
+.intro-frame.coloured .intro-window img.colour {
+  opacity: 1;
+  transition: opacity 700ms ease;
+}
+
+.intro-num {
+  position: absolute;
+  left: 0.2cqw;
+  top: 100%;
+  margin-top: 0.2cqw;
+  z-index: 0;
+  font: 600 1.1cqw/1 system-ui, sans-serif;
+  color: var(--amber);
+  opacity: 0.85;
+}
+
+/* ---- the bar under it all, which the canister stands on, filling as the film is pulled. A groove in the surface, lit
+   from above like the rest: dark along its top inside edge, a light lip along its lower edge, and a sheen on the fill */
+.intro-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 0.6cqw;
+  margin-top: -0.1cqw;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, 0.32);
+  box-shadow:
+    inset 0 0.1cqw 0.15cqw rgba(0, 0, 0, 0.55),
+    0 0.1cqw 0 rgba(255, 238, 210, 0.12);
+  overflow: hidden;
+}
+
+.intro-bar-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(#f6b957, var(--amber) 55%, #cc8828);
+  box-shadow: inset 0 0.08cqw 0 rgba(255, 244, 214, 0.6);
+  transform-origin: left center;
+  transform: scaleX(0);
+  will-change: transform;
+}
+
+/*
+  ---- the canister (a drawing: FilmCanister.astro): upright, standing on the bar at the left, and it stays put. The
+  drawing is 90 units wide (the barrel's 82 in the middle, 4 of margin each side), so it starts 4 units left of the stage;
+  its lowest point is the stage's bottom (the shadow it casts is let out of the drawing's box). The knob is its own
+  element, standing on the stub, so that turning it is a composited transform and never repaints the drawing.
+*/
+.intro-roll {
+  position: absolute;
+  z-index: 3;
+  left: calc(var(--u) * -4);
+  bottom: 0;
+  width: calc(var(--u) * 90);
+  aspect-ratio: var(--aspect);
+}
+
+.can-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/*
+  The knob: a window onto a strip of its frames (FilmCanister.astro): each frame is the face already squashed to the tilt's
+  ellipse, so nothing is rotated or squashed as it turns, and the page moves the strip behind the window a frame at a time.
+  The window's size is snapped to whole device pixels by `intro.ts`, so that every frame is on the pixel grid.
+*/
+.can-knob {
+  position: absolute;
+  left: 50%;
+  top: var(--knob-top);
+  width: var(--knob-w);
+  aspect-ratio: var(--knob-ar);
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+}
+
+.can-disc {
+  display: block;
+  width: calc(var(--frames) * 100%); /* as many windows wide as it has frames */
+  height: 100%;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  will-change: transform;
+}
+
+/* ---- the hand-off: the strip goes off to the right, and then the backdrop lets the world through */
+.intro.leaving {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 400ms ease 450ms;
+}
+
+.intro.leaving .intro-reel {
+  transform: translateX(115vw);
+  transition: transform 600ms cubic-bezier(0.55, 0, 0.9, 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro {
+    --spin: 0deg !important; /* it still fills, but nothing turns or slides */
+  }
+
+  .intro-frame.coloured .intro-window img.colour {
+    transition-duration: 200ms;
+  }
+
+  .intro.leaving {
+    transition-delay: 0s;
+  }
+
+  .intro.leaving .intro-reel {
+    transform: none;
+    transition: none;
+  }
+}
