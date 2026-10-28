@@ -1050,7 +1050,7 @@ export class Renderer3D {
       const focus = this.zoneFocus.get(a.zoneId) ?? 0;
       const pause = a.pauseOnHover && hover > 0.5;
       if (!pause) this.frozenT.set(a.zoneId, time);
-      a.fn({ t: this.reduceMotion ? 0 : (this.frozenT.get(a.zoneId) ?? time), hover, focus, pixel });
+      a.fn({ t: this.reduceMotion ? 0 : (this.frozenT.get(a.zoneId) ?? time), hover, focus, pixel, view: this.camDir });
     }
 
     // where the focused project box sits on screen (uv), for the dim/blur outside it
