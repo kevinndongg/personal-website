@@ -1,4 +1,5 @@
 import { navigate } from "astro:transitions/client";
+import { clampDrag, type Box, type Point } from "./drag";
 import type { Zone, ZoneAction } from "./world";
 
 export type PanelSide = "left" | "right" | "bottom";
@@ -54,6 +55,9 @@ export class Panel {
   private actions: HTMLElement;
   private grip: HTMLElement;
   private closeTimer = 0;
+  /** How far the side card has been dragged from where it rests (it is put back on every open). */
+  private drag: Point = { x: 0, y: 0 };
+  private dragging: { id: number; from: Point; rect: Box; offset: Point } | null = null;
   isOpen = false;
   /** Called when the panel closes (Esc, the close button or the backdrop). */
   onClose: () => void = () => {};
@@ -77,7 +81,15 @@ export class Panel {
     this.tags = root.querySelector("[data-tags]")!;
     this.actions = root.querySelector("[data-actions]")!;
     this.grip = root.querySelector("[data-grip]")!;
-    addEventListener("resize", () => this.fit(), { signal });
+    addEventListener(
+      "resize",
+      () => {
+        this.fit();
+        this.keepOnScreen();
+      },
+      { signal }
+    );
+    this.listenForDrag(root.querySelector(".head")!, signal);
     root.querySelector("[data-close]")!.addEventListener("click", () => this.close(), { signal });
     backdrop.addEventListener(
       "pointerdown",
@@ -108,6 +120,62 @@ export class Panel {
     return Math.min(0.55, (w + Math.max(24, innerWidth * 0.03) + 16) / innerWidth);
   }
 
+  /** A side card is moved by its header; the bottom sheet and the gallery link stay where they are. */
+  private canDrag(): boolean {
+    const side = this.root.dataset.side;
+    return this.isOpen && this.root.dataset.variant !== "link" && (side === "left" || side === "right");
+  }
+
+  private setDrag(p: Point) {
+    this.drag = p;
+    this.root.style.setProperty("--drag-x", `${p.x}px`);
+    this.root.style.setProperty("--drag-y", `${p.y}px`);
+  }
+
+  private endDrag() {
+    this.dragging = null;
+    this.root.classList.remove("dragging");
+  }
+
+  /** After the window changes size, a dragged card is pulled back inside it. */
+  private keepOnScreen() {
+    if (!this.canDrag() || (this.drag.x === 0 && this.drag.y === 0)) return;
+    this.setDrag(clampDrag(this.root.getBoundingClientRect(), this.drag, { x: 0, y: 0 }, { w: innerWidth, h: innerHeight }));
+  }
+
+  private listenForDrag(handle: Element, signal: AbortSignal) {
+    handle.addEventListener(
+      "pointerdown",
+      (e) => {
+        const ev = e as PointerEvent;
+        if (ev.button !== 0 || !this.canDrag()) return;
+        const r = this.root.getBoundingClientRect();
+        this.dragging = {
+          id: ev.pointerId,
+          from: { x: ev.clientX, y: ev.clientY },
+          rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom },
+          offset: { ...this.drag },
+        };
+        handle.setPointerCapture(ev.pointerId);
+        this.root.classList.add("dragging");
+        ev.preventDefault(); // (no text selection while dragging)
+      },
+      { signal }
+    );
+    handle.addEventListener(
+      "pointermove",
+      (e) => {
+        const ev = e as PointerEvent;
+        const d = this.dragging;
+        if (!d || ev.pointerId !== d.id) return;
+        const delta = { x: ev.clientX - d.from.x, y: ev.clientY - d.from.y };
+        this.setDrag(clampDrag(d.rect, d.offset, delta, { w: innerWidth, h: innerHeight }));
+      },
+      { signal }
+    );
+    for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) handle.addEventListener(type, () => this.endDrag(), { signal });
+  }
+
   /** Size the card for the window: the CSS reads --card-scale (the bottom sheet stays at its own size; the gallery link scales with the window). */
   private fit() {
     const sheet = this.root.dataset.side === "bottom" && this.root.dataset.variant !== "link";
@@ -121,6 +189,8 @@ export class Panel {
     const empty = linkOnly && !zone.actions?.length; // the scene is all there is: no panel to show
     this.fill(zone);
     this.setExpanded(false);
+    this.endDrag();
+    this.setDrag({ x: 0, y: 0 }); // every open starts in the default spot
     this.root.dataset.side = side;
     this.root.dataset.variant = linkOnly ? "link" : "card";
     this.fit();
@@ -144,6 +214,7 @@ export class Panel {
     if (!this.isOpen) return;
     this.isOpen = false;
     this.root.classList.remove("open");
+    this.endDrag();
     this.backdrop.hidden = true;
     this.closeTimer = window.setTimeout(() => (this.root.hidden = true), 320);
     this.onClose();

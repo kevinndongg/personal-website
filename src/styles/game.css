@@ -395,19 +395,38 @@ html:has(.game) body {
   border-radius: calc(18px * var(--card-scale, 1));
 }
 
+/* --drag-x / --drag-y: how far the card has been dragged from its resting place (Panel sets them) */
 .panel[data-side="right"] {
   right: max(24px, 3vw);
-  transform: translate(36px, -50%);
+  transform: translate(calc(36px + var(--drag-x, 0px)), calc(-50% + var(--drag-y, 0px)));
 }
 
 .panel[data-side="left"] {
   left: max(24px, 3vw);
-  transform: translate(-36px, -50%);
+  transform: translate(calc(-36px + var(--drag-x, 0px)), calc(-50% + var(--drag-y, 0px)));
 }
 
 .panel[data-side="right"].open,
 .panel[data-side="left"].open {
-  transform: translateY(-50%);
+  transform: translate(var(--drag-x, 0px), calc(-50% + var(--drag-y, 0px)));
+}
+
+/* the card is moved by its header: a hand on it, and no transition while it follows the pointer */
+.panel[data-side="right"] .head,
+.panel[data-side="left"] .head {
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.panel.dragging,
+.panel.dragging .head {
+  cursor: grabbing;
+}
+
+.panel.dragging {
+  transition: opacity 260ms ease;
 }
 
 /* narrow screens: a sheet that rises from the bottom, leaving the box visible above it */
@@ -811,7 +830,7 @@ html:has(.game) body {
   }
   .panel[data-side="right"],
   .panel[data-side="left"] {
-    transform: translateY(-50%);
+    transform: translate(var(--drag-x, 0px), calc(-50% + var(--drag-y, 0px)));
   }
   .edge-arrow.bump {
     animation: none;
