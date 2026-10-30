@@ -32,7 +32,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
 const CARD_BASE_W = 1440;
 const CARD_BASE_H = 820;
 const CARD_SCALE_MAX = 1.75;
-const CARD_WIDTH = 540;
+const CARD_WIDTH = 580;
 
 /** How much bigger than its base size the card is for this window: the limiting side decides, so a wide but short window gets no oversized card. */
 export function cardScale(w = innerWidth, h = innerHeight): number {
