@@ -253,7 +253,17 @@ export class Panel {
     this.brand.hidden = !zone.image && !org && !zone.brandNote;
     this.head.classList.toggle("has-brand", !this.brand.hidden); // (without it the title itself clears the close button)
 
-    this.title.textContent = zone.label;
+    // a card with its own heading beside the logo (`brand`) uses that as its title: what is below it is dropped, or is a smaller line
+    const brandTitle = !!zone.brand;
+    this.org.classList.toggle("is-title", brandTitle);
+    if (brandTitle) this.org.setAttribute("role", "heading"), this.org.setAttribute("aria-level", "2");
+    else this.org.removeAttribute("role"), this.org.removeAttribute("aria-level");
+    this.root.setAttribute("aria-labelledby", brandTitle ? "panel-brand" : "panel-title");
+    this.title.textContent = brandTitle ? (zone.subtitle ?? "") : zone.label;
+    this.title.hidden = !this.title.textContent;
+    this.title.classList.toggle("sub", brandTitle);
+    if (brandTitle) this.title.setAttribute("role", "doc-subtitle");
+    else this.title.removeAttribute("role");
     this.role.textContent = zone.role ?? "";
     this.role.hidden = !zone.role;
     // the date sits under the role; cards without one (contact) show what kind of card they are

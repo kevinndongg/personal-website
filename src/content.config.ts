@@ -14,7 +14,8 @@ const projects = defineCollection({
       organization: z.string().optional(),
       // the overlay card's own header (the card on the home screen), when the plain fields above do not suit it
       cardLogo: z.boolean().optional(), // false: no logo on the card
-      cardBrand: z.string().optional(), // the line beside the logo (default: the organisation, unless the title already says it)
+      cardBrand: z.string().optional(), // beside the logo: when set it is the card's big heading, and the title below goes (or becomes cardTitle)
+      cardTitle: z.string().optional(), // with cardBrand: a smaller line in the title's place
       cardNote: z.string().optional(), // a line under the logo
       location: z.string().optional(),
       period: z.string().optional(),

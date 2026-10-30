@@ -108,6 +108,7 @@ const zones = [
         organization: p.data.organization,
         brand: p.data.cardBrand,
         brandNote: p.data.cardNote,
+        subtitle: p.data.cardTitle,
         techStack: p.data.techStack,
         // the logo, shown whole beside the title
         image: p.data.image && p.data.cardLogo !== false ? (await getImage({ src: p.data.image, width: 240 })).src : undefined,
@@ -240,7 +241,7 @@ const zones = [
         <header class="head">
           <div class="brand" data-brand hidden>
             <img class="logo" data-logo alt="" hidden />
-            <p class="org" data-org hidden></p>
+            <p class="org" id="panel-brand" data-org hidden></p>
             <p class="note" data-note hidden></p>
           </div>
           <h2 id="panel-title" data-title></h2>

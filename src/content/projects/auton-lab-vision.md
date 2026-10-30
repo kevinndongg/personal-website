@@ -7,6 +7,7 @@ role: "Research Intern"
 dateRange: "CMU Auton Lab"
 organization: "Auton Lab, Carnegie Mellon University"
 cardBrand: "DARPA Triage Challenge"
+cardTitle: "Auton Lab"
 location: "Pittsburgh, PA"
 period: "Jan. 2026 – Present"
 techStack: ["Python", "PyTorch", "Hugging Face", "Docker"]

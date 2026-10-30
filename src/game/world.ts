@@ -37,6 +37,8 @@ export interface ZoneInput {
   /** The line beside the logo on the card, and the one under it (both optional: see `orgLine` for the default). */
   brand?: string;
   brandNote?: string;
+  /** With `brand`: the line that takes the title's place, smaller (without it the title is dropped). */
+  subtitle?: string;
   techStack?: string[];
   bullets?: string[];
   image?: string;

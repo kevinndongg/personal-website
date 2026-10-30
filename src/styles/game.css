@@ -562,6 +562,27 @@ html:has(.game) body {
   color: var(--ink-soft);
 }
 
+/* a card with its own heading beside the logo: it is set as the card's title, and what was the title is now a smaller line (or gone) */
+.org.is-title {
+  display: block;
+  font-family: var(--font-display, serif);
+  font-size: calc(clamp(24px, 2.2vw, 30px) * var(--card-scale, 1));
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.panel h2.sub {
+  font-size: calc(clamp(17px, 1.5vw, 20px) * var(--card-scale, 1));
+  line-height: 1.25;
+  color: var(--ink-soft);
+}
+
+.panel h2[hidden] {
+  display: none;
+}
+
 /* a line under the logo (and the organisation), starting at the card's left edge */
 .note {
   flex-basis: 100%;
