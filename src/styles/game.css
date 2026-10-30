@@ -571,11 +571,17 @@ html:has(.game) body {
   line-height: 1.12;
   letter-spacing: -0.01em;
   color: var(--ink);
+  overflow: visible; /* (the clipping for the small organisation line would cut the descenders: g, y, p) */
 }
 
-.panel h2.sub {
+/* the smaller line under a heading: the DARPA card's "Auton Lab", the FTC card's note under the logo */
+.panel h2.sub,
+.note {
+  font-family: var(--font-display, serif);
   font-size: calc(clamp(17px, 1.5vw, 20px) * var(--card-scale, 1));
+  font-weight: 500;
   line-height: 1.25;
+  letter-spacing: -0.01em;
   color: var(--ink-soft);
 }
 
@@ -587,9 +593,6 @@ html:has(.game) body {
 .note {
   flex-basis: 100%;
   margin: calc(-4px * var(--card-scale, 1)) 0 0;
-  font-size: calc(13.5px * var(--card-scale, 1));
-  line-height: 1.35;
-  color: var(--ink-soft);
 }
 
 /* the date, with the under-construction badge beside it */
