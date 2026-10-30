@@ -32,7 +32,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
 const CARD_BASE_W = 1440;
 const CARD_BASE_H = 820;
 const CARD_SCALE_MAX = 1.75;
-const CARD_WIDTH = 460;
+const CARD_WIDTH = 540;
 
 /** How much bigger than its base size the card is for this window: the limiting side decides, so a wide but short window gets no oversized card. */
 export function cardScale(w = innerWidth, h = innerHeight): number {
@@ -50,6 +50,7 @@ export class Panel {
   private head: HTMLElement;
   private brand: HTMLElement;
   private when: HTMLElement;
+  private note: HTMLElement;
   private badge: HTMLElement;
   private org: HTMLElement;
   private summary: HTMLElement;
@@ -79,6 +80,7 @@ export class Panel {
     this.head = root.querySelector(".head")!;
     this.brand = root.querySelector("[data-brand]")!;
     this.when = root.querySelector("[data-when]")!;
+    this.note = root.querySelector("[data-note]")!;
     this.badge = root.querySelector("[data-badge]")!;
     this.org = root.querySelector("[data-org]")!;
     this.summary = root.querySelector("[data-summary]")!;
@@ -243,10 +245,12 @@ export class Panel {
     if (zone.image) this.logo.src = zone.image;
     else this.logo.removeAttribute("src");
     this.logo.hidden = !zone.image;
-    const org = orgLine(zone.label, zone.organization);
+    const org = zone.brand ?? orgLine(zone.label, zone.organization);
     this.org.textContent = org;
     this.org.hidden = !org;
-    this.brand.hidden = !zone.image && !org;
+    this.note.textContent = zone.brandNote ?? "";
+    this.note.hidden = !zone.brandNote;
+    this.brand.hidden = !zone.image && !org && !zone.brandNote;
     this.head.classList.toggle("has-brand", !this.brand.hidden); // (without it the title itself clears the close button)
 
     this.title.textContent = zone.label;

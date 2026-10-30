@@ -12,6 +12,10 @@ const projects = defineCollection({
       role: z.string().optional(),
       dateRange: z.string().optional(),
       organization: z.string().optional(),
+      // the overlay card's own header (the card on the home screen), when the plain fields above do not suit it
+      cardLogo: z.boolean().optional(), // false: no logo on the card
+      cardBrand: z.string().optional(), // the line beside the logo (default: the organisation, unless the title already says it)
+      cardNote: z.string().optional(), // a line under the logo
       location: z.string().optional(),
       period: z.string().optional(),
       techStack: z.array(z.string()).optional(),

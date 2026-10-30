@@ -6,6 +6,8 @@ summary: "Full stack software development for autonomous & teleoperated robot. "
 role: "Team Captain, Software Lead"
 dateRange: "High School"
 organization: "FIRST Tech Challenge, team 6417 (Int'l Robotics Competition)"
+cardBrand: "FIRST Tech Challenge"
+cardNote: "Blu Cru, #6417"
 period: "Sept. 2022 – Aug. 2025"
 techStack: ["Java", "OpenCV", "Python"]
 animation: "ftc-gears"

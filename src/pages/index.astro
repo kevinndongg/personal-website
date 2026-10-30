@@ -106,9 +106,11 @@ const zones = [
         role: p.data.role,
         period: p.data.period ?? p.data.dateRange,
         organization: p.data.organization,
+        brand: p.data.cardBrand,
+        brandNote: p.data.cardNote,
         techStack: p.data.techStack,
         // the logo, shown whole beside the title
-        image: p.data.image ? (await getImage({ src: p.data.image, width: 240 })).src : undefined,
+        image: p.data.image && p.data.cardLogo !== false ? (await getImage({ src: p.data.image, width: 240 })).src : undefined,
         actions: [
           links.paper && { label: "Read the paper", href: links.paper, external: true },
           links.repo && { label: "Source code", href: links.repo, external: true },
@@ -239,6 +241,7 @@ const zones = [
           <div class="brand" data-brand hidden>
             <img class="logo" data-logo alt="" hidden />
             <p class="org" data-org hidden></p>
+            <p class="note" data-note hidden></p>
           </div>
           <h2 id="panel-title" data-title></h2>
           <p class="role" data-role></p>

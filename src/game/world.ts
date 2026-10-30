@@ -34,6 +34,9 @@ export interface ZoneInput {
   role?: string;
   period?: string;
   organization?: string;
+  /** The line beside the logo on the card, and the one under it (both optional: see `orgLine` for the default). */
+  brand?: string;
+  brandNote?: string;
   techStack?: string[];
   bullets?: string[];
   image?: string;
