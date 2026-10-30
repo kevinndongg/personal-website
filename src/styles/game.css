@@ -507,16 +507,33 @@ html:has(.game) body {
   padding: calc(20px * var(--card-scale, 1)) calc(22px * var(--card-scale, 1)) calc(22px * var(--card-scale, 1));
 }
 
+/* the header: the brand row (the logo, with the organisation beside it), then the title, the role, and the date */
 .head {
-  display: flex;
-  align-items: flex-start;
-  gap: calc(14px * var(--card-scale, 1));
-  padding-right: calc(34px * var(--card-scale, 1)); /* clear of the close button */
+  display: grid;
+  gap: calc(4px * var(--card-scale, 1));
 }
 
 .head[hidden],
-.logo[hidden] {
+.brand[hidden],
+.logo[hidden],
+.org[hidden],
+.when[hidden],
+.badge[hidden] {
   display: none;
+}
+
+/* the brand row shares its line with the close button, so it leaves room for it; without one the title does */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: calc(12px * var(--card-scale, 1));
+  min-width: 0;
+  padding-right: calc(34px * var(--card-scale, 1));
+  margin-bottom: calc(6px * var(--card-scale, 1));
+}
+
+.head:not(.has-brand) h2 {
+  padding-right: calc(34px * var(--card-scale, 1));
 }
 
 /* the project's logo, shown whole on the card: capped by height and width, so each keeps its own proportions */
@@ -524,46 +541,40 @@ html:has(.game) body {
   flex: none;
   width: auto;
   height: auto;
-  max-width: calc(112px * var(--card-scale, 1));
-  max-height: calc(48px * var(--card-scale, 1));
-  margin-top: calc(2px * var(--card-scale, 1));
+  max-width: calc(150px * var(--card-scale, 1));
+  max-height: calc(52px * var(--card-scale, 1));
   object-fit: contain;
   border-radius: calc(6px * var(--card-scale, 1));
 }
 
-.head-text {
-  display: grid;
-  gap: calc(4px * var(--card-scale, 1));
+/* the organisation, beside the logo (two lines at most) */
+.org {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   min-width: 0;
-}
-
-/* the date, under the role */
-.kicker {
-  margin: calc(2px * var(--card-scale, 1)) 0 0;
-  font-size: calc(12px * var(--card-scale, 1));
-  font-weight: 600;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  margin: 0;
+  overflow: hidden;
+  font-size: calc(13.5px * var(--card-scale, 1));
+  line-height: 1.35;
   color: var(--ink-soft);
 }
 
-.head-meta {
+/* the date, with the under-construction badge beside it */
+.when {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: calc(6px * var(--card-scale, 1)) calc(10px * var(--card-scale, 1));
+  margin-top: calc(2px * var(--card-scale, 1));
 }
 
-.head-meta[hidden],
-.org[hidden],
-.badge[hidden] {
-  display: none;
-}
-
-.org {
+.kicker {
   margin: 0;
-  font-size: calc(13.5px * var(--card-scale, 1));
-  line-height: 1.4;
+  font-size: calc(12px * var(--card-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
   color: var(--ink-soft);
 }
 
@@ -720,7 +731,6 @@ html:has(.game) body {
 .panel[data-variant="link"] .grip,
 .panel[data-variant="link"] .close,
 .panel[data-variant="link"] .head,
-.panel[data-variant="link"] .head-meta,
 .panel[data-variant="link"] .logo,
 .panel[data-variant="link"] .summary,
 .panel[data-variant="link"] .bullets,

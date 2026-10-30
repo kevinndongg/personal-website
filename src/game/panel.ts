@@ -1,5 +1,6 @@
 import { navigate } from "astro:transitions/client";
 import { clampDrag, type Box, type Point } from "./drag";
+import { orgLine } from "./orgline";
 import type { Zone, ZoneAction } from "./world";
 
 export type PanelSide = "left" | "right" | "bottom";
@@ -46,7 +47,9 @@ export class Panel {
   private kicker: HTMLElement;
   private title: HTMLElement;
   private role: HTMLElement;
-  private headMeta: HTMLElement;
+  private head: HTMLElement;
+  private brand: HTMLElement;
+  private when: HTMLElement;
   private badge: HTMLElement;
   private org: HTMLElement;
   private summary: HTMLElement;
@@ -73,7 +76,9 @@ export class Panel {
     this.kicker = root.querySelector("[data-kicker]")!;
     this.title = root.querySelector("[data-title]")!;
     this.role = root.querySelector("[data-role]")!;
-    this.headMeta = root.querySelector("[data-head-meta]")!;
+    this.head = root.querySelector(".head")!;
+    this.brand = root.querySelector("[data-brand]")!;
+    this.when = root.querySelector("[data-when]")!;
     this.badge = root.querySelector("[data-badge]")!;
     this.org = root.querySelector("[data-org]")!;
     this.summary = root.querySelector("[data-summary]")!;
@@ -89,7 +94,7 @@ export class Panel {
       },
       { signal }
     );
-    this.listenForDrag(root.querySelector(".head")!, signal);
+    this.listenForDrag(this.head, signal);
     root.querySelector("[data-close]")!.addEventListener("click", () => this.close(), { signal });
     backdrop.addEventListener(
       "pointerdown",
@@ -234,22 +239,24 @@ export class Panel {
   }
 
   private fill(zone: Zone) {
-    // projects show their logo whole, beside the title
+    // the top row: the logo, shown whole, with the organisation beside it (unless the title already says it); no row when there is neither
     if (zone.image) this.logo.src = zone.image;
     else this.logo.removeAttribute("src");
     this.logo.hidden = !zone.image;
+    const org = orgLine(zone.label, zone.organization);
+    this.org.textContent = org;
+    this.org.hidden = !org;
+    this.brand.hidden = !zone.image && !org;
+    this.head.classList.toggle("has-brand", !this.brand.hidden); // (without it the title itself clears the close button)
 
     this.title.textContent = zone.label;
     this.role.textContent = zone.role ?? "";
     this.role.hidden = !zone.role;
     // the date sits under the role; cards without one (contact) show what kind of card they are
     this.kicker.textContent = zone.period || KIND_LABEL[zone.kind] || "";
-
-    // a project still on the default site is not finished: say so on its card
+    // a project still on the default site is not finished: say so on its card, beside the date
     this.badge.hidden = zone.variant !== "construction";
-    this.org.textContent = zone.organization ?? "";
-    this.org.hidden = !zone.organization;
-    this.headMeta.hidden = this.badge.hidden && this.org.hidden;
+    this.when.hidden = !this.kicker.textContent && this.badge.hidden;
     this.summary.textContent = zone.summary;
 
     this.bullets.replaceChildren(...(zone.bullets ?? []).map((b) => el("li", undefined, b)));
