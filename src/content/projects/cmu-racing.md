@@ -10,6 +10,21 @@ period: "Sept. 2025 – Present"
 techStack: ["C++", "Python", "Docker", "ROS 2"]
 animation: "racing-speed-lines"
 order: 2
+media:
+  - type: video
+    src: "/media/cmr/skidpad-run.mp4"
+    poster: "/media/cmr/skidpad-run.jpg"
+    width: 1280
+    height: 720
+    alt: "The autonomous racecar driving a figure-eight skidpad course marked with cones"
+    caption: "A full autonomous skidpad run."
+  - type: video
+    src: "/media/cmr/skidpad-foxglove.mp4"
+    poster: "/media/cmr/skidpad-foxglove.jpg"
+    width: 2448
+    height: 1440
+    alt: "A Foxglove window showing the car's position and the skidpad cones during the run"
+    caption: "The same run in Foxglove, which I used to check localization against recorded data."
 ---
 
 Localization development for CMU's driverless FSAE team

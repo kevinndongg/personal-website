@@ -3,8 +3,33 @@ import { glob } from "astro/loaders";
 
 const projects = defineCollection({
   loader: glob({ pattern: "**/*.md", base: "./src/content/projects" }),
-  schema: ({ image }) =>
-    z.object({
+  schema: ({ image }) => {
+    // what the project page shows below the text, in order: halves pair up two to a row, a full one takes a row to itself
+    const placing = { size: z.enum(["half", "full"]).default("full"), caption: z.string().optional() };
+    const media = z.discriminatedUnion("type", [
+      z.object({ type: z.literal("image"), src: image(), alt: z.string(), ...placing }),
+      // `src` and `poster` are paths under public/ (made by scripts/encode-media.mjs); width and height reserve the space
+      z.object({
+        type: z.literal("video"),
+        src: z.string(),
+        poster: z.string(),
+        width: z.number(),
+        height: z.number(),
+        alt: z.string(),
+        ...placing,
+      }),
+      // a YouTube video that loads only on click; `poster` is a path under public/, `start` is in seconds
+      z.object({
+        type: z.literal("youtube"),
+        id: z.string(),
+        title: z.string(),
+        poster: z.string(),
+        start: z.number().optional(),
+        ...placing,
+      }),
+    ]);
+
+    return z.object({
       title: z.string(),
       summary: z.string(),
       image: image().optional(),
@@ -31,7 +56,9 @@ const projects = defineCollection({
         "auton-lab-bounding-boxes",
       ]),
       order: z.number(),
-    }),
+      media: z.array(media).optional(),
+    });
+  },
 });
 
 const photos = defineCollection({
