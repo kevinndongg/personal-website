@@ -12,8 +12,10 @@ import {
   Vector3,
 } from "three";
 import { FLOOR } from "./ftc";
-import { TAKEN, ftcField, submersibleSamples } from "./ftcfield";
+import { PLACE_AXIS, PP, PP_HEIGHT, TAKEN, ftcField, poleTop, submersibleSamples } from "./ftcfield";
 import { robotModel } from "./ftcrobot";
+import { ppCone, ppRobotModel } from "./ftcpprobot";
+import { centred, pixelText } from "./ftctext";
 import { box, canvasOf, cyl, fillRect, mesh, nearestTexture, toon } from "./models";
 import type { AnimCtx } from "./models";
 
@@ -41,78 +43,6 @@ function strut(a: [number, number, number], b: [number, number, number], thick: 
   m.position.copy(from).addScaledVector(dir, 0.5);
   m.quaternion.setFromUnitVectors(X_AXIS, dir.normalize());
   return m;
-}
-
-/** A Power Play cone, standing: a truncated cone with a flat top (the opening a pole passes through) and a flared base ring. */
-function ppCone(color: string, x: number, y: number, z: number, scale = 1): Group {
-  const g = new Group();
-  g.add(mesh(new CylinderGeometry(1.1 * scale, 2.5 * scale, 5.5 * scale, 14), toon(color), 0, 2.75 * scale, 0));
-  g.add(cyl(2.9 * scale, 2.9 * scale, 0.5 * scale, color, 0, 0, 0, 14));
-  g.position.set(x, y, z);
-  return g;
-}
-
-// ---------------------------------------------------------------- pixel text
-// A 3 x 5 pixel font, enough for the signs, the banner and the match clock. Each glyph is its rows, left to right.
-
-const GLYPHS: Record<string, string> = {
-  A: "010101111101101",
-  B: "110101110101110",
-  C: "011100100100011",
-  D: "110101101101110",
-  E: "111100110100111",
-  F: "111100110100100",
-  G: "011100101101011",
-  H: "101101111101101",
-  I: "111010010010111",
-  J: "001001001101010",
-  K: "101101110101101",
-  L: "100100100100111",
-  M: "101111111101101",
-  N: "111101101101101",
-  O: "010101101101010",
-  P: "110101110100100",
-  Q: "010101101110011",
-  R: "110101110101101",
-  S: "011100010001110",
-  T: "111010010010010",
-  U: "101101101101111",
-  V: "101101101101010",
-  W: "101101111111101",
-  X: "101101010101101",
-  Y: "101101010010010",
-  Z: "111001010100111",
-  "0": "111101101101111",
-  "1": "010110010010111",
-  "2": "110001010100111",
-  "3": "110001010001110",
-  "4": "101101111001001",
-  "5": "111100110001110",
-  "6": "011100111101111",
-  "7": "111001010010010",
-  "8": "111101111101111",
-  "9": "111101111001110",
-  ":": "000010000010000",
-  "-": "000000111000000",
-  " ": "000000000000000",
-};
-
-/** Width in texels of `text` at `scale` (glyphs are 3 wide with a 1 texel gap, none after the last). */
-const textWidth = (text: string, scale: number) => text.length * 4 * scale - scale;
-
-function pixelText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, scale: number, color: string) {
-  ctx.fillStyle = color;
-  let cx = x;
-  for (const ch of text) {
-    const g = GLYPHS[ch] ?? GLYPHS[" "];
-    for (let i = 0; i < 15; i++) if (g[i] === "1") ctx.fillRect(cx + (i % 3) * scale, y + Math.floor(i / 3) * scale, scale, scale);
-    cx += 4 * scale;
-  }
-}
-
-/** Text centred across a canvas that is `width` texels wide. */
-function centred(ctx: CanvasRenderingContext2D, width: number, text: string, y: number, scale: number, color: string) {
-  pixelText(ctx, text, Math.round((width - textWidth(text, scale)) / 2), y, scale, color);
 }
 
 /** A flat picture facing +z (towards the camera), unlit so its pixels stay as drawn. */
@@ -175,11 +105,16 @@ function wallModel(w: number, d: number): Group {
 
 // ---- Power Play: a cup or pole standing on a base plate; a scored cone is dropped over the pole and rests on the floor
 
-const PP_HEIGHT = { l: 8, m: 14, h: 20 };
+const DOWN = new Vector3(0, -1, 0);
 
-function ppJunction(level: "g" | "l" | "m" | "h", scoredCone?: string): Group {
+/**
+ * A junction. The pole can wear a cone from the start (`scoredCone`), and for the two the robot scores on (`placedIndex`, an
+ * index into `ftcField.placed`) a red cone is let go above it and slides down: the cone is shown narrow end down, leaning as the
+ * claw held it and straightening as it falls on to the cone already there. It shrinks away once the robot has driven off.
+ */
+function ppJunction(level: "g" | "l" | "m" | "h", scoredCone?: string, placedIndex?: number): Group {
   const g = new Group();
-  g.add(cyl(3, 3.4, 1, DARK, 0, 0, 0, 10));
+  g.add(cyl(2.2, 2.4, 1, DARK, 0, 0, 0, 10));
   if (level === "g") {
     g.add(cyl(2.3, 2.3, 3, POLE, 0, 1, 0, 10)); // a ground junction is just a short cup
     g.add(cyl(1.5, 1.5, 0.2, BLACK, 0, 4, 0, 10));
@@ -190,6 +125,31 @@ function ppJunction(level: "g" | "l" | "m" | "h", scoredCone?: string): Group {
   }
   // the cone stands round the foot of the pole, the pole coming out through its tip
   if (scoredCone) g.add(ppCone(scoredCone, 0, 1, 0));
+
+  if (placedIndex !== undefined && (level === "m" || level === "h")) {
+    const rest = 1 + PP.coneH; // its narrow end comes to rest on top of the cone that is already there
+    const start = poleTop(level) + PP.above; // and is let go with its tip just over the pole's cap
+    const pivot = new Group(); // at the cone's narrow end, so that is where it straightens from
+    const cone = ppCone(RED, 0, 0, 0);
+    cone.rotation.x = Math.PI; // upside down: the tip at the pivot, the wide end up
+    cone.position.y = PP.coneH;
+    pivot.add(cone);
+    pivot.visible = false;
+    g.add(pivot);
+    const lean = new Vector3(...PLACE_AXIS).normalize(); // base to tip, as it is let go
+    const dir = new Vector3();
+    g.userData.animate = () => {
+      const p = ftcField.placed[placedIndex];
+      pivot.visible = p > 0.001 && p < 1.999;
+      if (!pivot.visible) return;
+      const fall = Math.min(1, p);
+      pivot.position.y = start - (start - rest) * fall * fall; // it speeds up as it falls
+      const straight = fall * fall * (3 - 2 * fall);
+      dir.copy(lean).lerp(DOWN, straight).normalize(); // narrow end first, which for the upside down cone is its own -y
+      pivot.quaternion.setFromUnitVectors(DOWN, dir);
+      pivot.scale.setScalar(Math.max(0.001, p > 1 ? 2 - p : 1));
+    };
+  }
   return g;
 }
 
@@ -197,6 +157,32 @@ function ppJunction(level: "g" | "l" | "m" | "h", scoredCone?: string): Group {
 function coneStack(color: string, n = 3, pitch = 1.2): Group {
   const g = new Group();
   for (let i = 0; i < n; i++) g.add(ppCone(color, 0, i * pitch, 0));
+  return g;
+}
+
+/** The red stack on the north wall: three cones, the top one the robot takes (`ftcField.cone[0]`) and a new one grows back on the stack. */
+function ppStack(): Group {
+  const g = coneStack(RED, 2);
+  const top = ppCone(RED, 0, PP.stackTop, 0);
+  g.add(top);
+  g.userData.animate = () => {
+    const p = ftcField.cone[0];
+    top.visible = p > 0.02;
+    top.scale.setScalar(Math.max(0.001, p)); // it shrinks into the stack, not into its own middle
+  };
+  return g;
+}
+
+/** The human player's cone, standing on the floor against the west wall (`ftcField.cone[1]`): taken, then a fresh one appears. */
+function ppHumanCone(): Group {
+  const g = new Group();
+  const cone = ppCone(RED, 0, 0, 0);
+  g.add(cone);
+  g.userData.animate = () => {
+    const p = ftcField.cone[1];
+    cone.visible = p > 0.02;
+    cone.scale.setScalar(Math.max(0.001, p));
+  };
   return g;
 }
 
@@ -672,6 +658,8 @@ export function ftcModel(id: string, w: number, d: number): Group | null {
       return floorModel();
     case "robot-itd":
       return robotModel();
+    case "robot-pp":
+      return ppRobotModel();
     case "wall":
       return wallModel(w, d);
     case "pp-g":
@@ -679,11 +667,13 @@ export function ftcModel(id: string, w: number, d: number): Group | null {
     case "pp-l":
       return ppJunction("l");
     case "pp-m-red":
-      return ppJunction("m", RED);
+      return ppJunction("m", RED, 1);
     case "pp-h-blue":
-      return ppJunction("h", BLUE);
-    case "cones-red":
-      return coneStack(RED);
+      return ppJunction("h", BLUE, 0);
+    case "pp-stack":
+      return ppStack();
+    case "pp-cone":
+      return ppHumanCone();
     case "cones-blue":
       return coneStack(BLUE);
     case "backdrop":

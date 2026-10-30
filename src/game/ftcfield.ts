@@ -57,12 +57,74 @@ export function submersibleSamples(w: number, d: number): SampleSpot[] {
 }
 
 /**
- * The state the robot writes every frame, as a function of where it is in its loop (see robotcycle.ts), and the models read:
- * how much of each of the two samples it takes is on the floor (1 there, 0 gone), and how much of the sample it has just
- * dropped in each basket is showing on top (0 not at all, 1 in place). Red basket / blue basket, left / right sample.
- * The rest state, and the one reduced motion leaves, is every sample on the floor and nothing on top of the baskets.
+ * The state the robots write every frame, as a function of where they are in their loops (see robotcycle.ts, ppcycle.ts), and the
+ * models read. Into the Deep: how much of each of the two samples the robot takes is on the floor (1 there, 0 gone), and how
+ * much of the sample it has just dropped in each basket is showing on top (0 not at all, 1 in place); red basket / blue basket,
+ * left / right sample. Power Play: how much of the red stack's top cone and of the human player's cone is there (1 there, 0 taken),
+ * and the cone just placed on the high / medium junction (0 not at all, 0..1 sliding down the pole, 1 at rest, 1..2 shrinking away).
+ * The rest state, and the one reduced motion leaves, is every game piece where it was and nothing placed.
  */
 export const ftcField = {
   sample: [1, 1],
   dropped: [0, 0],
+  cone: [1, 1],
+  placed: [0, 0],
 };
+
+// ---------------------------------------------------------------- Power Play
+
+/** How tall each junction's pole is above its base plate (px); the field's exaggerated poles, the high one the tallest. */
+export const PP_HEIGHT = { l: 8, m: 14, h: 20 } as const;
+
+/** The top of a medium or high junction: the base plate (1), the pole and the cap on top of it (0.9). */
+export const poleTop = (level: "m" | "h") => 1 + PP_HEIGHT[level] + 0.9;
+
+/**
+ * The Power Play robot's dimensions (px; 1 px = 1.2 in), shared by its model, its cycle and the scene. Robot frame: x forward,
+ * y up, z to its right. The arm swings about the turret (a vertical axis on the lift's carriage, `turretX` behind the middle);
+ * its end is the wrist, a horizontal axis across it; and the claw, level when the wrist is at 0, points along the arm from there.
+ * `lift` is the height of the wrist axis (the carriage's foot).
+ */
+export const PP = {
+  half: 5.835, // the chassis is 14 in square
+  turretX: -3.4,
+  arm: 13.9, // turret axis to wrist axis
+  grip: 2.8, // wrist axis to the middle of the jaws, along the level claw
+  hold: 1, // a held cone's base ring is this far below the jaws' middle (they close just above the ring)
+  coneH: 5.5,
+  above: 1.5, // how far above a pole's cap the cone's narrow end is let go (its tilted rim dips 0.8 below)
+  stackTop: 2.4, // the base of the top cone of the red stack (three cones, 1.2 apart)
+  rail: 32, // the lift's rails
+  tilt: (135 * Math.PI) / 180, // the wrist's pivot, every time it carries a cone
+  twist: (20 * Math.PI) / 180, // the extra roll about the claw's own axis when depositing from the side
+} as const;
+
+/** How the arm waits (and where reduced motion leaves it): the wrist up, the claw open, the lift part way. */
+export const PP_WAIT = { lift: 10, yaw: 0, tilt: Math.PI / 2, twist: 0, claw: 1 } as const;
+
+/**
+ * A point of the claw's frame (x along the claw, y up when level, z across) in the arm's frame (x outward, y up, z sideways),
+ * relative to the wrist axis: the claw rolls about its own axis by `twist`, then the wrist pitches it up by `tilt`.
+ */
+export function clawToArm(v: readonly [number, number, number], tilt: number, twist: number): [number, number, number] {
+  const cr = Math.cos(twist);
+  const sr = Math.sin(twist);
+  const y1 = v[1] * cr - v[2] * sr;
+  const z1 = v[1] * sr + v[2] * cr;
+  const ct = Math.cos(tilt);
+  const st = Math.sin(tilt);
+  return [v[0] * ct - y1 * st, v[0] * st + y1 * ct, z1];
+}
+
+/** The held cone's narrow tip in the arm's frame, relative to the wrist axis. */
+export const coneTip = (tilt: number, twist: number) => clawToArm([PP.grip, -PP.hold + PP.coneH, 0], tilt, twist);
+
+/**
+ * The direction a cone is leaning as it is let go, from its base to its tip, in the frame of a pole that has the robot to its
+ * west (the robot facing north, the arm out to its right): x east, y up, z south. The placed cone starts like this and straightens
+ * as it slides down the pole (ftcmodels.ts).
+ */
+export const PLACE_AXIS: [number, number, number] = (() => {
+  const a = clawToArm([0, 1, 0], PP.tilt, PP.twist);
+  return [a[0], a[1], a[2]];
+})();

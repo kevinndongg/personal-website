@@ -76,7 +76,7 @@ export function ftcScene(ox: number, oy: number): Scene {
     block("ftc-wall", f(half + 1.5, 0), 3, FIELD.size)
   );
 
-  // ---- Power Play (left wedge): junction poles on the tile corners, cone stacks to feed them
+  // ---- Power Play (left wedge): junction poles on the tile corners, cone stacks to feed them, and the robot that works them
   // The five-by-five junction pattern is ground / low / medium / high; only the columns that fall inside the wedge are here.
   const junctions: [number, number, string][] = [
     [-40, -40, "ftc-pp-g"],
@@ -87,8 +87,24 @@ export function ftcScene(ox: number, oy: number): Scene {
     [-20, -20, "ftc-pp-m-red"], // a cone already on top
     [-20, 0, "ftc-pp-h-blue"],
   ];
-  for (const [x, y, sprite] of junctions) props.push(round(sprite, f(x, y), 3));
-  props.push(round("ftc-cones-red", f(-50, 10), 3), round("ftc-cones-blue", f(-30, 10), 3));
+  for (const [x, y, sprite] of junctions) props.push(round(sprite, f(x, y), 2.5));
+  props.push(round("ftc-cones-blue", f(-30, 10), 3));
+  // The robot takes the top cone of the red stack against the north wall (centred on the second tile from the left) to the high
+  // junction, then the human player's cone, standing against the west wall at the middle of the third tile down, to the medium one
+  // (ppcycle.ts). It starts in the first tile's row, a tile in from the wall, and runs the lanes between the poles.
+  const NORTH = -Math.PI / 2;
+  const STACK = f(-30, -57);
+  const HUMAN = f(-57, -10);
+  props.push(round("ftc-pp-stack", STACK, 2.9), round("ftc-pp-cone", HUMAN, 2.9));
+  props.push({
+    ...turned("ftc-robot-pp", f(-50, -30), 0, 6),
+    ppCycle: {
+      stack: { target: STACK, base: 2.4, heading: NORTH },
+      human: { target: HUMAN, base: 0, heading: Math.PI },
+      high: { target: f(-20, 0), top: "h", heading: NORTH, side: 1 },
+      medium: { target: f(-20, -20), top: "m", heading: NORTH, side: 1 },
+    },
+  });
 
   // ---- Center Stage (top right wedge): the backdrop against the wall, the truss, the drone, loose pixels
   props.push(block("ftc-backdrop", f(30, -55), 12, 8));

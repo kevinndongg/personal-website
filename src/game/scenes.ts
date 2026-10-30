@@ -47,6 +47,34 @@ export interface Prop {
   errand?: { x: number; y: number }[];
   /** A robot that works the field on its own, over and over (the Into the Deep robot). See robotcycle.ts. */
   cycle?: RobotCycle;
+  /** A robot that works the Power Play wedge on its own, over and over. See ppcycle.ts. */
+  ppCycle?: PowerPlayCycle;
+}
+
+/** A cone the Power Play robot takes: where it stands on the floor, the height of its base, and the way the robot faces it (radians, world plane). */
+export interface PowerPlayPick {
+  target: { x: number; y: number };
+  base: number;
+  heading: number;
+}
+
+/** A junction the Power Play robot scores on, with the robot beside it facing `heading` and the pole `side` of it (1 = its right, -1 = its left). */
+export interface PowerPlayPlace {
+  target: { x: number; y: number };
+  top: "m" | "h";
+  heading: number;
+  side: 1 | -1;
+}
+
+/**
+ * What the Power Play robot does, in world px, forever: take the top cone of the stack and put it on the high junction, take the
+ * human player's cone and put it on the medium junction. It parks at its start and drives to the stack the first time only.
+ */
+export interface PowerPlayCycle {
+  stack: PowerPlayPick;
+  human: PowerPlayPick;
+  high: PowerPlayPlace;
+  medium: PowerPlayPlace;
 }
 
 /** What the Into the Deep robot does, all in world px: two jobs it does in turn, forever, and the way between them. */

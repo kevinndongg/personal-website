@@ -34,6 +34,7 @@ import {
 } from "three";
 import { attachLap } from "./drive";
 import { attachErrand } from "./errand";
+import { attachPowerPlay } from "./ppcycle";
 import { attachCycle } from "./robotcycle";
 import { GROUND_MARGIN, buildGroundLayer } from "./ground";
 import { createModel, tireModel, woodTexture } from "./models";
@@ -474,6 +475,7 @@ export class Renderer3D {
         if (p.drive) attachLap(model, p.drive);
         if (p.errand) attachErrand(model, p.errand, Math.PI / 2); // (he stops facing south, toward the grill)
         if (p.cycle) attachCycle(model, p.cycle);
+        if (p.ppCycle) attachPowerPlay(model, p.ppCycle);
         model.traverse((o) => {
           if (typeof o.userData.animate === "function") this.animators.push({ fn: o.userData.animate, zoneId: zone.id });
         });
