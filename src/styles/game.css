@@ -495,25 +495,43 @@ html:has(.game) body {
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgba(59, 42, 32, 0.14);
   cursor: pointer;
-  transition: background 150ms;
+  transition:
+    background 150ms,
+    color 150ms;
 }
 
 .close:hover {
   background: var(--paper-2);
 }
 
-/* on a side card the close button sits outside, on the edge that faces the map (the card is on the right: its left) */
+/*
+ * on a side card the close button sits outside, on the edge that faces the map (the card is on the right: its left). Over the
+ * dim map it is a light ring and cross with nothing inside, and fills with paper when the pointer is over it. (The outer shadows
+ * are not painted inside the circle, so it stays see-through.)
+ */
 .panel[data-side="right"] .close,
 .panel[data-side="left"] .close {
-  background: var(--paper);
+  color: var(--paper);
+  background: transparent;
   box-shadow:
-    0 6px 18px rgba(30, 16, 6, 0.38),
-    0 0 0 1px rgba(59, 42, 32, 0.14);
+    0 0 0 1.5px color-mix(in srgb, var(--paper) 85%, transparent),
+    0 4px 16px rgba(20, 10, 4, 0.45);
+}
+
+.panel[data-side="right"] .close svg,
+.panel[data-side="left"] .close svg {
+  filter: drop-shadow(0 1px 2px rgba(20, 10, 4, 0.55));
 }
 
 .panel[data-side="right"] .close:hover,
 .panel[data-side="left"] .close:hover {
-  background: var(--paper-2);
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.panel[data-side="right"] .close:focus-visible,
+.panel[data-side="left"] .close:focus-visible {
+  outline-color: var(--paper);
 }
 
 .panel[data-side="right"] .close {
