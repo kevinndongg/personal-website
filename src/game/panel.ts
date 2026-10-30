@@ -1,5 +1,6 @@
 import { navigate } from "astro:transitions/client";
 import type { Zone, ZoneAction } from "./world";
+import { buildMedia } from "./panelmedia";
 
 export type PanelSide = "left" | "right" | "bottom";
 
@@ -37,9 +38,11 @@ export class Panel {
   private summary: HTMLElement;
   private bullets: HTMLElement;
   private tags: HTMLElement;
+  private media: HTMLElement;
   private actions: HTMLElement;
   private grip: HTMLElement;
   private closeTimer = 0;
+  private stopMedia: (() => void) | undefined;
   isOpen = false;
   /** Called when the panel closes (Esc, the close button or the backdrop). */
   onClose: () => void = () => {};
@@ -58,6 +61,7 @@ export class Panel {
     this.summary = root.querySelector("[data-summary]")!;
     this.bullets = root.querySelector("[data-bullets]")!;
     this.tags = root.querySelector("[data-tags]")!;
+    this.media = root.querySelector("[data-media]")!;
     this.actions = root.querySelector("[data-actions]")!;
     this.grip = root.querySelector("[data-grip]")!;
     root.querySelector("[data-close]")!.addEventListener("click", () => this.close(), { signal });
@@ -117,6 +121,7 @@ export class Panel {
   close() {
     if (!this.isOpen) return;
     this.isOpen = false;
+    this.stopMedia?.();
     this.root.classList.remove("open");
     this.backdrop.hidden = true;
     this.closeTimer = window.setTimeout(() => (this.root.hidden = true), 320);
@@ -125,6 +130,7 @@ export class Panel {
 
   destroy() {
     window.clearTimeout(this.closeTimer);
+    this.stopMedia?.();
     this.isOpen = false;
     this.root.hidden = true;
     this.root.classList.remove("open");
@@ -156,6 +162,13 @@ export class Panel {
     this.bullets.hidden = !zone.bullets?.length;
     this.tags.replaceChildren(...(zone.techStack ?? []).map((t) => el("li", "tag", t)));
     this.tags.hidden = !zone.techStack?.length;
+
+    // the pictures and clips are made when the card opens, so none of them is fetched before it
+    this.stopMedia?.();
+    const media = zone.media?.length ? buildMedia(zone.media) : undefined;
+    this.stopMedia = media?.stop;
+    this.media.replaceChildren(...(media?.nodes ?? []));
+    this.media.hidden = !media;
 
     this.actions.replaceChildren();
     const actions: ZoneAction[] = zone.actions ?? [];
