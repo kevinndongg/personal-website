@@ -233,10 +233,11 @@ const zones = [
 
     <div class="backdrop" data-backdrop hidden></div>
     <aside class="panel" data-panel hidden role="dialog" aria-modal="true" aria-labelledby="panel-title">
-      <button class="grip" type="button" data-grip aria-label="Show more or less" aria-expanded="false"><span></span></button>
       <button class="close" type="button" data-close aria-label="Close">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"></path></svg>
       </button>
+      <div class="sheet" data-sheet>
+      <button class="grip" type="button" data-grip aria-label="Show more or less" aria-expanded="false"><span></span></button>
       <div class="body">
         <header class="head">
           <div class="brand" data-brand hidden>
@@ -255,6 +256,7 @@ const zones = [
         <ul class="bullets" data-bullets></ul>
         <ul class="tags" data-tags></ul>
         <div class="actions" data-actions></div>
+      </div>
       </div>
     </aside>
 

@@ -33,6 +33,9 @@ const CARD_BASE_W = 1440;
 const CARD_BASE_H = 820;
 const CARD_SCALE_MAX = 1.75;
 const CARD_WIDTH = 580;
+/** The close button on a side card sits this far (base px) outside it, and is this big. */
+const CLOSE_SIZE = 34;
+const CLOSE_GAP = 10;
 
 /** How much bigger than its base size the card is for this window: the limiting side decides, so a wide but short window gets no oversized card. */
 export function cardScale(w = innerWidth, h = innerHeight): number {
@@ -48,6 +51,8 @@ export class Panel {
   private title: HTMLElement;
   private role: HTMLElement;
   private head: HTMLElement;
+  private sheet: HTMLElement;
+  private closeBtn: HTMLElement;
   private brand: HTMLElement;
   private when: HTMLElement;
   private note: HTMLElement;
@@ -78,6 +83,8 @@ export class Panel {
     this.title = root.querySelector("[data-title]")!;
     this.role = root.querySelector("[data-role]")!;
     this.head = root.querySelector(".head")!;
+    this.sheet = root.querySelector("[data-sheet]")!;
+    this.closeBtn = root.querySelector("[data-close]")!;
     this.brand = root.querySelector("[data-brand]")!;
     this.when = root.querySelector("[data-when]")!;
     this.note = root.querySelector("[data-note]")!;
@@ -97,7 +104,7 @@ export class Panel {
       { signal }
     );
     this.listenForDrag(this.head, signal);
-    root.querySelector("[data-close]")!.addEventListener("click", () => this.close(), { signal });
+    this.closeBtn.addEventListener("click", () => this.close(), { signal });
     backdrop.addEventListener(
       "pointerdown",
       (e) => {
@@ -123,7 +130,8 @@ export class Panel {
     // the photography page has no card, so the scene may use the whole screen
     if (zone && isLinkOnly(zone)) return 0;
     if (side === "bottom") return 0.5;
-    const w = Math.min(CARD_WIDTH * cardScale(), innerWidth * 0.42);
+    const scale = cardScale();
+    const w = Math.min(CARD_WIDTH * scale, innerWidth * 0.42) + (CLOSE_SIZE + CLOSE_GAP) * scale; // (the close button sits beside the card)
     return Math.min(0.55, (w + Math.max(24, innerWidth * 0.03) + 16) / innerWidth);
   }
 
@@ -144,10 +152,22 @@ export class Panel {
     this.root.classList.remove("dragging");
   }
 
+  /** The card and its close button (which sits outside it), as one box: that is what has to stay inside the window. */
+  private box(): Box {
+    const a = this.root.getBoundingClientRect();
+    const c = this.closeBtn.getBoundingClientRect();
+    return {
+      left: Math.min(a.left, c.left),
+      top: Math.min(a.top, c.top),
+      right: Math.max(a.right, c.right),
+      bottom: Math.max(a.bottom, c.bottom),
+    };
+  }
+
   /** After the window changes size, a dragged card is pulled back inside it. */
   private keepOnScreen() {
     if (!this.canDrag() || (this.drag.x === 0 && this.drag.y === 0)) return;
-    this.setDrag(clampDrag(this.root.getBoundingClientRect(), this.drag, { x: 0, y: 0 }, { w: innerWidth, h: innerHeight }));
+    this.setDrag(clampDrag(this.box(), this.drag, { x: 0, y: 0 }, { w: innerWidth, h: innerHeight }));
   }
 
   private listenForDrag(handle: Element, signal: AbortSignal) {
@@ -156,11 +176,10 @@ export class Panel {
       (e) => {
         const ev = e as PointerEvent;
         if (ev.button !== 0 || !this.canDrag()) return;
-        const r = this.root.getBoundingClientRect();
         this.dragging = {
           id: ev.pointerId,
           from: { x: ev.clientX, y: ev.clientY },
-          rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom },
+          rect: this.box(),
           offset: { ...this.drag },
         };
         handle.setPointerCapture(ev.pointerId);
@@ -205,7 +224,7 @@ export class Panel {
     this.root.setAttribute("aria-modal", String(!linkOnly));
     if (linkOnly && !empty) this.root.setAttribute("aria-label", `${zone.label}: link to the full gallery`);
     else this.root.removeAttribute("aria-label");
-    this.root.scrollTop = 0;
+    this.sheet.scrollTop = 0;
     this.root.hidden = empty;
     this.backdrop.hidden = linkOnly;
     this.isOpen = true;
