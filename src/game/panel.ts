@@ -35,7 +35,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
 const CARD_BASE_W = 1440;
 const CARD_BASE_H = 820;
 const CARD_SCALE_MAX = 1.75;
-const CARD_WIDTH = 580;
+const CARD_WIDTH = 720;
 /** The close button on a side card sits this far (base px) outside it, and is this big. */
 const CLOSE_SIZE = 34;
 const CLOSE_GAP = 10;
@@ -146,7 +146,7 @@ export class Panel {
     if (zone && isLinkOnly(zone)) return 0;
     if (side === "bottom") return 0.5;
     const scale = cardScale();
-    const w = Math.min(CARD_WIDTH * scale, innerWidth * 0.42) + (CLOSE_SIZE + CLOSE_GAP) * scale; // (the close button sits beside the card)
+    const w = Math.min(CARD_WIDTH * scale, innerWidth * 0.5) + (CLOSE_SIZE + CLOSE_GAP) * scale; // (the close button sits beside the card)
     return Math.min(0.55, (w + Math.max(24, innerWidth * 0.03) + 16) / innerWidth);
   }
 
@@ -440,7 +440,9 @@ export class Panel {
     if (zone.image) this.logo.src = zone.image;
     else this.logo.removeAttribute("src");
     this.logo.hidden = !zone.image;
-    const org = zone.brand ?? orgLine(zone.label, zone.organization);
+    // a card with a logo has its title beside it (the logo and the heading are the top row); one without has nothing to sit beside
+    const brandTitle = !!zone.brand || !!zone.image;
+    const org = brandTitle ? (zone.brand ?? zone.label) : orgLine(zone.label, zone.organization);
     this.org.textContent = org;
     this.org.hidden = !org;
     this.note.textContent = zone.brandNote ?? "";
@@ -448,8 +450,7 @@ export class Panel {
     this.brand.hidden = !zone.image && !org && !zone.brandNote;
     this.head.classList.toggle("has-brand", !this.brand.hidden); // (without it the title itself clears the close button)
 
-    // a card with its own heading beside the logo (`brand`) uses that as its title: what is below it is dropped, or is a smaller line
-    const brandTitle = !!zone.brand;
+    // the heading beside the logo is the card's title: what is below it is dropped, or is a smaller line
     this.org.classList.toggle("is-title", brandTitle);
     if (brandTitle) this.org.setAttribute("role", "heading"), this.org.setAttribute("aria-level", "2");
     else this.org.removeAttribute("role"), this.org.removeAttribute("aria-level");

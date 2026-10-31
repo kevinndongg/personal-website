@@ -391,8 +391,8 @@ html:has(.game) body {
  * The thumb is drawn with a transparent border round it, which is what insets it; the track stops short of the rounded corners.
  */
 .sheet::-webkit-scrollbar {
-  width: calc(16px * var(--card-scale, 1));
-  height: calc(16px * var(--card-scale, 1));
+  width: calc(10px * var(--card-scale, 1));
+  height: calc(10px * var(--card-scale, 1));
 }
 
 .sheet::-webkit-scrollbar-track {
@@ -403,7 +403,7 @@ html:has(.game) body {
 .sheet::-webkit-scrollbar-thumb {
   background-color: color-mix(in srgb, var(--ink-soft) 45%, transparent);
   background-clip: padding-box;
-  border: calc(4px * var(--card-scale, 1)) solid transparent;
+  border: calc(3px * var(--card-scale, 1)) solid transparent;
   border-radius: 999px;
 }
 
@@ -438,7 +438,7 @@ html:has(.game) body {
 .panel[data-side="right"],
 .panel[data-side="left"] {
   top: 50%;
-  width: min(calc(580px * var(--card-scale, 1)), 42vw);
+  width: min(calc(720px * var(--card-scale, 1)), 50vw);
   max-height: calc(100% - 48px);
 }
 
@@ -802,8 +802,12 @@ html:has(.game) body {
 }
 
 /* room in the first line for the button (and, expanded, for the close button as well) */
-.panel[data-expandable] .brand {
-  padding-right: calc(44px * var(--card-scale, 1));
+/* the expand button floats over the first lines of the heading: they wrap round it, and nothing else loses width */
+.panel[data-expandable] .org.is-title::before {
+  content: "";
+  float: right;
+  width: calc(28px * var(--card-scale, 1));
+  height: calc(32px * var(--card-scale, 1));
 }
 
 .close:focus-visible,
@@ -877,6 +881,7 @@ html:has(.game) body {
 /* a card with its own heading beside the logo: it is set as the card's title, and what was the title is now a smaller line (or gone) */
 .org.is-title {
   display: block;
+  flex: 1 1 0; /* (takes the room the logo leaves, and wraps beside it, never under it) */
   font-family: var(--font-display, serif);
   font-size: calc(clamp(24px, 2.2vw, 30px) * var(--card-scale, 1));
   font-weight: 500;
@@ -887,6 +892,12 @@ html:has(.game) body {
 }
 
 /* the smaller line under a heading: the DARPA card's "Auton Lab", the FTC card's note under the logo */
+@media (max-width: 760px) {
+  .org.is-title {
+    font-size: clamp(20px, 5.4vw, 26px);
+  }
+}
+
 .panel h2.sub,
 .note {
   font-family: var(--font-display, serif);
