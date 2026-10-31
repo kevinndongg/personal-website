@@ -135,7 +135,7 @@ function ppJunction(level: "g" | "l" | "m" | "h", scoredCone?: string, placedInd
     const dir = new Vector3();
     g.userData.animate = () => {
       const p = ftcField.placed[placedIndex];
-      pivot.visible = p > 0.001 && p < 1.999;
+      pivot.visible = p > 0 && p < 1.999; // shown from the first instant of the drop, so there is never a frame without the cone
       if (!pivot.visible) return;
       const fall = Math.min(1, p);
       pivot.position.y = start - (start - rest) * fall * fall; // it speeds up as it falls

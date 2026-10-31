@@ -195,7 +195,7 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
       { ...toMid, arm: [base, lined], keys, carry: always, mark: { what: "spawn", index: spawn, offset: 0.3 } },
       { ...creep, arm: [lined, lined], carry: always },
       { dur: 0.3, at: to.at, arm: [lined, held(to.arm)], carry: always },
-      { dur: 0.4, at: to.at, arm: [held(to.arm), open(to.arm)], carry: (u) => u < 0.2, mark: { what: "drop", index: drop, offset: 0.08 } },
+      { dur: 0.4, at: to.at, arm: [held(to.arm), open(to.arm)], carry: (u) => u < 0.2, mark: { what: "drop", index: drop, offset: 0.06 } },
     ];
   };
 
