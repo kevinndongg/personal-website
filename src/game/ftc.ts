@@ -101,15 +101,15 @@ export function ftcScene(ox: number, oy: number): Scene {
     const c = f(x, y);
     props.push(sprite === "ftc-pp-g" ? { sprite, x: c.x, y: c.y + 2 } : round(sprite, c, 2.5));
   }
-  // The robot takes the top cone of the red stack against the north wall (centred on the second tile from the left) to the high
-  // junction, then the human player's cone, standing against the west wall at the middle of the third tile down, to the medium one
-  // (ppcycle.ts). It starts in the first tile's row, a tile in from the wall, and runs the lane down the middle of the tile column.
+  // The robot takes the top cone of the red stack against the north wall (centred on the second tile from the left) to the medium
+  // junction, then the human player's cone, standing against the west wall at the middle of the third tile down, to the high one
+  // (ppcycle.ts). It starts at the stack and runs the lane down the middle of the tile column and the row along the third tile.
   const NORTH = -Math.PI / 2;
   const STACK = f(-30, -57);
   const HUMAN = f(-56, -10); // a pixel off the wall, so the cone can swing up without touching it
   props.push(round("ftc-pp-stack", STACK, 2.9), round("ftc-pp-cone", HUMAN, 2.9));
   props.push({
-    ...turned("ftc-robot-pp", f(-50, -30), 0, 6),
+    ...turned("ftc-robot-pp", f(-30, -47.2), NORTH, 6), // (where its loop starts)
     ppCycle: {
       stack: { target: STACK, base: PP.stackTop, heading: NORTH },
       human: { target: HUMAN, base: 0, heading: Math.PI },
@@ -140,7 +140,7 @@ export function ftcScene(ox: number, oy: number): Scene {
   // the baskets stand tight in the corners with their buckets towards the middle of the field
   props.push(turned("ftc-basket-red", f(-54, 54), -Math.PI / 4, 4), turned("ftc-basket-blue", f(54, 54), (-3 * Math.PI) / 4, 4));
 
-  // The robot parks facing south and then runs its loop for good, two jobs in turn (robotcycle.ts). The samples it takes are two
+  // The robot runs its loop for good, two jobs in turn, starting at the west end of the submersible facing east (robotcycle.ts). The samples it takes are two
   // of those lying in the submersible (the layout is shared with the model, ftcfield.ts): a red one at the west end, and a yellow
   // one just in from the south side.
   const spots = submersibleSamples(SUB.w, SUB.d);
@@ -149,10 +149,8 @@ export function ftcScene(ox: number, oy: number): Scene {
   const right = sampleAt(TAKEN.right);
   const bucket = (side: 1 | -1) => f(side * 50.9, 50.9); // the high bucket of the basket on that side (red is west, blue east)
   props.push({
-    ...turned("ftc-robot-itd", f(0, 16), Math.PI / 2, 6.25),
+    ...turned("ftc-robot-itd", f(-28.5, SUB.y), 0, 6.25), // (where its loop starts)
     cycle: {
-      // Round the submersible's north-west corner to its west end, keeping well back from its rails (the robot swings wide as it turns).
-      intro: [f(-10, 11), f(-34, 17)],
       jobs: [
         {
           // The red sample, from the submersible's west end with the robot facing east, to the red basket in the south-west corner,

@@ -1,5 +1,5 @@
-// The Power Play robot's loop, forever: it parks for a moment, then drives to the red stack on the north wall, and from then on it
-// does two jobs in turn, each one a single flowing drive rather than a string of separate moves.
+// The Power Play robot's loop, forever, starting at the red stack on the north wall: two jobs in turn, each one a single flowing drive
+// rather than a string of separate moves.
 //
 // The job at the stack: the jaws close on the cone, and the robot backs away at once, lifting the cone off and pivoting the wrist up
 // 135 degrees as it goes; a little later the slides start up to the junction's height. As it passes the middle of the second tile
@@ -18,12 +18,11 @@
 // `userData.pose` (see ftcpprobot.ts). It never turns while it is between two poles: it backs and drives along the lane with the
 // same heading and only spins or curves where there is room.
 import { CatmullRomCurve3, Vector3, type Group } from "three";
-import { PP, PP_WAIT, clawDir, ftcField, heldBase, poleTop } from "./ftcfield";
+import { PP, clawDir, ftcField, heldBase, poleTop } from "./ftcfield";
 import type { PPPose } from "./ftcpprobot";
 import type { AnimCtx } from "./models";
 import type { PowerPlayCycle, PowerPlayPick, PowerPlayPlace } from "./scenes";
 
-const SPEED = 36; // px/s for the plain runs of the way in
 const CRUISE = 14; // px/s as the robot passes the middle of the tile on its way to a pole, and from there it creeps
 const LIFT_OVER = 1.5; // how much higher than its final height the arm swings out over a pole, and then lowers
 const STOW = 3.4; // the slides all the way down (the carriage's foot on the chassis)
@@ -83,8 +82,6 @@ interface Phase {
 const FADE = { pick: 0.06, spawn: 0.4, drop: 0.55, clear: 0.4 };
 
 export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
-  const home: Pose = { x: model.position.x, y: model.position.z, h: -model.rotation.y };
-
   /** A robot-frame offset (x forward, z to its right) as a world one, for a robot facing `h`. */
   const world = (h: number, fx: number, rz: number) => ({
     x: Math.cos(h) * fx - Math.sin(h) * rz,
@@ -151,11 +148,6 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
       if (Math.hypot(q.x - from.x, q.z - from.y) >= dist) return u * ph.dur;
     }
     return ph.dur;
-  };
-  /** A straight run between two stops with the heading held and the default ease (the way in). */
-  const run = (from: Pose, to: { x: number; y: number }, h: number, min: number) => {
-    const c = curve([from, to]);
-    return { dur: Math.max(min, c.getLength() / SPEED), route: { curve: c, h0: h, h1: h } };
   };
   const never = () => false;
   const always = () => true;
@@ -280,17 +272,11 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
   });
   const loopTotal = loop.reduce((s, p) => s + p.dur, 0);
 
-  // the way in, once: parked for a moment, then along the row to the middle of the tile beside the stack, a quarter turn, and up
-  // to the stack with the claw coming down to level and open
-  const P: Pose = { x: A.at.x, y: home.y, h: home.h };
-  const waiting: Arm = { ...PP_WAIT };
-  const intro: Phase[] = [
-    { dur: 0.4, at: home, arm: [waiting, waiting], carry: never },
-    { ...run(home, P, home.h, 1), arm: [waiting, waiting], carry: never },
-    { dur: 0.55, at: P, turn: A.at.h, arm: [waiting, waiting], carry: never },
-    { ...run(P, A.at, A.at.h, 1), arm: [waiting, A.arm], when: { tilt: [0, 0.5], yaw: [0, 0.5], lift: [0.3, 0.9] }, carry: never },
-  ];
-  const introTotal = intro.reduce((s, p) => s + p.dur, 0);
+  // it starts where the loop does: standing at the stack with the jaws open, the wrist level and the slides at the stack's height; reduced
+  // motion, which never animates it, leaves it there
+  model.position.set(A.at.x, model.position.y, A.at.y);
+  model.rotation.y = -A.at.h;
+  (model.userData.pose as ((p: PPPose) => void) | undefined)?.({ ...A.arm, carrying: false });
 
   // when, in the loop, each thing happens to the field
   const events: { what: Mark["what"]; index: number; at: number }[] = [];
@@ -328,16 +314,12 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
   };
 
   model.userData.animate = ({ t }: AnimCtx) => {
-    if (t <= 0) return; // reduced motion: parked, the arm up, every cone where it was
+    if (t <= 0) return; // reduced motion: standing at the stack, every cone where it was
 
     // which phase, and how far through it
-    let list = intro;
-    let e = t;
-    if (t >= introTotal) {
-      list = loop;
-      e = (t - introTotal) % loopTotal;
-      field(e);
-    } else field(0);
+    const list = loop;
+    let e = t % loopTotal;
+    field(e);
     let i = 0;
     while (i < list.length - 1 && e >= list[i].dur) e -= list[i++].dur;
     const ph = list[i];

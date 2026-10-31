@@ -70,8 +70,8 @@ export interface PowerPlayPlace {
 }
 
 /**
- * What the Power Play robot does, in world px, forever: take the top cone of the stack and put it on the high junction, take the
- * human player's cone and put it on the medium junction. It parks at its start and drives to the stack the first time only.
+ * What the Power Play robot does, in world px, forever: take the top cone of the stack and put it on the medium junction, take the
+ * human player's cone and put it on the high junction. It starts at the stack.
  */
 export interface PowerPlayCycle {
   stack: PowerPlayPick;
@@ -82,8 +82,6 @@ export interface PowerPlayCycle {
 
 /** What the Into the Deep robot does, all in world px: two jobs it does in turn, forever, and the way between them. */
 export interface RobotCycle {
-  /** Waypoints on the way from where it is parked to the first job's intake stop (it only parks the first time). */
-  intro: { x: number; y: number }[];
   /** The two jobs, done in turn: the first, then the second, then the first again. */
   jobs: [RobotJob, RobotJob];
   /** Waypoints from the first job's scoring stop to the second job's intake stop, and from the second's back to the first's. */
