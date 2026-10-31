@@ -32,7 +32,7 @@ export interface PPPose {
   carrying: boolean; // a cone in the jaws
 }
 
-/** How far each jaw swings (radians) when the claw is fully open: the front gap goes from 2 to about 8 px, wider than the cone (4.8). */
+/** How far each jaw swings (radians) when the claw is fully open: the front gap (the chord between the tips) goes from about 4 to about 9 px, wider than the cone (4.8). */
 const OPEN = (40 * Math.PI) / 180;
 
 /** Wrist up and the claw open: how it waits. */
@@ -277,11 +277,11 @@ export function ppRobotModel(): Group {
   for (const s of [-1, 1]) {
     const jaw = new Group();
     const arcs = new Group(); // drawn about the ring's centre, offset so that the jaw's group origin is its hinge
-    const [a0, a1] = s > 0 ? [25, 165] : [-165, -25];
+    const [a0, a1] = s > 0 ? [55, 165] : [-165, -55];
     arcs.add(arc(BLUE, 2.65, 3, -0.4, 1, a0, a1));
     for (let i = 0; i < 5; i++) {
-      const t0 = 30 + i * 27;
-      arcs.add(arc(BLACK, 2.45, 2.65, -0.3, 0.9, s > 0 ? t0 : -(t0 + 22), s > 0 ? t0 + 22 : -t0)); // the ribs
+      const t0 = 60 + i * 21;
+      arcs.add(arc(BLACK, 2.45, 2.65, -0.3, 0.9, s > 0 ? t0 : -(t0 + 16), s > 0 ? t0 + 16 : -t0)); // the ribs
     }
     arcs.position.set(-hinge.x, 0, -s * hinge.z);
     jaw.position.set(hinge.x, 0, s * hinge.z);
