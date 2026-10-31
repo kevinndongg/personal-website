@@ -1,4 +1,4 @@
-import { SAMPLE_COLORS, TAKEN, submersibleSamples } from "./ftcfield";
+import { PP, SAMPLE_COLORS, TAKEN, submersibleSamples } from "./ftcfield";
 import type { Decal, Footprint, Prop, Scene } from "./scenes";
 
 // The FTC area: one square competition field split into three wedges, one per season, with the duck mascot, the driver
@@ -31,6 +31,14 @@ export const FLOOR = {
     [{ x: 0, y: 0 }, { x: HALF, y: K }],
     [{ x: 0, y: 0 }, { x: -HALF, y: K }],
   ],
+  // Red tape marking the Power Play stations (relative to the field's centre, like the white tape): a strip as wide as the other tape
+  // running a whole tile out from the north wall along the middle of the red cone stack; and, on the west wall, a chevron: a line
+  // from the middle of the third tile (the human player's cone) to the middle of that tile's south edge, and its mirror from the
+  // middle of the fourth tile to the same point. (The lines start a little behind the wall so they run right up to it.)
+  red: {
+    strips: [{ x0: -30 - 0.8, y0: -HALF, x1: -30 + 0.8, y1: -HALF + 20 }],
+    lines: [{ width: 1.6, points: [{ x: -HALF - 2, y: -12 }, { x: -HALF + 10, y: 0 }, { x: -HALF - 2, y: 12 }] }],
+  },
 };
 
 const circle = (r: number): Footprint => ({ kind: "circle", r });
@@ -76,19 +84,42 @@ export function ftcScene(ox: number, oy: number): Scene {
     block("ftc-wall", f(half + 1.5, 0), 3, FIELD.size)
   );
 
-  // ---- Power Play (left wedge): junction poles on the tile corners, cone stacks to feed them
+  // ---- Power Play (left wedge): junction poles on the tile corners, cone stacks to feed them, and the robot that works them
   // The five-by-five junction pattern is ground / low / medium / high; only the columns that fall inside the wedge are here.
   const junctions: [number, number, string][] = [
     [-40, -40, "ftc-pp-g"],
-    [-40, -20, "ftc-pp-l"],
+    [-40, -20, "ftc-pp-l-blue"], // a cone already on it
     [-40, 0, "ftc-pp-g"],
     [-40, 20, "ftc-pp-l"],
     [-20, -40, "ftc-pp-l"],
     [-20, -20, "ftc-pp-m-red"], // a cone already on top
     [-20, 0, "ftc-pp-h-blue"],
   ];
-  for (const [x, y, sprite] of junctions) props.push(round(sprite, f(x, y), 3));
-  props.push(round("ftc-cones-red", f(-50, 10), 3), round("ftc-cones-blue", f(-30, 10), 3));
+  // the ground junctions lie flat on the floor, so nothing blocks the way over them (and, with no footprint, their model stands 2 px behind
+  // the y given, as the floor's does); the others are poles with a base
+  for (const [x, y, sprite] of junctions) {
+    const c = f(x, y);
+    props.push(sprite === "ftc-pp-g" ? { sprite, x: c.x, y: c.y + 2 } : round(sprite, c, 2.5));
+  }
+  // The robot takes the top cone of the red stack against the north wall (centred on the second tile from the left) to the medium
+  // junction, then the human player's cone, standing against the west wall at the middle of the third tile down, to the medium one
+  // and then to the high one (ppcycle.ts). It starts at the stack and runs the lane down the middle of the tile column and the row along the third tile.
+  const NORTH = -Math.PI / 2;
+  const STACK = f(-30, -57);
+  const HUMAN = f(-56, -10); // a pixel off the wall, so the cone can swing up without touching it
+  props.push(round("ftc-pp-stack", STACK, 2.9), round("ftc-pp-cone", HUMAN, 2.9));
+  props.push({
+    ...turned("ftc-robot-pp", f(-30, -47.2), NORTH, 6), // (where its loop starts)
+    ppCycle: {
+      stack: { target: STACK, base: PP.stackTop, heading: NORTH },
+      human: { target: HUMAN, base: 0, heading: Math.PI },
+      // the pole off the robot's shoulder, the turret turned exactly a quarter turn to it: the high one on its left as it backs east along
+      // the row facing west, the medium one on its right as it backs south down the lane facing north
+      high: { target: f(-20, 0), side: -1, top: "h", heading: Math.PI },
+      medium: { target: f(-20, -20), side: 1, top: "m", heading: NORTH },
+      mediumRow: { target: f(-20, -20), side: 1, top: "m", heading: Math.PI },
+    },
+  });
 
   // ---- Center Stage (top right wedge): the backdrop against the wall, the truss, the drone, loose pixels
   props.push(block("ftc-backdrop", f(30, -55), 12, 8));
@@ -110,7 +141,7 @@ export function ftcScene(ox: number, oy: number): Scene {
   // the baskets stand tight in the corners with their buckets towards the middle of the field
   props.push(turned("ftc-basket-red", f(-54, 54), -Math.PI / 4, 4), turned("ftc-basket-blue", f(54, 54), (-3 * Math.PI) / 4, 4));
 
-  // The robot parks facing south and then runs its loop for good, two jobs in turn (robotcycle.ts). The samples it takes are two
+  // The robot runs its loop for good, two jobs in turn, starting at the west end of the submersible facing east (robotcycle.ts). The samples it takes are two
   // of those lying in the submersible (the layout is shared with the model, ftcfield.ts): a red one at the west end, and a yellow
   // one just in from the south side.
   const spots = submersibleSamples(SUB.w, SUB.d);
@@ -119,10 +150,8 @@ export function ftcScene(ox: number, oy: number): Scene {
   const right = sampleAt(TAKEN.right);
   const bucket = (side: 1 | -1) => f(side * 50.9, 50.9); // the high bucket of the basket on that side (red is west, blue east)
   props.push({
-    ...turned("ftc-robot-itd", f(0, 16), Math.PI / 2, 6.25),
+    ...turned("ftc-robot-itd", f(-28.5, SUB.y), 0, 6.25), // (where its loop starts)
     cycle: {
-      // Round the submersible's north-west corner to its west end, keeping well back from its rails (the robot swings wide as it turns).
-      intro: [f(-10, 11), f(-34, 17)],
       jobs: [
         {
           // The red sample, from the submersible's west end with the robot facing east, to the red basket in the south-west corner,
