@@ -496,12 +496,26 @@ html:has(.game) body {
   width: var(--body-w);
 }
 
-/* the media is hidden (and fades) while the paper moves: see Panel.setFull */
-.media {
-  transition: opacity 180ms ease;
+/* (a body wider than the paper reaches out past the side the card grew towards, which is clipped) */
+.panel[data-side="right"].pin .body {
+  align-self: flex-end;
 }
 
-.panel.hold .media {
+/* the scrollbar's room is always taken on a side card, so the text never shifts when the scrollbar comes or goes */
+.panel[data-side="right"] .sheet,
+.panel[data-side="left"] .sheet {
+  scrollbar-gutter: stable;
+}
+
+/* the media is hidden (and fades) while the paper moves: see Panel.setFull */
+/* the new content (each photo or clip, the buttons) fades in and out with a delay of its own (--d: see Panel.revealDelays) */
+.media-item,
+.actions {
+  transition: opacity 240ms ease var(--d, 0ms);
+}
+
+.panel.hold .media-item,
+.panel.hold .actions {
   opacity: 0;
 }
 
@@ -512,12 +526,21 @@ html:has(.game) body {
 }
 
 .panel[data-side].full .close {
-  right: calc(14px * var(--card-scale, 1));
-  left: auto;
   color: var(--ink);
   background: color-mix(in srgb, var(--paper) 86%, transparent);
   box-shadow: 0 0 0 1px rgba(59, 42, 32, 0.14);
   transition: background 150ms;
+}
+
+/* the text is on the card's own side and the media beyond it: the close button is in the corner over the media */
+.panel[data-side="right"].full .close {
+  right: auto;
+  left: calc(14px * var(--card-scale, 1));
+}
+
+.panel[data-side="left"].full .close {
+  right: calc(14px * var(--card-scale, 1));
+  left: auto;
 }
 
 .panel[data-side].full .close svg {
@@ -536,12 +559,9 @@ html:has(.game) body {
   box-shadow: 0 0 0 1px rgba(59, 42, 32, 0.14);
 }
 
-.panel.full .expand {
+/* the shrink button keeps the expand button's place on a right-hand card; on a left-hand one the close button is beside it */
+.panel[data-side="left"].full .expand {
   right: calc(58px * var(--card-scale, 1));
-}
-
-.panel[data-expandable].full .brand {
-  padding-right: calc(88px * var(--card-scale, 1));
 }
 
 /* the copy (header, text, results, tags) is one block in the grid only when the card is wide enough to put the media beside it */
@@ -550,30 +570,54 @@ html:has(.game) body {
 }
 
 @media (min-width: 1000px) {
-  .panel.full .body {
-    grid-template-columns: var(--cols, minmax(0, 5fr) minmax(0, 7fr)); /* (Panel sets --cols: the text keeps its small-card width) */
+  .panel.spread .body {
     grid-template-rows: auto 1fr;
     column-gap: calc(36px * var(--card-scale, 1));
     align-items: start;
-    padding: calc(28px * var(--card-scale, 1)) calc(32px * var(--card-scale, 1)) calc(32px * var(--card-scale, 1));
   }
 
-  .panel.full .copy {
+  /* the text keeps its place and its padding (as in the small card); the media is on the map's side of it */
+  .panel[data-side="right"].spread .body {
+    grid-template-columns: minmax(0, 1fr) var(--copy-w);
+    padding: calc(20px * var(--card-scale, 1)) calc(22px * var(--card-scale, 1)) calc(22px * var(--card-scale, 1)) calc(32px * var(--card-scale, 1));
+  }
+
+  .panel[data-side="left"].spread .body {
+    grid-template-columns: var(--copy-w) minmax(0, 1fr);
+    padding: calc(20px * var(--card-scale, 1)) calc(32px * var(--card-scale, 1)) calc(22px * var(--card-scale, 1)) calc(22px * var(--card-scale, 1));
+  }
+
+  .panel.spread .copy {
     display: grid;
     gap: calc(12px * var(--card-scale, 1));
-    grid-column: 1;
     grid-row: 1;
   }
 
-  .panel.full .media {
-    grid-column: 2;
+  .panel.spread .media {
     grid-row: 1 / span 2;
     margin-top: calc(44px * var(--card-scale, 1));
   }
 
-  .panel.full .actions {
-    grid-column: 1;
+  .panel.spread .actions {
     grid-row: 2;
+  }
+
+  .panel[data-side="right"].spread .copy,
+  .panel[data-side="right"].spread .actions {
+    grid-column: 2;
+  }
+
+  .panel[data-side="right"].spread .media {
+    grid-column: 1;
+  }
+
+  .panel[data-side="left"].spread .copy,
+  .panel[data-side="left"].spread .actions {
+    grid-column: 1;
+  }
+
+  .panel[data-side="left"].spread .media {
+    grid-column: 2;
   }
 }
 

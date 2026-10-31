@@ -1,6 +1,7 @@
 import { navigate } from "astro:transitions/client";
 import { clampDrag, type Box, type Point } from "./drag";
 import { fullRect, type Rect } from "./fullrect";
+import { edgeTime } from "./reveal";
 import { orgLine } from "./orgline";
 import type { Zone, ZoneAction } from "./world";
 import { buildMedia } from "./panelmedia";
@@ -170,28 +171,24 @@ export class Panel {
       root.classList.toggle("full", on);
       return;
     }
-    // The media is the part that would re-wrap and jump as the card changes size, so it is out of the way (.hold) while the paper
-    // moves: it fades out first when shrinking, and fades back in once the paper has stopped, in its new place.
-    root.classList.add("hold");
+    // The new content (the media, the buttons) is out of the way (.hold) while the card changes layout, and each item fades in
+    // as the growing paper reaches it (and out as the shrinking paper leaves it): see reveal.ts and revealDelays().
     if (on) {
-      this.pinColumn();
-      root.classList.add("pin");
-      this.runGrow(parent, true);
-    } else {
-      this.growTimer = window.setTimeout(() => this.runGrow(parent, false), 190); // (the time the media takes to fade out)
-    }
+      root.classList.add("hold"); // (they fade out, then the layout is spread and the paper grows)
+      this.sheet.scrollTo({ top: 0, behavior: "smooth" }); // (so the text is where the spread layout puts it)
+      this.growTimer = window.setTimeout(() => this.runGrow(parent, true), 200);
+    } else this.runGrow(parent, false);
   }
 
-  /** The text keeps the width it has in the small card (and the media gets the rest), so it never re-wraps while the card changes size. */
-  private pinColumn() {
-    const body = this.root.querySelector(".body") as HTMLElement;
-    this.root.style.setProperty("--cols", `${this.head.offsetWidth}px minmax(0, 1fr)`);
-    this.root.style.setProperty("--body-w", `${body.offsetWidth}px`);
+  /** The two-column layout has room only on a wide window. */
+  private spreadable() {
+    return innerWidth >= 1000;
   }
 
   /** Animates the card between two pixel boxes: it is laid out from its side with a transform, which cannot be animated to "inset all round". */
   private runGrow(parent: HTMLElement, on: boolean) {
     const root = this.root;
+    const body = root.querySelector(".body") as HTMLElement;
     const place = parent.getBoundingClientRect();
     const rel = (r: DOMRect): Rect => ({
       left: r.left - place.left - parent.clientLeft,
@@ -199,19 +196,29 @@ export class Panel {
       width: r.width,
       height: r.height,
     });
+    const spread = this.spreadable();
     const from = rel(root.getBoundingClientRect());
     let to: Rect;
-    if (on) to = fullRect({ w: parent.clientWidth, h: parent.clientHeight }, Math.max(24, innerWidth * 0.03));
-    else {
+    let copyW: number; // the text's width, in the small card
+    let bodyW: number; // the width the body is held at while the paper moves
+    if (on) {
+      to = fullRect({ w: parent.clientWidth, h: parent.clientHeight }, Math.max(24, innerWidth * 0.03));
+      copyW = this.head.offsetWidth;
+      // the body is laid out at the size it will have, and the paper uncovers it (a window too narrow for two columns keeps the small card's width)
+      bodyW = spread ? to.width - (this.sheet.offsetWidth - this.sheet.clientWidth) : body.offsetWidth;
+    } else {
+      bodyW = body.offsetWidth;
       // where it rests: measured now, in its own layout, with the drag taken off (and no transitions, which would
       // still be at the start of their way, with the card's transform not yet applied)
       root.style.transition = "none";
-      root.classList.remove("full");
+      root.classList.remove("full", "spread");
       this.setDrag({ x: 0, y: 0 });
       to = rel(root.getBoundingClientRect());
-      this.pinColumn(); // (the text's width in the small card, as it is now)
-      root.classList.add("full"); // the two-column layout stays until the paper has shrunk: the text does not move
+      copyW = this.head.offsetWidth;
+      root.classList.add("full", "spread"); // the two-column layout stays until the paper has shrunk: the text does not move
     }
+    root.style.setProperty("--copy-w", `${copyW}px`);
+    root.style.setProperty("--body-w", `${bodyW}px`);
     const box = (g: Rect) => {
       const s = root.style;
       s.left = `${g.left}px`;
@@ -222,16 +229,45 @@ export class Panel {
     // no transitions while the card is put on its starting box (its transform and `top: 50%` would otherwise be animated away from),
     // then they are let loose, and the next box is animated to
     root.style.transition = "none";
-    root.classList.add("growing");
+    root.classList.add("growing", "pin");
+    if (on) root.classList.add("spread");
     root.style.right = "auto";
     root.style.bottom = "auto";
     root.style.maxHeight = "none";
     root.style.transform = "none";
     box(from);
     void root.offsetWidth;
+    if (spread) this.revealDelays(rel, on, from, to);
     root.style.removeProperty("transition");
     box(to);
+    // growing: the content fades in as the paper reaches it, now; shrinking: it fades out as the paper leaves it
+    if (on && spread) root.classList.remove("hold");
+    else if (!on) root.classList.add("hold");
     this.growTimer = window.setTimeout(() => this.finishGrow(), 480);
+  }
+
+  /**
+   * Sets when each item of the new content fades, from where the layout puts it: an item fades in when the paper's moving edge
+   * reaches its near side. Shrinking plays that backwards in time (the paper's edge sweeps past the far items too quickly for
+   * "faded out by the time it passes" to tell them apart), so the farthest item fades out first and the nearest last.
+   */
+  private revealDelays(rel: (r: DOMRect) => Rect, on: boolean, from: Rect, to: Rect) {
+    const items = [...this.root.querySelectorAll<HTMLElement>(".media-item, .actions")];
+    const right = this.root.dataset.side === "right"; // the card is on the right: the paper grows towards the left
+    const edge = (g: Rect) => (right ? g.left : g.left + g.width);
+    const small = edge(on ? from : to); // (the edge as it is in the small card, and as it is when expanded)
+    const full = edge(on ? to : from);
+    const fade = 240;
+    const move = 450;
+    const rows = [...new Set(items.map((it) => Math.round(rel(it.getBoundingClientRect()).top / 8)))].sort((a, b) => a - b);
+    for (const it of items) {
+      const r = rel(it.getBoundingClientRect());
+      const near = right ? r.left + r.width : r.left;
+      const row = rows.indexOf(Math.round(r.top / 8));
+      const start = edgeTime(near, small, full, move) + row * 40; // (when it fades in, expanding)
+      const ms = on ? start : Math.max(0, move - start - fade);
+      it.style.setProperty("--d", `${Math.round(ms)}ms`);
+    }
   }
 
   /** Takes the pixel box off the card, so that its own layout is in charge again. */
@@ -250,9 +286,11 @@ export class Panel {
     this.clearBox();
     root.classList.remove("growing", "pin");
     root.classList.toggle("full", this.full);
+    root.classList.toggle("spread", this.full);
     void root.offsetWidth;
     root.style.removeProperty("transition");
-    // the paper has stopped: the media comes back (in its new place, where it was invisible when it moved)
+    // the paper has stopped: what is still hidden comes back at once (the media below the text, after a shrink)
+    for (const it of root.querySelectorAll<HTMLElement>(".media-item, .actions")) it.style.removeProperty("--d");
     requestAnimationFrame(() => root.classList.remove("hold"));
   }
 
@@ -379,8 +417,9 @@ export class Panel {
     this.growTimer = 0;
     this.clearBox();
     this.root.style.removeProperty("transition");
-    for (const p of ["--cols", "--body-w"]) this.root.style.removeProperty(p);
-    this.root.classList.remove("growing", "full", "hold", "pin");
+    for (const p of ["--copy-w", "--body-w"]) this.root.style.removeProperty(p);
+    for (const it of this.root.querySelectorAll<HTMLElement>(".media-item, .actions")) it.style.removeProperty("--d");
+    this.root.classList.remove("growing", "full", "spread", "hold", "pin");
     this.full = false;
     const can = !!zone.expandable && !isLinkOnly(zone) && (side === "left" || side === "right");
     this.expandBtn.hidden = !can;
