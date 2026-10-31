@@ -259,7 +259,7 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
   loop.push(...toPole(C, B, midB, overB, 1, 0));
   // retract as it turns off the row to the north, then up the lane to the stack, the slides rising on the way
   const afterB: Arm = open(B.arm);
-  const turnOut = { x: -HALF_TILE * 3, y: B.at.y - 6 };
+  const turnOut = { x: A.at.x, y: B.at.y - 6 }; // in the stack's lane (world px, like everything else here)
   loop.push({
     ...leg([B.at, { x: B.at.x - 5, y: B.at.y - 0.4 }, turnOut], B.at.h, A.at.h, 1.2, 0, 18),
     arm: [afterB, stowed(A.arm)],
