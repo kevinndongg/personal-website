@@ -348,6 +348,55 @@ html:has(.game) body {
   }
 }
 
+/*
+ * The same torn note on the open photography page ("Click to advance / rewind"), with an arrow to each of the camera's two
+ * controls. `placeFilmHint` (src/game/main.ts) puts the note above the camera and draws each arrow's path to its control, so
+ * the arrows are screen-sized SVGs of their own; `--glow` (0..1) on each is how lit its control is just now, so it lights in
+ * turn with it, like the lever and the knob do.
+ */
+.hint.film .hint-paper {
+  --tilt: -1.5deg;
+  text-align: center;
+  padding-left: 22px;
+  background-position: 0 0, 0 12px, 0 0;
+}
+
+.film-arrow {
+  --glow: 0.45;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  fill: none;
+  stroke: #fffaf0;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* the same warm light as the racing arrow, centred on the stroke, brightest when its control is */
+  filter: drop-shadow(0 0 calc(2px + var(--glow) * 7px) rgba(255, 228, 170, 0.95));
+  opacity: 0;
+  transition: opacity 320ms ease;
+}
+
+.film-arrow path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+.film-arrow.shown {
+  opacity: 1;
+}
+
+.film-arrow.shown path {
+  animation: hint-draw 600ms 650ms ease-out forwards;
+}
+
+.film-arrow.shown.gone {
+  opacity: 0;
+}
+
 /* ---- the card that opens beside the zoomed-in building ---- */
 
 .backdrop {
@@ -362,19 +411,67 @@ html:has(.game) body {
   z-index: 2;
   display: flex;
   flex-direction: column;
+  color: var(--ink);
+  opacity: 0;
+  transition:
+    transform 460ms var(--ease),
+    opacity 260ms ease;
+}
+
+/* the paper: it scrolls, and the card's close button sits beside it (outside, so it is not clipped by the scrolling) */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  color: var(--ink);
   background: var(--paper);
+  border-radius: calc(18px * var(--card-scale, 1));
   box-shadow:
     0 24px 60px rgba(30, 16, 6, 0.38),
     0 0 0 1px rgba(59, 42, 32, 0.1);
   -webkit-user-select: text;
   user-select: text;
-  opacity: 0;
-  transition:
-    transform 460ms var(--ease),
-    opacity 260ms ease;
+}
+
+/*
+ * the scrollbar: a slim rounded thumb, floating a little in from the card's edge, on no track at all (no arrows, nothing grey).
+ * The thumb is drawn with a transparent border round it, which is what insets it; the track stops short of the rounded corners.
+ */
+.sheet::-webkit-scrollbar {
+  width: calc(10px * var(--card-scale, 1));
+  height: calc(10px * var(--card-scale, 1));
+}
+
+.sheet::-webkit-scrollbar-track {
+  margin: calc(14px * var(--card-scale, 1)) 0;
+  background: transparent;
+}
+
+.sheet::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--ink-soft) 45%, transparent);
+  background-clip: padding-box;
+  border: calc(3px * var(--card-scale, 1)) solid transparent;
+  border-radius: 999px;
+}
+
+.sheet::-webkit-scrollbar-thumb:hover,
+.sheet::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--ink-soft) 75%, transparent);
+}
+
+.sheet::-webkit-scrollbar-button,
+.sheet::-webkit-scrollbar-corner {
+  display: none;
+}
+
+/* browsers without those (Firefox): the standard properties give a thin, muted bar */
+@supports not selector(::-webkit-scrollbar) {
+  .sheet {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--ink-soft) 45%, transparent) transparent;
+  }
 }
 
 .panel[hidden] {
@@ -390,24 +487,205 @@ html:has(.game) body {
 .panel[data-side="right"],
 .panel[data-side="left"] {
   top: 50%;
-  width: min(460px, 42vw);
+  width: min(calc(720px * var(--card-scale, 1)), 50vw);
   max-height: calc(100% - 48px);
-  border-radius: 18px;
 }
 
+/* --drag-x / --drag-y: how far the card has been dragged from its resting place (Panel sets them) */
 .panel[data-side="right"] {
   right: max(24px, 3vw);
-  transform: translate(36px, -50%);
+  transform: translate(calc(36px + var(--drag-x, 0px)), calc(-50% + var(--drag-y, 0px)));
 }
 
 .panel[data-side="left"] {
   left: max(24px, 3vw);
-  transform: translate(-36px, -50%);
+  transform: translate(calc(-36px + var(--drag-x, 0px)), calc(-50% + var(--drag-y, 0px)));
 }
 
 .panel[data-side="right"].open,
 .panel[data-side="left"].open {
-  transform: translateY(-50%);
+  transform: translate(var(--drag-x, 0px), calc(-50% + var(--drag-y, 0px)));
+}
+
+/*
+ * Expanded: the card fills the window, less a margin all round (the dimmed map shows in it). Panel animates the card between two
+ * pixel boxes (.growing: it has no layout of its own for that moment) and puts .full on at the end of growing and takes it off
+ * at the start of shrinking, so the layout below (two columns) never shows in the small card.
+ */
+.panel[data-side].full {
+  inset: max(24px, 3vw);
+  width: auto;
+  height: auto;
+  max-height: none;
+  transform: none;
+}
+
+.panel.growing {
+  transition:
+    left 450ms var(--ease),
+    top 450ms var(--ease),
+    width 450ms var(--ease),
+    height 450ms var(--ease),
+    opacity 260ms ease;
+}
+
+.panel.growing .sheet,
+.panel.full .sheet {
+  flex: 1 1 auto;
+}
+
+/* no scrollbar comes and goes while the paper moves */
+.panel.growing .sheet {
+  overflow: hidden;
+}
+
+/* growing: the text keeps the width it had in the small card (Panel sets --body-w) instead of widening with the paper */
+.panel.pin .body {
+  box-sizing: border-box;
+  width: var(--body-w);
+}
+
+/* (a body wider than the paper reaches out past the side the card grew towards, which is clipped) */
+.panel[data-side="right"].pin .body {
+  align-self: flex-end;
+}
+
+/* the scrollbar's room is always taken on a side card, so the text never shifts when the scrollbar comes or goes */
+.panel[data-side="right"] .sheet,
+.panel[data-side="left"] .sheet {
+  scrollbar-gutter: stable;
+}
+
+/* the media is hidden (and fades) while the paper moves: see Panel.setFull */
+/* the new content (each photo or clip, the buttons) fades in and out with a delay of its own (--d: see Panel.revealDelays) */
+.media-item,
+.actions {
+  transition: opacity 240ms ease var(--d, 0ms);
+}
+
+.panel.hold .media-item,
+.panel.hold .actions {
+  opacity: 0;
+}
+
+/* the close button is outside the ordinary card, where there is no room when the card fills the window: it goes inside, and is hidden while the card moves */
+.panel.growing .close {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.panel[data-side].full .close {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 86%, transparent);
+  box-shadow: 0 0 0 1px rgba(59, 42, 32, 0.14);
+  transition: background 150ms;
+}
+
+/* the text is on the card's own side and the media beyond it: the close button is in the corner over the media */
+.panel[data-side="right"].full .close {
+  right: auto;
+  left: calc(14px * var(--card-scale, 1));
+}
+
+.panel[data-side="left"].full .close {
+  right: calc(14px * var(--card-scale, 1));
+  left: auto;
+}
+
+.panel[data-side].full .close svg {
+  filter: none;
+}
+
+.panel[data-side].full .close:hover {
+  color: var(--ink);
+  background: var(--paper-2);
+  transition: background 150ms;
+}
+
+.panel[data-side].full .close:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 1px rgba(59, 42, 32, 0.14);
+}
+
+/* the shrink button keeps the expand button's place on a right-hand card; on a left-hand one the close button is beside it */
+.panel[data-side="left"].full .expand {
+  right: calc(58px * var(--card-scale, 1));
+}
+
+/* the copy (header, text, results, tags) is one block in the grid only when the card is wide enough to put the media beside it */
+.copy {
+  display: contents;
+}
+
+@media (min-width: 1000px) {
+  .panel.spread .body {
+    grid-template-rows: auto 1fr;
+    column-gap: calc(36px * var(--card-scale, 1));
+    align-items: start;
+  }
+
+  /* the text keeps its place and its padding (as in the small card); the media is on the map's side of it */
+  .panel[data-side="right"].spread .body {
+    grid-template-columns: minmax(0, 1fr) var(--copy-w);
+    padding: calc(20px * var(--card-scale, 1)) calc(22px * var(--card-scale, 1)) calc(22px * var(--card-scale, 1)) calc(32px * var(--card-scale, 1));
+  }
+
+  .panel[data-side="left"].spread .body {
+    grid-template-columns: var(--copy-w) minmax(0, 1fr);
+    padding: calc(20px * var(--card-scale, 1)) calc(32px * var(--card-scale, 1)) calc(22px * var(--card-scale, 1)) calc(22px * var(--card-scale, 1));
+  }
+
+  .panel.spread .copy {
+    display: grid;
+    gap: calc(12px * var(--card-scale, 1));
+    grid-row: 1;
+  }
+
+  .panel.spread .media {
+    grid-row: 1 / span 2;
+    margin-top: calc(44px * var(--card-scale, 1));
+  }
+
+  .panel.spread .actions {
+    grid-row: 2;
+  }
+
+  .panel[data-side="right"].spread .copy,
+  .panel[data-side="right"].spread .actions {
+    grid-column: 2;
+  }
+
+  .panel[data-side="right"].spread .media {
+    grid-column: 1;
+  }
+
+  .panel[data-side="left"].spread .copy,
+  .panel[data-side="left"].spread .actions {
+    grid-column: 1;
+  }
+
+  .panel[data-side="left"].spread .media {
+    grid-column: 2;
+  }
+}
+
+/* the card is moved by its header: a hand on it, and no transition while it follows the pointer */
+.panel[data-side="right"] .head,
+.panel[data-side="left"] .head {
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.panel.dragging,
+.panel.dragging .head {
+  cursor: grabbing;
+}
+
+.panel.dragging {
+  transition: opacity 260ms ease;
 }
 
 /* narrow screens: a sheet that rises from the bottom, leaving the box visible above it */
@@ -416,7 +694,6 @@ html:has(.game) body {
   right: 8px;
   bottom: 8px;
   max-height: 50%;
-  border-radius: 18px;
   transform: translateY(40px);
   transition:
     transform 460ms var(--ease),
@@ -455,13 +732,91 @@ html:has(.game) body {
 
 .close {
   position: absolute;
-  top: 14px;
-  right: 14px;
+  top: calc(14px * var(--card-scale, 1));
+  right: calc(14px * var(--card-scale, 1));
   z-index: 2;
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: calc(34px * var(--card-scale, 1));
+  height: calc(34px * var(--card-scale, 1));
+  padding: 0;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 86%, transparent);
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(59, 42, 32, 0.14);
+  cursor: pointer;
+  transition:
+    background 150ms,
+    color 150ms;
+}
+
+.close:hover {
+  background: var(--paper-2);
+}
+
+/*
+ * on a side card the close button sits outside, on the edge that faces the map (the card is on the right: its left). Over the
+ * dim map it is a light ring and cross with nothing inside, and fills with paper when the pointer is over it. (The outer shadows
+ * are not painted inside the circle, so it stays see-through.)
+ */
+.panel[data-side="right"] .close,
+.panel[data-side="left"] .close {
+  color: var(--paper);
+  background: transparent;
+  /*
+   * Going back to rest (this is the transition used when the pointer leaves): the fill fades out and the cross stays dark until the
+   * fill is almost gone, then turns cream. Fading both together blinks the cross out halfway (it is the colour of the fill under it).
+   */
+  transition:
+    background 160ms ease-out,
+    color 0s 110ms;
+  box-shadow:
+    0 0 0 1.5px color-mix(in srgb, var(--paper) 85%, transparent),
+    0 4px 16px rgba(20, 10, 4, 0.45);
+}
+
+.panel[data-side="right"] .close svg,
+.panel[data-side="left"] .close svg {
+  filter: drop-shadow(0 1px 2px rgba(20, 10, 4, 0.55));
+}
+
+.panel[data-side="right"] .close:hover,
+.panel[data-side="left"] .close:hover {
+  color: var(--ink);
+  background: var(--paper);
+  /* the fill and the dark cross arrive together, at once: any fade in has a moment when the cross matches the fill and flickers */
+  transition: none;
+}
+
+/* focus: the ring itself gets bolder and brighter. (A separate outline would be a second circle: the card focuses the button when it opens.) */
+.panel[data-side="right"] .close:focus-visible,
+.panel[data-side="left"] .close:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2.5px var(--paper),
+    0 4px 16px rgba(20, 10, 4, 0.45);
+}
+
+.panel[data-side="right"] .close {
+  right: calc(100% + 10px * var(--card-scale, 1));
+}
+
+.panel[data-side="left"] .close {
+  right: auto;
+  left: calc(100% + 10px * var(--card-scale, 1));
+}
+
+/* the expand button: inside the card's top-right corner (fixed there while the card scrolls); only projects marked expandable have it */
+.expand {
+  position: absolute;
+  top: calc(14px * var(--card-scale, 1));
+  right: calc(14px * var(--card-scale, 1));
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: calc(34px * var(--card-scale, 1));
+  height: calc(34px * var(--card-scale, 1));
   padding: 0;
   color: var(--ink);
   background: color-mix(in srgb, var(--paper) 86%, transparent);
@@ -472,8 +827,36 @@ html:has(.game) body {
   transition: background 150ms;
 }
 
-.close:hover {
+.expand[hidden],
+.panel[data-variant="link"] .expand {
+  display: none;
+}
+
+.expand:hover {
   background: var(--paper-2);
+}
+
+.expand .i-shrink,
+.expand.is-full .i-expand {
+  display: none;
+}
+
+.expand.is-full .i-shrink {
+  display: block;
+}
+
+.expand:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* room in the first line for the button (and, expanded, for the close button as well) */
+/* the expand button floats over the first lines of the heading: they wrap round it, and nothing else loses width */
+.panel[data-expandable] .org.is-title::before {
+  content: "";
+  float: right;
+  width: calc(28px * var(--card-scale, 1));
+  height: calc(32px * var(--card-scale, 1));
 }
 
 .close:focus-visible,
@@ -484,52 +867,141 @@ html:has(.game) body {
 
 .body {
   display: grid;
-  gap: 12px;
-  padding: 20px 22px 22px;
+  gap: calc(12px * var(--card-scale, 1));
+  padding: calc(20px * var(--card-scale, 1)) calc(22px * var(--card-scale, 1)) calc(22px * var(--card-scale, 1));
 }
 
+/* the header: the brand row (the logo, with the organisation beside it), then the title, the role, and the date */
 .head {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding-right: 34px; /* clear of the close button */
+  display: grid;
+  gap: calc(4px * var(--card-scale, 1));
 }
 
 .head[hidden],
-.logo[hidden] {
+.brand[hidden],
+.logo[hidden],
+.org[hidden],
+.note[hidden],
+.when[hidden],
+.badge[hidden] {
   display: none;
 }
 
-/* the project's logo as a small square chip; cover keeps the centre of wide marks */
-.logo {
-  flex: none;
-  width: 52px;
-  height: 52px;
-  object-fit: cover;
-  background: var(--paper-2);
-  border-radius: 12px;
-  box-shadow: 0 0 0 1px var(--line);
+/* the brand row shares its line with the close button, so it leaves room for it; without one the title does */
+.brand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(12px * var(--card-scale, 1));
+  min-width: 0;
+  margin-bottom: calc(6px * var(--card-scale, 1));
 }
 
-.head-text {
-  display: grid;
-  gap: 4px;
+/* the bottom sheet keeps its close button inside the card, so the first line leaves room for it */
+.panel[data-side="bottom"] .brand,
+.panel[data-side="bottom"] .head:not(.has-brand) h2 {
+  padding-right: calc(34px * var(--card-scale, 1));
+}
+
+/* the project's logo, shown whole on the card: capped by height and width, so each keeps its own proportions */
+.logo {
+  flex: none;
+  width: auto;
+  height: auto;
+  max-width: calc(150px * var(--card-scale, 1));
+  max-height: calc(52px * var(--card-scale, 1));
+  object-fit: contain;
+  border-radius: calc(6px * var(--card-scale, 1));
+}
+
+/* the organisation, beside the logo (two lines at most) */
+.org {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: calc(13.5px * var(--card-scale, 1));
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+/* a card with its own heading beside the logo: it is set as the card's title, and what was the title is now a smaller line (or gone) */
+.org.is-title {
+  display: block;
+  flex: 1 1 0; /* (takes the room the logo leaves, and wraps beside it, never under it) */
+  font-family: var(--font-display, serif);
+  font-size: calc(clamp(24px, 2.2vw, 30px) * var(--card-scale, 1));
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  overflow: visible; /* (the clipping for the small organisation line would cut the descenders: g, y, p) */
+}
+
+/* the smaller line under a heading: the DARPA card's "Auton Lab", the FTC card's note under the logo */
+@media (max-width: 760px) {
+  .org.is-title {
+    font-size: clamp(20px, 5.4vw, 26px);
+  }
+}
+
+.panel h2.sub,
+.note {
+  font-family: var(--font-display, serif);
+  font-size: calc(clamp(17px, 1.5vw, 20px) * var(--card-scale, 1));
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--ink-soft);
+}
+
+.panel h2[hidden] {
+  display: none;
+}
+
+/* a line under the logo (and the organisation), starting at the card's left edge */
+.note {
+  flex-basis: 100%;
+  margin: calc(-4px * var(--card-scale, 1)) 0 0;
+}
+
+/* the date, with the under-construction badge beside it */
+.when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(6px * var(--card-scale, 1)) calc(10px * var(--card-scale, 1));
+  margin-top: calc(2px * var(--card-scale, 1));
 }
 
 .kicker {
   margin: 0;
-  font-size: 12px;
+  font-size: calc(12px * var(--card-scale, 1));
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* a project still on the default site is not finished: say so */
+.badge {
+  padding: calc(2px * var(--card-scale, 1)) calc(9px * var(--card-scale, 1));
+  font-size: calc(11px * var(--card-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
   color: var(--ink);
+  background: var(--paper-2);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px var(--line);
 }
 
 .panel h2 {
   margin: 0;
   font-family: var(--font-display, serif);
-  font-size: clamp(24px, 2.2vw, 30px);
+  font-size: calc(clamp(24px, 2.2vw, 30px) * var(--card-scale, 1));
   font-weight: 500;
   line-height: 1.12;
   letter-spacing: -0.01em;
@@ -538,14 +1010,14 @@ html:has(.game) body {
 
 .role {
   margin: 0;
-  font-size: 15px;
+  font-size: calc(15px * var(--card-scale, 1));
   font-weight: 500;
   color: var(--ink-soft);
 }
 
 .summary {
-  margin: 2px 0 0;
-  font-size: 15.5px;
+  margin: calc(2px * var(--card-scale, 1)) 0 0;
+  font-size: calc(15.5px * var(--card-scale, 1));
   line-height: 1.55;
   color: var(--ink);
 }
@@ -553,8 +1025,8 @@ html:has(.game) body {
 /* the results: the part a recruiter actually wants */
 .bullets {
   display: grid;
-  gap: 9px;
-  margin: 2px 0 0;
+  gap: calc(9px * var(--card-scale, 1));
+  margin: calc(2px * var(--card-scale, 1)) 0 0;
   padding: 0;
   list-style: none;
 }
@@ -565,8 +1037,8 @@ html:has(.game) body {
 
 .bullets li {
   position: relative;
-  padding-left: 16px;
-  font-size: 14.5px;
+  padding-left: calc(16px * var(--card-scale, 1));
+  font-size: calc(14.5px * var(--card-scale, 1));
   line-height: 1.5;
   color: var(--ink);
 }
@@ -576,8 +1048,8 @@ html:has(.game) body {
   position: absolute;
   left: 1px;
   top: 0.62em;
-  width: 6px;
-  height: 6px;
+  width: calc(6px * var(--card-scale, 1));
+  height: calc(6px * var(--card-scale, 1));
   border-radius: 50%;
   background: var(--ink);
 }
@@ -585,8 +1057,8 @@ html:has(.game) body {
 .tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin: 4px 0 0;
+  gap: calc(6px * var(--card-scale, 1));
+  margin: calc(4px * var(--card-scale, 1)) 0 0;
   padding: 0;
   list-style: none;
 }
@@ -596,26 +1068,147 @@ html:has(.game) body {
 }
 
 .tag {
-  padding: 3px 10px;
-  font-size: 12.5px;
+  padding: calc(3px * var(--card-scale, 1)) calc(10px * var(--card-scale, 1));
+  font-size: calc(12.5px * var(--card-scale, 1));
   font-weight: 500;
   color: var(--ink-soft);
   background: var(--paper-2);
   border-radius: 999px;
 }
 
+/* photos and clips: halves go two to a row, until the card is too narrow for it (a phone's sheet). Not on the gallery's
+   link, which is as wide as its text: a container would size it to nothing. */
+.panel[data-variant="card"] .body {
+  container-type: inline-size;
+}
+
+.media {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(14px * var(--card-scale, 1)) calc(10px * var(--card-scale, 1));
+  margin: calc(6px * var(--card-scale, 1)) 0 0;
+}
+
+.media[hidden] {
+  display: none;
+}
+
+.media-item {
+  margin: 0;
+  min-width: 0;
+}
+
+.media-item.full {
+  grid-column: 1 / -1;
+}
+
+.media-item img,
+.media-item video,
+.media-youtube {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #000;
+  border-radius: calc(10px * var(--card-scale, 1));
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+/*
+ * A portrait clip is never taller than 70% of the window: its box gets narrower to keep that, and is centred in its column. The
+ * box always has the clip's own proportions (--ar, width / height), so the picture fills it and there is no black margin: capping
+ * only the height of a full-width box would leave bars at the sides.
+ */
+.media-item video {
+  width: min(100%, calc(70vh * var(--ar, 1.7778)));
+  margin-inline: auto;
+}
+
+.media-item figcaption {
+  margin-top: calc(6px * var(--card-scale, 1));
+  font-size: calc(13px * var(--card-scale, 1));
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+.media-youtube {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  aspect-ratio: 16 / 9;
+  cursor: pointer;
+}
+
+.media-youtube img {
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0;
+  box-shadow: none;
+  transition: opacity 150ms;
+}
+
+.media-youtube:hover img {
+  opacity: 0.85;
+}
+
+.media-youtube iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.media-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(60px * var(--card-scale, 1));
+  height: calc(42px * var(--card-scale, 1));
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.72);
+  border-radius: calc(11px * var(--card-scale, 1));
+  transition: background 150ms;
+}
+
+.media-play::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-35%, -50%);
+  border-style: solid;
+  border-width: calc(9px * var(--card-scale, 1)) 0 calc(9px * var(--card-scale, 1)) calc(15px * var(--card-scale, 1));
+  border-color: transparent transparent transparent #fff;
+}
+
+.media-youtube:hover .media-play {
+  background: var(--ink);
+}
+
+.media-youtube:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+@container (max-width: 380px) {
+  .media {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
+  gap: calc(8px * var(--card-scale, 1));
+  margin-top: calc(10px * var(--card-scale, 1));
 }
 
 .btn {
   appearance: none;
-  padding: 10px 16px;
+  padding: calc(10px * var(--card-scale, 1)) calc(16px * var(--card-scale, 1));
   font: inherit;
-  font-size: 14.5px;
+  font-size: calc(14.5px * var(--card-scale, 1));
   font-weight: 600;
   color: var(--ink);
   background: transparent;
@@ -641,7 +1234,8 @@ html:has(.game) body {
 
 .btn.primary:hover {
   background: color-mix(in srgb, var(--ink) 82%, #fff);
-  transform: translateY(-1px);
+  /* (a lift by shadow, not by moving the button: moving it 1px took the pointer off its bottom edge, and the hover flickered) */
+  box-shadow: 0 3px 10px rgba(30, 16, 6, 0.3);
 }
 
 /*
@@ -656,11 +1250,14 @@ html:has(.game) body {
   left: auto;
   width: auto;
   max-height: none;
+  transform: none;
+}
+
+.panel[data-variant="link"] .sheet {
   overflow: visible;
   background: none;
   border-radius: 0;
   box-shadow: none;
-  transform: none;
 }
 
 .panel[data-variant="link"] .grip,
@@ -669,7 +1266,8 @@ html:has(.game) body {
 .panel[data-variant="link"] .logo,
 .panel[data-variant="link"] .summary,
 .panel[data-variant="link"] .bullets,
-.panel[data-variant="link"] .tags {
+.panel[data-variant="link"] .tags,
+.panel[data-variant="link"] .media {
   display: none;
 }
 
@@ -683,8 +1281,8 @@ html:has(.game) body {
 }
 
 .panel[data-variant="link"] .btn {
-  padding: 8px 6px;
-  font-size: 14px;
+  padding: calc(8px * var(--card-scale, 1)) calc(6px * var(--card-scale, 1));
+  font-size: calc(14px * var(--card-scale, 1));
   font-weight: 500;
   color: #f5f1ea;
   background: none;
@@ -761,7 +1359,9 @@ html:has(.game) body {
     opacity: 0;
   }
   .hint-arrow path,
-  .hint.shown .hint-arrow path {
+  .hint.shown .hint-arrow path,
+  .film-arrow path,
+  .film-arrow.shown path {
     animation: none;
     stroke-dashoffset: 0;
   }
@@ -775,7 +1375,7 @@ html:has(.game) body {
   }
   .panel[data-side="right"],
   .panel[data-side="left"] {
-    transform: translateY(-50%);
+    transform: translate(var(--drag-x, 0px), calc(-50% + var(--drag-y, 0px)));
   }
   .edge-arrow.bump {
     animation: none;

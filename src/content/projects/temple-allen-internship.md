@@ -1,6 +1,7 @@
 ---
 title: "Temple Allen Industries"
 image: "./temple-allen-internship.jpg"
+cardLogo: false
 alt: "Temple Allen Industries logo"
 summary: "Robotics Software development and tooling."
 role: "Intern — Software Engineering Intern"

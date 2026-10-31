@@ -34,12 +34,35 @@ export interface ZoneInput {
   role?: string;
   period?: string;
   organization?: string;
+  /** The line beside the logo on the card, and the one under it (both optional: see `orgLine` for the default). */
+  brand?: string;
+  brandNote?: string;
+  /** The card has a button that expands it to nearly the whole window. */
+  expandable?: boolean;
+  /** With `brand`: the line that takes the title's place, smaller (without it the title is dropped). */
+  subtitle?: string;
   techStack?: string[];
   bullets?: string[];
+  /** Photos and videos shown at the bottom of the card, in order. */
+  media?: ZoneMedia[];
   image?: string;
   /** The photos the light table cycles through, in order, photodesk variant only. */
   photos?: ZonePhoto[];
 }
+
+/**
+ * One photo or video on a project's card. All paths are final (the page has made them). Halves pair up two to a row, a
+ * full one takes a row; `width` and `height` reserve the space before the file has loaded.
+ */
+interface MediaPlacing {
+  size: "half" | "full";
+  caption?: string;
+}
+export type ZoneMedia =
+  | ({ type: "image"; src: string; width: number; height: number; alt: string } & MediaPlacing)
+  | ({ type: "video"; src: string; poster: string; width: number; height: number; alt: string } & MediaPlacing)
+  /** A YouTube video that loads only when it is pressed: `embed` is the url of its player. */
+  | ({ type: "youtube"; embed: string; poster: string; title: string } & MediaPlacing);
 
 export interface ZonePhoto {
   /** The image: big enough to fill the screen when the camera is zoomed into it. */

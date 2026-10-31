@@ -1,4 +1,4 @@
-// The Into the Deep robot's loop, forever: it parks for a moment, drives to the west end of the submersible, and from then on it
+// The Into the Deep robot's loop, forever: starting at the west end of the submersible, it
 // does two jobs in turn. Each job: extend the arm forward to a sample lying in the submersible (the arm lies flat when
 // empty, so it only has to extend) and roll it onto the scoop, retract, pivot the arm up to stand upright with the sample lying
 // on top of it, drive like that to a basket and stop diagonally with its back to the bucket, extend the arm straight up and
@@ -96,7 +96,6 @@ interface Phase {
 const FADE = { pick: 0.3, spawn: 0.4, drop: 0.3, clear: 0.4 };
 
 export function attachCycle(model: Group, cfg: RobotCycle) {
-  const home: Pose = { x: model.position.x, y: model.position.z, h: -model.rotation.y };
   const curve = (pts: { x: number; y: number }[]) => {
     const c = new CatmullRomCurve3(
       pts.map((p) => new Vector3(p.x, 0, p.y)),
@@ -207,18 +206,9 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
   });
   const loopTotal = loop.reduce((s, p) => s + p.dur, 0);
 
-  // the way in, once: parked for a moment, then to the first job's intake stop
-  const first = jobs[0];
-  const intro: Phase[] = [
-    { dur: 0.4, at: home, arm: [STOWED, STOWED], carry: never },
-    {
-      dur: drive(curve([home, ...cfg.intro, first.intakeAt])),
-      route: { curve: curve([home, ...cfg.intro, first.intakeAt]), h0: home.h, h1: first.intakeAt.h },
-      arm: [STOWED, STOWED],
-      carry: never,
-    },
-  ];
-  const introTotal = intro.reduce((s, p) => s + p.dur, 0);
+  // it starts where the loop does, at the first job's intake stop with the arm stowed (reduced motion, which never animates it, leaves it there)
+  model.position.set(jobs[0].intakeAt.x, model.position.y, jobs[0].intakeAt.y);
+  model.rotation.y = -jobs[0].intakeAt.h;
 
   // when, in the loop, each thing happens to the field
   const events: { what: Mark["what"]; index: number; at: number }[] = [];
@@ -249,18 +239,14 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
   let spin = 0; // its angle
 
   model.userData.animate = ({ t }: AnimCtx) => {
-    if (t <= 0) return; // reduced motion: parked, the arm folded, every sample where it was
+    if (t <= 0) return; // reduced motion: at its first stop, the arm folded, every sample where it was
     const dt = lastT < 0 ? 0 : Math.min(0.1, Math.max(0, t - lastT));
     lastT = t;
 
     // which phase, and how far through it
-    let list = intro;
-    let e = t;
-    if (t >= introTotal) {
-      list = loop;
-      e = (t - introTotal) % loopTotal;
-      field(e);
-    } else field(0);
+    const list = loop;
+    let e = t % loopTotal;
+    field(e);
     let i = 0;
     while (i < list.length - 1 && e >= list[i].dur) e -= list[i++].dur;
     const ph = list[i];

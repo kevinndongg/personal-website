@@ -34,6 +34,7 @@ import {
 } from "three";
 import { attachLap } from "./drive";
 import { attachErrand } from "./errand";
+import { attachPowerPlay } from "./ppcycle";
 import { attachCycle } from "./robotcycle";
 import { GROUND_MARGIN, buildGroundLayer } from "./ground";
 import { createModel, tireModel, woodTexture } from "./models";
@@ -81,12 +82,19 @@ const POST_FS = `
     float away = smoothstep(0.0, 0.16, outside) * focusAmt; // 0 inside the focused box, 1 well outside
     float blur = away * 3.2; // radius in pixels
     float bg = 1.0 - texture2D(tColor, vUv).a; // the scene clears to alpha 0, so this is how much of this pixel is the dark surface
-    vec3 c = scene(vUv) * 0.2270270270;
-    float w1 = 0.3162162162, w2 = 0.0702702703;
-    vec2 o1 = vec2(0.0, 1.3846153846) * texel.y * blur;
-    vec2 o2 = vec2(0.0, 3.2307692308) * texel.y * blur;
-    c += scene(vUv + o1) * w1 + scene(vUv - o1) * w1;
-    c += scene(vUv + o2) * w2 + scene(vUv - o2) * w2;
+    // a gaussian over both axes (a 5x5 grid of taps, the one-dimensional weights multiplied), so the blur is round, not a vertical smear
+    vec3 c = scene(vUv);
+    if (blur > 0.05) {
+      float offs[3] = float[3](0.0, 1.3846153846, 3.2307692308);
+      float wts[3] = float[3](0.2270270270, 0.3162162162, 0.0702702703);
+      c = vec3(0.0);
+      for (int j = -2; j <= 2; j++) {
+        for (int i = -2; i <= 2; i++) {
+          vec2 o = vec2(sign(float(i)) * offs[abs(i)], sign(float(j)) * offs[abs(j)]) * texel * blur;
+          c += scene(vUv + o) * (wts[abs(i)] * wts[abs(j)]);
+        }
+      }
+    }
 
     // grade: slightly muted, warm highlights, cool green-teal shadows, a little contrast
     float l = dot(c, vec3(0.299, 0.587, 0.114));
@@ -474,6 +482,7 @@ export class Renderer3D {
         if (p.drive) attachLap(model, p.drive);
         if (p.errand) attachErrand(model, p.errand, Math.PI / 2); // (he stops facing south, toward the grill)
         if (p.cycle) attachCycle(model, p.cycle);
+        if (p.ppCycle) attachPowerPlay(model, p.ppCycle);
         model.traverse((o) => {
           if (typeof o.userData.animate === "function") this.animators.push({ fn: o.userData.animate, zoneId: zone.id });
         });
@@ -929,6 +938,49 @@ export class Renderer3D {
       slot,
       uv: hit?.uv ? { x: hit.uv.x, y: hit.uv.y } : undefined,
     };
+  }
+
+  /**
+   * Screen position (css px) of a point on a named part of a zone's prop (`userData.part`, as `pick` reads it: the camera's lever
+   * and rewind knob), `local` being the point in the part's own space (its origin by default), or null when there is no such
+   * part. By default as the part is now, mid-stroke and mid-zoom included. With `restYaw`, as the part would be turned to that
+   * yaw instead (the lever parked, say): the point then stays where it is however the part swings, and moves only with the view.
+   */
+  partScreen(
+    zoneId: string,
+    part: string,
+    local: [number, number, number] = [0, 0, 0],
+    restYaw?: number
+  ): { x: number; y: number } | null {
+    for (const model of this.zoneModels.get(zoneId) ?? []) {
+      let found: Object3D | undefined;
+      model.traverse((o) => {
+        if (!found && o.userData.part === part) found = o;
+      });
+      if (!found) continue;
+      const v = new Vector3(...local);
+      if (restYaw === undefined || !found.parent) {
+        found.updateWorldMatrix(true, false);
+        found.localToWorld(v);
+      } else {
+        // the part's own turn is the only thing left out: its place and the rest of the chain above it are as they are
+        found.parent.updateWorldMatrix(true, false);
+        found.parent.localToWorld(v.applyAxisAngle(new Vector3(0, 1, 0), restYaw).add(found.position));
+      }
+      return this.toScreen(v);
+    }
+    return null;
+  }
+
+  /** Screen position (css px) of a point in world space (not map space: the view's zoom is already in it). */
+  projectWorld(point: Vector3): { x: number; y: number } {
+    return this.toScreen(point.clone());
+  }
+
+  private toScreen(world: Vector3): { x: number; y: number } {
+    const v = world.project(this.camera);
+    const rect = this.canvas.getBoundingClientRect();
+    return { x: rect.left + ((v.x + 1) / 2) * rect.width, y: rect.top + ((1 - v.y) / 2) * rect.height };
   }
 
   /** Screen position (css px) of a map point at the given height. */
