@@ -88,14 +88,19 @@ export function ftcScene(ox: number, oy: number): Scene {
   // The five-by-five junction pattern is ground / low / medium / high; only the columns that fall inside the wedge are here.
   const junctions: [number, number, string][] = [
     [-40, -40, "ftc-pp-g"],
-    [-40, -20, "ftc-pp-l"],
+    [-40, -20, "ftc-pp-l-blue"], // a cone already on it
     [-40, 0, "ftc-pp-g"],
     [-40, 20, "ftc-pp-l"],
     [-20, -40, "ftc-pp-l"],
     [-20, -20, "ftc-pp-m-red"], // a cone already on top
     [-20, 0, "ftc-pp-h-blue"],
   ];
-  for (const [x, y, sprite] of junctions) props.push(round(sprite, f(x, y), 2.5));
+  // the ground junctions lie flat on the floor, so nothing blocks the way over them (and, with no footprint, their model stands 2 px behind
+  // the y given, as the floor's does); the others are poles with a base
+  for (const [x, y, sprite] of junctions) {
+    const c = f(x, y);
+    props.push(sprite === "ftc-pp-g" ? { sprite, x: c.x, y: c.y + 2 } : round(sprite, c, 2.5));
+  }
   // The robot takes the top cone of the red stack against the north wall (centred on the second tile from the left) to the high
   // junction, then the human player's cone, standing against the west wall at the middle of the third tile down, to the medium one
   // (ppcycle.ts). It starts in the first tile's row, a tile in from the wall, and runs the lane down the middle of the tile column.

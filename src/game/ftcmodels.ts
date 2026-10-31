@@ -126,11 +126,15 @@ const UP = new Vector3(0, 1, 0);
  */
 function ppJunction(level: "g" | "l" | "m" | "h", scoredCone?: string, placedIndex?: number): Group {
   const g = new Group();
-  g.add(cyl(2.2, 2.4, 1, DARK, 0, 0, 0, 10));
   if (level === "g") {
-    g.add(cyl(2.3, 2.3, 3, POLE, 0, 1, 0, 10)); // a ground junction is just a short cup
-    g.add(cyl(1.5, 1.5, 0.2, BLACK, 0, 4, 0, 10));
-  } else {
+    // a ground junction lies flat on the floor: a thin black disc with a slightly raised dark ring round its middle, just over the floor sheet
+    g.add(cyl(2.4, 2.4, 0.35, BLACK, 0, SHEET_Y, 0, 18));
+    g.add(cyl(1.5, 1.5, 0.42, "#2a2d36", 0, SHEET_Y, 0, 18));
+    g.add(cyl(0.8, 0.8, 0.46, BLACK, 0, SHEET_Y, 0, 14));
+    return g;
+  }
+  g.add(cyl(2.2, 2.4, 1, DARK, 0, 0, 0, 10));
+  {
     const h = PP_HEIGHT[level];
     g.add(cyl(0.95, 0.95, h, POLE, 0, 1, 0, 8));
   }
@@ -674,6 +678,8 @@ export function ftcModel(id: string, w: number, d: number): Group | null {
       return ppJunction("g");
     case "pp-l":
       return ppJunction("l");
+    case "pp-l-blue":
+      return ppJunction("l", BLUE); // a blue cone already on it
     case "pp-m-red":
       return ppJunction("m", RED, 1);
     case "pp-h-blue":
