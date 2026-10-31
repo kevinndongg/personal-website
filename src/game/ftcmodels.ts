@@ -83,6 +83,18 @@ function floorModel(): Group {
     line.forEach((p, i) => (i ? ctx.lineTo(p.x + h, p.y + h) : ctx.moveTo(p.x + h, p.y + h)));
     ctx.stroke();
   }
+  // the red tape of the Power Play stations
+  ctx.fillStyle = RED;
+  for (const r of FLOOR.red.strips) ctx.fillRect(r.x0 + h, r.y0 + h, r.x1 - r.x0, r.y1 - r.y0);
+  ctx.strokeStyle = RED;
+  ctx.lineJoin = "miter";
+  ctx.lineCap = "butt";
+  for (const line of FLOOR.red.lines) {
+    ctx.lineWidth = line.width;
+    ctx.beginPath();
+    line.points.forEach((p, i) => (i ? ctx.lineTo(p.x + h, p.y + h) : ctx.moveTo(p.x + h, p.y + h)));
+    ctx.stroke();
+  }
   const tex = new CanvasTexture(c);
   tex.minFilter = LinearFilter;
   tex.generateMipmaps = false;
