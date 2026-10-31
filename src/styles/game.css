@@ -386,6 +386,45 @@ html:has(.game) body {
   user-select: text;
 }
 
+/*
+ * the scrollbar: a slim rounded thumb, floating a little in from the card's edge, on no track at all (no arrows, nothing grey).
+ * The thumb is drawn with a transparent border round it, which is what insets it; the track stops short of the rounded corners.
+ */
+.sheet::-webkit-scrollbar {
+  width: calc(16px * var(--card-scale, 1));
+  height: calc(16px * var(--card-scale, 1));
+}
+
+.sheet::-webkit-scrollbar-track {
+  margin: calc(14px * var(--card-scale, 1)) 0;
+  background: transparent;
+}
+
+.sheet::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--ink-soft) 45%, transparent);
+  background-clip: padding-box;
+  border: calc(4px * var(--card-scale, 1)) solid transparent;
+  border-radius: 999px;
+}
+
+.sheet::-webkit-scrollbar-thumb:hover,
+.sheet::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--ink-soft) 75%, transparent);
+}
+
+.sheet::-webkit-scrollbar-button,
+.sheet::-webkit-scrollbar-corner {
+  display: none;
+}
+
+/* browsers without those (Firefox): the standard properties give a thin, muted bar */
+@supports not selector(::-webkit-scrollbar) {
+  .sheet {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--ink-soft) 45%, transparent) transparent;
+  }
+}
+
 .panel[hidden] {
   display: none;
 }
