@@ -25,7 +25,6 @@ import type { PowerPlayCycle, PowerPlayPick, PowerPlayPlace } from "./scenes";
 
 const SPEED = 36; // px/s for the plain runs of the way in
 const CRUISE = 14; // px/s as the robot passes the middle of the tile on its way to a pole, and from there it creeps
-const CLEAR = 6.5; // how far a cone is lifted to get it off the stack, or the floor, before the wrist turns it over
 const LIFT_OVER = 1.5; // how much higher than its final height the arm swings out over a pole, and then lowers
 const STOW = 3.4; // the slides all the way down (the carriage's foot on the chassis)
 const HALF_TILE = 10;
@@ -173,10 +172,10 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
    * slides rising to the junction's height; then a slow creep to the stand, during which the turret swings out (the wrist still up), the
    * wrist comes down and the claw rolls; then it lowers the slides a little and lets go. `mid` is where the cruise ends.
    */
-  const toPole = (from: { at: Pose; arm: Arm }, to: { at: Pose; arm: Arm }, mid: { x: number; y: number }, over: number, spawn: number, drop: number): Phase[] => {
+  const toPole = (from: { at: Pose; arm: Arm }, to: { at: Pose; arm: Arm }, mid: { x: number; y: number }, over: number, spawn: number, drop: number, wristFirst: boolean): Phase[] => {
     const h = from.at.h;
     const base = held(from.arm);
-    const toMid = leg([from.at, mid], h, h, 1.15, 0, CRUISE);
+    const toMid = leg([from.at, mid], h, h, wristFirst ? 1.5 : 1.15, 0, CRUISE);
     const creep = leg([mid, to.at], h, h, 1.7, CRUISE, 0);
     const swung: Arm = { lift: over, yaw: 0, tilt: PP.tilt, twist: 0, claw: 0 };
     const lined: Arm = { ...to.arm, lift: over };
@@ -184,10 +183,11 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
       {
         ...toMid,
         arm: [base, swung],
-        keys: {
-          lift: key([0, base.lift], [0.25, base.lift + CLEAR], [0.45, base.lift + CLEAR], [1, over]),
-          tilt: key([0.25, 0], [0.7, PP.tilt]),
-        },
+        // From the floor the wrist pivots up first with the slides still all the way down, then they go the whole way up in one move; from the
+        // stack the slides start up at once (the cone has to come up out of the stack before the wrist turns it over)
+        keys: wristFirst
+          ? { tilt: key([0, 0], [0.4, PP.tilt]), lift: key([0.4, base.lift], [1, over]) }
+          : { lift: key([0, base.lift], [0.75, over]), tilt: key([0.35, 0], [0.8, PP.tilt]) },
         carry: always,
         mark: { what: "spawn", index: spawn, offset: 0.3 },
       },
@@ -237,7 +237,7 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
   const loop: Phase[] = [];
   // the stack: grab, and straight away back down the lane to the medium junction
   loop.push(grab(A, 0));
-  loop.push(...toPole(A, D, midD, overD, 0, 1));
+  loop.push(...toPole(A, D, midD, overD, 0, 1, false));
   // retract as it backs off to the middle of the tile on the row, spin to face west, and drive to the ground cone, the slides rising on the way
   const afterD: Arm = open(D.arm);
   loop.push({
@@ -256,7 +256,7 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
   });
   // the ground cone: grab, and straight away back east along the row to the high junction
   loop.push(grab(C, 1));
-  loop.push(...toPole(C, B, midB, overB, 1, 0));
+  loop.push(...toPole(C, B, midB, overB, 1, 0, true));
   // retract as it turns off the row to the north, then up the lane to the stack, the slides rising on the way
   const afterB: Arm = open(B.arm);
   const turnOut = { x: A.at.x, y: B.at.y - 6 }; // in the stack's lane (world px, like everything else here)

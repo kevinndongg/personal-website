@@ -93,7 +93,7 @@ export function ftcScene(ox: number, oy: number): Scene {
   // (ppcycle.ts). It starts in the first tile's row, a tile in from the wall, and runs the lane down the middle of the tile column.
   const NORTH = -Math.PI / 2;
   const STACK = f(-30, -57);
-  const HUMAN = f(-57, -10);
+  const HUMAN = f(-56, -10); // a pixel off the wall, so the cone can swing up without touching it
   props.push(round("ftc-pp-stack", STACK, 2.9), round("ftc-pp-cone", HUMAN, 2.9));
   props.push({
     ...turned("ftc-robot-pp", f(-50, -30), 0, 6),
