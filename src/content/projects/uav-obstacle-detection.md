@@ -1,7 +1,7 @@
 ---
 title: "UAV Obstacle Detection Research"
 summary: "Research on vision transformers for UAV obstacle detection. "
-role: "Researcher — Research Intern"
+role: "Research Intern"
 dateRange: "Research Project"
 organization: "George Washington University"
 location: "Washington, DC"

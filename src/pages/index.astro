@@ -6,6 +6,7 @@ import { statSync } from "node:fs";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import FilmCanister from "../components/FilmCanister.astro";
 import { withBase } from "../lib/url";
+import type { ZoneMedia } from "../game/world";
 import { contactLinks } from "../lib/contact";
 import { lightTableOrder, sortPhotos } from "../lib/photos";
 import "../styles/game.css";
@@ -89,6 +90,27 @@ function parseBody(body = "") {
   };
 }
 
+/** A project's `media` as the card shows it: images optimized (the card is up to about 1000px wide on a big screen, and 580px at its base size, so this is enough for sharp ones), paths made final. */
+async function cardMedia(items: NonNullable<(typeof projects)[number]["data"]["media"]> = []): Promise<ZoneMedia[]> {
+  return Promise.all(
+    items.map(async (m): Promise<ZoneMedia> => {
+      const { size, caption } = m;
+      if (m.type === "image") {
+        const { src, attributes } = await getImage({ src: m.src, width: 1200 });
+        return { type: "image", src, width: Number(attributes.width), height: Number(attributes.height), alt: m.alt, size, caption };
+      }
+      if (m.type === "video") {
+        const { width, height, alt } = m;
+        return { type: "video", src: withBase(m.src), poster: withBase(m.poster), width, height, alt, size, caption };
+      }
+      const params = new URLSearchParams({ autoplay: "1", rel: "0" });
+      if (m.start) params.set("start", String(m.start));
+      const embed = `https://www.youtube-nocookie.com/embed/${m.id}?${params}`;
+      return { type: "youtube", embed, poster: withBase(m.poster), title: m.title, size, caption };
+    })
+  );
+}
+
 const zones = [
   ...(await Promise.all(
     projects.map(async (p) => {
@@ -106,9 +128,14 @@ const zones = [
         role: p.data.role,
         period: p.data.period ?? p.data.dateRange,
         organization: p.data.organization,
+        brand: p.data.cardBrand,
+        brandNote: p.data.cardNote,
+        subtitle: p.data.cardTitle,
+        expandable: p.data.expandable,
         techStack: p.data.techStack,
-        // a small logo chip beside the title
-        image: p.data.image ? (await getImage({ src: p.data.image, width: 160 })).src : undefined,
+        media: await cardMedia(p.data.media),
+        // the logo, shown whole beside the title
+        image: p.data.image && p.data.cardLogo !== false ? (await getImage({ src: p.data.image, width: 240 })).src : undefined,
         actions: [
           links.paper && { label: "Read the paper", href: links.paper, external: true },
           links.repo && { label: "Source code", href: links.repo, external: true },
@@ -258,23 +285,37 @@ const zones = [
 
     <div class="backdrop" data-backdrop hidden></div>
     <aside class="panel" data-panel hidden role="dialog" aria-modal="true" aria-labelledby="panel-title">
-      <button class="grip" type="button" data-grip aria-label="Show more or less" aria-expanded="false"><span></span></button>
       <button class="close" type="button" data-close aria-label="Close">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"></path></svg>
       </button>
+      <button class="expand" type="button" data-expand aria-label="Expand" aria-expanded="false" hidden>
+        <svg class="i-expand" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5L9 7M6.5 13.5h-4v-4M2.5 13.5L7 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"></path></svg>
+        <svg class="i-shrink" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M13 7H9V3M9 7l4.5-4.5M3 9h4v4M7 9l-4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"></path></svg>
+      </button>
+      <div class="sheet" data-sheet>
+      <button class="grip" type="button" data-grip aria-label="Show more or less" aria-expanded="false"><span></span></button>
       <div class="body">
+        <div class="copy">
         <header class="head">
-          <img class="logo" data-logo alt="" hidden />
-          <div class="head-text">
+          <div class="brand" data-brand hidden>
+            <img class="logo" data-logo alt="" hidden />
+            <p class="org" id="panel-brand" data-org hidden></p>
+            <p class="note" data-note hidden></p>
+          </div>
+          <h2 id="panel-title" data-title></h2>
+          <p class="role" data-role></p>
+          <div class="when" data-when hidden>
             <p class="kicker" data-kicker></p>
-            <h2 id="panel-title" data-title></h2>
-            <p class="role" data-role></p>
+            <span class="badge" data-badge hidden>Under construction</span>
           </div>
         </header>
         <p class="summary" data-summary></p>
         <ul class="bullets" data-bullets></ul>
         <ul class="tags" data-tags></ul>
+        </div>
+        <div class="media" data-media hidden></div>
         <div class="actions" data-actions></div>
+      </div>
       </div>
     </aside>
 

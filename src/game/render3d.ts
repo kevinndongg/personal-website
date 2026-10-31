@@ -82,12 +82,19 @@ const POST_FS = `
     float away = smoothstep(0.0, 0.16, outside) * focusAmt; // 0 inside the focused box, 1 well outside
     float blur = away * 3.2; // radius in pixels
     float bg = 1.0 - texture2D(tColor, vUv).a; // the scene clears to alpha 0, so this is how much of this pixel is the dark surface
-    vec3 c = scene(vUv) * 0.2270270270;
-    float w1 = 0.3162162162, w2 = 0.0702702703;
-    vec2 o1 = vec2(0.0, 1.3846153846) * texel.y * blur;
-    vec2 o2 = vec2(0.0, 3.2307692308) * texel.y * blur;
-    c += scene(vUv + o1) * w1 + scene(vUv - o1) * w1;
-    c += scene(vUv + o2) * w2 + scene(vUv - o2) * w2;
+    // a gaussian over both axes (a 5x5 grid of taps, the one-dimensional weights multiplied), so the blur is round, not a vertical smear
+    vec3 c = scene(vUv);
+    if (blur > 0.05) {
+      float offs[3] = float[3](0.0, 1.3846153846, 3.2307692308);
+      float wts[3] = float[3](0.2270270270, 0.3162162162, 0.0702702703);
+      c = vec3(0.0);
+      for (int j = -2; j <= 2; j++) {
+        for (int i = -2; i <= 2; i++) {
+          vec2 o = vec2(sign(float(i)) * offs[abs(i)], sign(float(j)) * offs[abs(j)]) * texel * blur;
+          c += scene(vUv + o) * (wts[abs(i)] * wts[abs(j)]);
+        }
+      }
+    }
 
     // grade: slightly muted, warm highlights, cool green-teal shadows, a little contrast
     float l = dot(c, vec3(0.299, 0.587, 0.114));
