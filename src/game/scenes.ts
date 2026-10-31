@@ -47,12 +47,44 @@ export interface Prop {
   errand?: { x: number; y: number }[];
   /** A robot that works the field on its own, over and over (the Into the Deep robot). See robotcycle.ts. */
   cycle?: RobotCycle;
+  /** A robot that works the Power Play wedge on its own, over and over. See ppcycle.ts. */
+  ppCycle?: PowerPlayCycle;
+}
+
+/** A cone the Power Play robot takes: where it stands on the floor, the height of its base, and the way the robot faces it (radians, world plane). */
+export interface PowerPlayPick {
+  target: { x: number; y: number };
+  base: number;
+  heading: number;
+}
+
+/**
+ * A junction the Power Play robot scores on, with the robot beside it facing `heading` and the pole on its `side` (1 = its right,
+ * -1 = its left): the turret turns exactly a quarter turn, so the robot parks where that puts the cone over the pole.
+ */
+export interface PowerPlayPlace {
+  target: { x: number; y: number };
+  side: 1 | -1;
+  top: "m" | "h";
+  heading: number;
+}
+
+/**
+ * What the Power Play robot does, in world px, forever: take the top cone of the stack to the medium junction, then the human player's
+ * cone to the medium junction, then the human player's cone to the high junction, and again. It starts at the stack.
+ */
+export interface PowerPlayCycle {
+  stack: PowerPlayPick;
+  human: PowerPlayPick;
+  high: PowerPlayPlace;
+  /** The medium junction from the lane, facing north (the stack's cone goes here)... */
+  medium: PowerPlayPlace;
+  /** ...and from the row, facing west like the high one (the ground cone goes here, the pole on the robot's right). */
+  mediumRow: PowerPlayPlace;
 }
 
 /** What the Into the Deep robot does, all in world px: two jobs it does in turn, forever, and the way between them. */
 export interface RobotCycle {
-  /** Waypoints on the way from where it is parked to the first job's intake stop (it only parks the first time). */
-  intro: { x: number; y: number }[];
   /** The two jobs, done in turn: the first, then the second, then the first again. */
   jobs: [RobotJob, RobotJob];
   /** Waypoints from the first job's scoring stop to the second job's intake stop, and from the second's back to the first's. */
