@@ -183,7 +183,9 @@ export class Panel {
     let to: Rect;
     if (on) to = fullRect({ w: parent.clientWidth, h: parent.clientHeight }, Math.max(24, innerWidth * 0.03));
     else {
-      // where it rests: measured now, in its own layout, with the drag taken off
+      // where it rests: measured now, in its own layout, with the drag taken off (and no transitions, which would
+      // still be at the start of their way, with the card's transform not yet applied)
+      root.style.transition = "none";
       root.classList.remove("full");
       this.setDrag({ x: 0, y: 0 });
       to = rel(root.getBoundingClientRect());
@@ -195,13 +197,17 @@ export class Panel {
       s.width = `${g.width}px`;
       s.height = `${g.height}px`;
     };
+    // no transitions while the card is put on its starting box (its transform and `top: 50%` would otherwise be animated away from),
+    // then they are let loose, and the next box is animated to
+    root.style.transition = "none";
     root.classList.add("growing");
     root.style.right = "auto";
     root.style.bottom = "auto";
     root.style.maxHeight = "none";
     root.style.transform = "none";
     box(from);
-    void root.offsetWidth; // (so the next box is animated to)
+    void root.offsetWidth;
+    root.style.removeProperty("transition");
     box(to);
     this.growTimer = window.setTimeout(() => this.finishGrow(), 480);
   }
@@ -216,9 +222,14 @@ export class Panel {
     if (!this.growTimer) return;
     window.clearTimeout(this.growTimer);
     this.growTimer = 0;
+    // swapped with transitions off, or the card's own transform would glide into place from where the pixel box left it
+    const root = this.root;
+    root.style.transition = "none";
     this.clearBox();
-    this.root.classList.remove("growing");
-    this.root.classList.toggle("full", this.full);
+    root.classList.remove("growing");
+    root.classList.toggle("full", this.full);
+    void root.offsetWidth;
+    root.style.removeProperty("transition");
   }
 
   private setDrag(p: Point) {
@@ -343,6 +354,7 @@ export class Panel {
     window.clearTimeout(this.growTimer);
     this.growTimer = 0;
     this.clearBox();
+    this.root.style.removeProperty("transition");
     this.root.classList.remove("growing", "full");
     this.full = false;
     const can = !!zone.expandable && !isLinkOnly(zone) && (side === "left" || side === "right");
