@@ -485,6 +485,26 @@ html:has(.game) body {
   flex: 1 1 auto;
 }
 
+/* no scrollbar comes and goes while the paper moves */
+.panel.growing .sheet {
+  overflow: hidden;
+}
+
+/* growing: the text keeps the width it had in the small card (Panel sets --body-w) instead of widening with the paper */
+.panel.pin .body {
+  box-sizing: border-box;
+  width: var(--body-w);
+}
+
+/* the media is hidden (and fades) while the paper moves: see Panel.setFull */
+.media {
+  transition: opacity 180ms ease;
+}
+
+.panel.hold .media {
+  opacity: 0;
+}
+
 /* the close button is outside the ordinary card, where there is no room when the card fills the window: it goes inside, and is hidden while the card moves */
 .panel.growing .close {
   opacity: 0;
@@ -531,7 +551,7 @@ html:has(.game) body {
 
 @media (min-width: 1000px) {
   .panel.full .body {
-    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    grid-template-columns: var(--cols, minmax(0, 5fr) minmax(0, 7fr)); /* (Panel sets --cols: the text keeps its small-card width) */
     grid-template-rows: auto 1fr;
     column-gap: calc(36px * var(--card-scale, 1));
     align-items: start;

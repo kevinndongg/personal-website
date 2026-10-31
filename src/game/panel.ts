@@ -170,8 +170,28 @@ export class Panel {
       root.classList.toggle("full", on);
       return;
     }
-    // the card is laid out from its side with a transform, which cannot be animated to "inset all round": so it is animated
-    // between two boxes in pixels, with its layout (one column or two) switched where it is smallest
+    // The media is the part that would re-wrap and jump as the card changes size, so it is out of the way (.hold) while the paper
+    // moves: it fades out first when shrinking, and fades back in once the paper has stopped, in its new place.
+    root.classList.add("hold");
+    if (on) {
+      this.pinColumn();
+      root.classList.add("pin");
+      this.runGrow(parent, true);
+    } else {
+      this.growTimer = window.setTimeout(() => this.runGrow(parent, false), 190); // (the time the media takes to fade out)
+    }
+  }
+
+  /** The text keeps the width it has in the small card (and the media gets the rest), so it never re-wraps while the card changes size. */
+  private pinColumn() {
+    const body = this.root.querySelector(".body") as HTMLElement;
+    this.root.style.setProperty("--cols", `${this.head.offsetWidth}px minmax(0, 1fr)`);
+    this.root.style.setProperty("--body-w", `${body.offsetWidth}px`);
+  }
+
+  /** Animates the card between two pixel boxes: it is laid out from its side with a transform, which cannot be animated to "inset all round". */
+  private runGrow(parent: HTMLElement, on: boolean) {
+    const root = this.root;
     const place = parent.getBoundingClientRect();
     const rel = (r: DOMRect): Rect => ({
       left: r.left - place.left - parent.clientLeft,
@@ -189,6 +209,8 @@ export class Panel {
       root.classList.remove("full");
       this.setDrag({ x: 0, y: 0 });
       to = rel(root.getBoundingClientRect());
+      this.pinColumn(); // (the text's width in the small card, as it is now)
+      root.classList.add("full"); // the two-column layout stays until the paper has shrunk: the text does not move
     }
     const box = (g: Rect) => {
       const s = root.style;
@@ -226,10 +248,12 @@ export class Panel {
     const root = this.root;
     root.style.transition = "none";
     this.clearBox();
-    root.classList.remove("growing");
+    root.classList.remove("growing", "pin");
     root.classList.toggle("full", this.full);
     void root.offsetWidth;
     root.style.removeProperty("transition");
+    // the paper has stopped: the media comes back (in its new place, where it was invisible when it moved)
+    requestAnimationFrame(() => root.classList.remove("hold"));
   }
 
   private setDrag(p: Point) {
@@ -355,7 +379,8 @@ export class Panel {
     this.growTimer = 0;
     this.clearBox();
     this.root.style.removeProperty("transition");
-    this.root.classList.remove("growing", "full");
+    for (const p of ["--cols", "--body-w"]) this.root.style.removeProperty(p);
+    this.root.classList.remove("growing", "full", "hold", "pin");
     this.full = false;
     const can = !!zone.expandable && !isLinkOnly(zone) && (side === "left" || side === "right");
     this.expandBtn.hidden = !can;
