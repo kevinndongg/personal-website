@@ -1,4 +1,4 @@
-import { BoxGeometry, BufferGeometry, DoubleSide, Group, LatheGeometry, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshToonMaterial, PlaneGeometry, Vector2 } from "three";
+import { BoxGeometry, BufferGeometry, DoubleSide, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshToonMaterial, PlaneGeometry, Shape, Vector2 } from "three";
 import { CONE, PP, PP_WAIT } from "./ftcfield";
 import { pixelText } from "./ftctext";
 import { box, canvasOf, cyl, fillRect, mesh, nearestTexture, toon } from "./models";
@@ -37,6 +37,18 @@ const OPEN = (40 * Math.PI) / 180;
 
 /** Wrist up and the claw open: how it waits. */
 const PP_READY: PPPose = { ...PP_WAIT, carrying: false };
+
+// ---------------------------------------------------------------- the arm's plates
+
+/**
+ * One plate of the upper arm in the arm's frame (x out from the turret axis, y up from the pivot's height): deep at the shoulder end,
+ * whose top edge falls away to the pivot. It stays under y = 1.2 over the last 3 px before the pivot, where the cone swings past.
+ */
+const PLATE: [number, number][] = [[-1.2, -1.2], [PP.arm, -1.2], [PP.arm, 1.2], [3.2, 1.2], [1, 2.6], [-1.2, 2.6]];
+const PLATE_Z = 1.3; // the middle of each plate, either side of the arm's centre line
+const PLATE_T = 0.5;
+/** Where the standoffs between the plates are (x, y), clear of the forearm's swing and under the plates' top edge. */
+const STANDOFFS: [number, number][] = [[-0.2, 1.9], [2, 1.2], [4, 0.6]];
 
 // ---------------------------------------------------------------- the cone
 
@@ -192,21 +204,38 @@ export function ppRobotModel(): Group {
   carriage.add(box(PP.turretX + 3.1, 1.25, 2.8, BLUE, (PP.turretX - 3.1) / 2, -PP.carriage, 0)); // the shoulder under the arm, out to the turret
   carriage.add(cyl(1.3, 1.3, 0.6, PANEL, PP.turretX, -1.85, 0, 12)); // the turret's servo
 
-  // ---- the upper arm: two thin plates with a narrow gap between them (so it reads as one beam), swinging about the turret out to the
-  // pivot, where a round servo sits on its outer side; between the plates, the forearm
+  // ---- the upper arm: two printed plates, one each side, deep at the shoulder and slimmer out to the pivot, held apart by standoffs; between
+  // them at the pivot end hangs the forearm, and the round servo sits on the outer plate there (the part Kevin circled)
   const arm = new Group();
   arm.position.x = PP.turretX;
   carriage.add(arm);
-  for (const s of [-1, 1]) arm.add(box(PP.arm + 1.2, 2.4, 0.5, BLUE, (PP.arm - 1.2) / 2, -1.2, s * 0.7));
-  arm.add(box(PP.arm + 0.6, 0.4, 1.9, BLUE, (PP.arm - 0.6) / 2, 1.2, 0)); // a thin web across their top
-  arm.add(cyl(1.3, 1.3, 2.4, BLUE, 0, -1.2, 0, 12)); // the turret's end of the beam, rounded
-  const servo = cyl(1.4, 1.4, 0.5, "#8fa5c6", PP.arm, 0, 1.2, 14); // the round servo at the pivot (the part Kevin circled)
+  const outline = new Shape(PLATE.map(([x, y]) => new Vector2(x, y)));
+  const plateGeo = new ExtrudeGeometry(outline, { depth: PLATE_T, bevelEnabled: false });
+  for (const s of [-1, 1]) {
+    const plate = mesh(plateGeo, toon(BLUE));
+    plate.position.z = s > 0 ? PLATE_Z - PLATE_T / 2 : -PLATE_Z - PLATE_T / 2; // the extrusion runs from z = 0 to its depth
+    arm.add(plate);
+  }
+  for (const [x, y] of STANDOFFS) {
+    const rod = cyl(0.3, 0.3, 2 * PLATE_Z - PLATE_T, STEEL, x, y, 0, 8); // a standoff across, between the plates
+    rod.rotation.x = Math.PI / 2;
+    rod.position.set(x, y, 0);
+    arm.add(rod);
+    for (const s of [-1, 1]) {
+      const head = cyl(0.45, 0.45, 0.15, SILVER, x, y, 0, 8); // and the screw head on each plate
+      head.rotation.x = Math.PI / 2;
+      head.position.set(x, y, s * (PLATE_Z + PLATE_T / 2 + 0.07));
+      arm.add(head);
+    }
+  }
+  arm.add(cyl(1, 1, 2.4, BLUE, 0, -1.2, 0, 12)); // the turret's end of the arm, between the plates
+  const servo = cyl(1.4, 1.4, 0.5, "#8fa5c6", PP.arm, 0, 1.2, 14);
   servo.rotation.x = Math.PI / 2;
-  servo.position.set(PP.arm, 0, 1.2);
+  servo.position.set(PP.arm, 0, PLATE_Z + PLATE_T / 2 + 0.25);
   arm.add(servo);
   const hub = cyl(0.7, 0.7, 0.2, "#16161b", 0, 0, 0, 10);
   hub.rotation.x = Math.PI / 2;
-  hub.position.set(PP.arm, 0, 1.5);
+  hub.position.set(PP.arm, 0, PLATE_Z + PLATE_T / 2 + 0.55);
   arm.add(hub);
 
   // ---- the wrist pitches the forearm and the claw about the pivot
