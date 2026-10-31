@@ -5,6 +5,7 @@ alt: "CMR logo"
 summary: "Localization and path planning for an autonomous racecar."
 role: "Localization Lead, path planning software developer"
 dateRange: "Carnegie Mellon University"
+expandable: true
 organization: "Carnegie Mellon Racing (Autonomous Formula Racing)"
 period: "Sept. 2025 – Present"
 techStack: ["C++", "Python", "Docker", "ROS 2"]

@@ -42,6 +42,7 @@ const projects = defineCollection({
       cardBrand: z.string().optional(), // beside the logo: when set it is the card's big heading, and the title below goes (or becomes cardTitle)
       cardTitle: z.string().optional(), // with cardBrand: a smaller line in the title's place
       cardNote: z.string().optional(), // a line under the logo
+      expandable: z.boolean().optional(), // the card gets a button that expands it to nearly the whole window
       location: z.string().optional(),
       period: z.string().optional(),
       techStack: z.array(z.string()).optional(),

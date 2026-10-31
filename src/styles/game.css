@@ -458,6 +458,105 @@ html:has(.game) body {
   transform: translate(var(--drag-x, 0px), calc(-50% + var(--drag-y, 0px)));
 }
 
+/*
+ * Expanded: the card fills the window, less a margin all round (the dimmed map shows in it). Panel animates the card between two
+ * pixel boxes (.growing: it has no layout of its own for that moment) and puts .full on at the end of growing and takes it off
+ * at the start of shrinking, so the layout below (two columns) never shows in the small card.
+ */
+.panel[data-side].full {
+  inset: max(24px, 3vw);
+  width: auto;
+  height: auto;
+  max-height: none;
+  transform: none;
+}
+
+.panel.growing {
+  transition:
+    left 450ms var(--ease),
+    top 450ms var(--ease),
+    width 450ms var(--ease),
+    height 450ms var(--ease),
+    opacity 260ms ease;
+}
+
+.panel.growing .sheet,
+.panel.full .sheet {
+  flex: 1 1 auto;
+}
+
+/* the close button is outside the ordinary card, where there is no room when the card fills the window: it goes inside, and is hidden while the card moves */
+.panel.growing .close {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.panel[data-side].full .close {
+  right: calc(14px * var(--card-scale, 1));
+  left: auto;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 86%, transparent);
+  box-shadow: 0 0 0 1px rgba(59, 42, 32, 0.14);
+  transition: background 150ms;
+}
+
+.panel[data-side].full .close svg {
+  filter: none;
+}
+
+.panel[data-side].full .close:hover {
+  color: var(--ink);
+  background: var(--paper-2);
+  transition: background 150ms;
+}
+
+.panel[data-side].full .close:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 1px rgba(59, 42, 32, 0.14);
+}
+
+.panel.full .expand {
+  right: calc(58px * var(--card-scale, 1));
+}
+
+.panel[data-expandable].full .brand {
+  padding-right: calc(88px * var(--card-scale, 1));
+}
+
+/* the copy (header, text, results, tags) is one block in the grid only when the card is wide enough to put the media beside it */
+.copy {
+  display: contents;
+}
+
+@media (min-width: 1000px) {
+  .panel.full .body {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    grid-template-rows: auto 1fr;
+    column-gap: calc(36px * var(--card-scale, 1));
+    align-items: start;
+    padding: calc(28px * var(--card-scale, 1)) calc(32px * var(--card-scale, 1)) calc(32px * var(--card-scale, 1));
+  }
+
+  .panel.full .copy {
+    display: grid;
+    gap: calc(12px * var(--card-scale, 1));
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .panel.full .media {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    margin-top: calc(44px * var(--card-scale, 1));
+  }
+
+  .panel.full .actions {
+    grid-column: 1;
+    grid-row: 2;
+  }
+}
+
 /* the card is moved by its header: a hand on it, and no transition while it follows the pointer */
 .panel[data-side="right"] .head,
 .panel[data-side="left"] .head {
@@ -593,6 +692,54 @@ html:has(.game) body {
 .panel[data-side="left"] .close {
   right: auto;
   left: calc(100% + 10px * var(--card-scale, 1));
+}
+
+/* the expand button: inside the card's top-right corner (fixed there while the card scrolls); only projects marked expandable have it */
+.expand {
+  position: absolute;
+  top: calc(14px * var(--card-scale, 1));
+  right: calc(14px * var(--card-scale, 1));
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: calc(34px * var(--card-scale, 1));
+  height: calc(34px * var(--card-scale, 1));
+  padding: 0;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 86%, transparent);
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(59, 42, 32, 0.14);
+  cursor: pointer;
+  transition: background 150ms;
+}
+
+.expand[hidden],
+.panel[data-variant="link"] .expand {
+  display: none;
+}
+
+.expand:hover {
+  background: var(--paper-2);
+}
+
+.expand .i-shrink,
+.expand.is-full .i-expand {
+  display: none;
+}
+
+.expand.is-full .i-shrink {
+  display: block;
+}
+
+.expand:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* room in the first line for the button (and, expanded, for the close button as well) */
+.panel[data-expandable] .brand {
+  padding-right: calc(44px * var(--card-scale, 1));
 }
 
 .close:focus-visible,

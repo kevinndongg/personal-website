@@ -1,5 +1,6 @@
 import { navigate } from "astro:transitions/client";
 import { clampDrag, type Box, type Point } from "./drag";
+import { fullRect, type Rect } from "./fullrect";
 import { orgLine } from "./orgline";
 import type { Zone, ZoneAction } from "./world";
 import { buildMedia } from "./panelmedia";
@@ -54,6 +55,10 @@ export class Panel {
   private head: HTMLElement;
   private sheet: HTMLElement;
   private closeBtn: HTMLElement;
+  private expandBtn: HTMLButtonElement;
+  /** The card is expanded to nearly the whole window (or is on its way: this is the state it is going to). */
+  private full = false;
+  private growTimer = 0;
   private brand: HTMLElement;
   private when: HTMLElement;
   private note: HTMLElement;
@@ -88,6 +93,7 @@ export class Panel {
     this.head = root.querySelector(".head")!;
     this.sheet = root.querySelector("[data-sheet]")!;
     this.closeBtn = root.querySelector("[data-close]")!;
+    this.expandBtn = root.querySelector("[data-expand]")!;
     this.brand = root.querySelector("[data-brand]")!;
     this.when = root.querySelector("[data-when]")!;
     this.note = root.querySelector("[data-note]")!;
@@ -109,10 +115,13 @@ export class Panel {
     );
     this.listenForDrag(this.head, signal);
     this.closeBtn.addEventListener("click", () => this.close(), { signal });
+    this.expandBtn.addEventListener("click", () => this.setFull(!this.full), { signal });
     backdrop.addEventListener(
       "pointerdown",
       (e) => {
-        if (!this.onBackdropPress(e)) this.close();
+        if (this.onBackdropPress(e)) return;
+        if (this.full) this.setFull(false); // (the margin round an expanded card is easy to hit: it shrinks, it does not close)
+        else this.close();
       },
       { signal }
     );
@@ -122,7 +131,8 @@ export class Panel {
       (e) => {
         if (this.isOpen && e.key === "Escape") {
           e.preventDefault();
-          if (!this.beforeEscape()) this.close();
+          if (this.full) this.setFull(false);
+          else if (!this.beforeEscape()) this.close();
         }
       },
       { signal }
@@ -142,7 +152,73 @@ export class Panel {
   /** A side card is moved by its header; the bottom sheet and the gallery link stay where they are. */
   private canDrag(): boolean {
     const side = this.root.dataset.side;
-    return this.isOpen && this.root.dataset.variant !== "link" && (side === "left" || side === "right");
+    return this.isOpen && !this.full && this.root.dataset.variant !== "link" && (side === "left" || side === "right");
+  }
+
+  /** Expands the card to nearly the whole window, or puts it back (only a card that is marked `expandable`, beside the project). */
+  private setFull(on: boolean) {
+    if (on === this.full || this.expandBtn.hidden || !this.isOpen || this.growTimer) return;
+    this.endDrag();
+    this.full = on;
+    this.expandBtn.classList.toggle("is-full", on);
+    this.expandBtn.setAttribute("aria-expanded", String(on));
+    this.expandBtn.setAttribute("aria-label", on ? "Shrink" : "Expand");
+    const root = this.root;
+    const parent = root.offsetParent as HTMLElement | null;
+    if (!parent || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      this.setDrag({ x: 0, y: 0 });
+      root.classList.toggle("full", on);
+      return;
+    }
+    // the card is laid out from its side with a transform, which cannot be animated to "inset all round": so it is animated
+    // between two boxes in pixels, with its layout (one column or two) switched where it is smallest
+    const place = parent.getBoundingClientRect();
+    const rel = (r: DOMRect): Rect => ({
+      left: r.left - place.left - parent.clientLeft,
+      top: r.top - place.top - parent.clientTop,
+      width: r.width,
+      height: r.height,
+    });
+    const from = rel(root.getBoundingClientRect());
+    let to: Rect;
+    if (on) to = fullRect({ w: parent.clientWidth, h: parent.clientHeight }, Math.max(24, innerWidth * 0.03));
+    else {
+      // where it rests: measured now, in its own layout, with the drag taken off
+      root.classList.remove("full");
+      this.setDrag({ x: 0, y: 0 });
+      to = rel(root.getBoundingClientRect());
+    }
+    const box = (g: Rect) => {
+      const s = root.style;
+      s.left = `${g.left}px`;
+      s.top = `${g.top}px`;
+      s.width = `${g.width}px`;
+      s.height = `${g.height}px`;
+    };
+    root.classList.add("growing");
+    root.style.right = "auto";
+    root.style.bottom = "auto";
+    root.style.maxHeight = "none";
+    root.style.transform = "none";
+    box(from);
+    void root.offsetWidth; // (so the next box is animated to)
+    box(to);
+    this.growTimer = window.setTimeout(() => this.finishGrow(), 480);
+  }
+
+  /** Takes the pixel box off the card, so that its own layout is in charge again. */
+  private clearBox() {
+    for (const p of ["left", "top", "width", "height", "right", "bottom", "max-height", "transform"]) this.root.style.removeProperty(p);
+  }
+
+  /** The end of the grow or shrink: the card's own layout takes over from the pixel boxes. */
+  private finishGrow() {
+    if (!this.growTimer) return;
+    window.clearTimeout(this.growTimer);
+    this.growTimer = 0;
+    this.clearBox();
+    this.root.classList.remove("growing");
+    this.root.classList.toggle("full", this.full);
   }
 
   private setDrag(p: Point) {
@@ -221,6 +297,7 @@ export class Panel {
     this.setExpanded(false);
     this.endDrag();
     this.setDrag({ x: 0, y: 0 }); // every open starts in the default spot
+    this.resetFull(zone, side);
     this.root.dataset.side = side;
     this.root.dataset.variant = linkOnly ? "link" : "card";
     this.fit();
@@ -244,6 +321,7 @@ export class Panel {
     if (!this.isOpen) return;
     this.isOpen = false;
     this.stopMedia?.();
+    this.finishGrow();
     this.root.classList.remove("open");
     this.endDrag();
     this.backdrop.hidden = true;
@@ -258,6 +336,22 @@ export class Panel {
     this.root.hidden = true;
     this.root.classList.remove("open");
     this.backdrop.hidden = true;
+  }
+
+  /** Every open starts as the ordinary card; the expand button is there only for a project marked expandable, beside the project. */
+  private resetFull(zone: Zone, side: PanelSide) {
+    window.clearTimeout(this.growTimer);
+    this.growTimer = 0;
+    this.clearBox();
+    this.root.classList.remove("growing", "full");
+    this.full = false;
+    const can = !!zone.expandable && !isLinkOnly(zone) && (side === "left" || side === "right");
+    this.expandBtn.hidden = !can;
+    this.expandBtn.classList.remove("is-full");
+    this.expandBtn.setAttribute("aria-expanded", "false");
+    this.expandBtn.setAttribute("aria-label", "Expand");
+    this.root.toggleAttribute("data-expandable", can);
+    this.setDrag({ x: 0, y: 0 });
   }
 
   private setExpanded(on: boolean) {

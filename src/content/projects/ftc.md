@@ -5,6 +5,7 @@ alt: "Blu Cru logo"
 summary: "Full stack software development for autonomous & teleoperated robot. "
 role: "Team Captain, Software Lead"
 dateRange: "High School"
+expandable: true
 organization: "FIRST Tech Challenge, team 6417 (Int'l Robotics Competition)"
 cardBrand: "FIRST Tech Challenge"
 cardNote: "Blu Cru, #6417"
