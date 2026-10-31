@@ -48,7 +48,7 @@ const PLATE: [number, number][] = [[-1.2, -1.2], [PP.arm, -1.2], [PP.arm, 1.2], 
 const PLATE_Z = 1.3; // the middle of each plate, either side of the arm's centre line
 const PLATE_T = 0.5;
 /** Where the standoffs between the plates are (x, y), clear of the forearm's swing and under the plates' top edge. */
-const STANDOFFS: [number, number][] = [[1.1, 0.7], [2.3, 0.7], [3.2, 0.5]];
+const STANDOFFS: [number, number][] = [[1.1, 0.7], [3.2, 0.5]];
 
 // ---------------------------------------------------------------- the cone
 
