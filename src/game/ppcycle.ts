@@ -107,7 +107,7 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
    * Also, for the pole that the cone is let go over, which way it leans.
    */
   const place = (c: PowerPlayPlace, index: number) => {
-    const twist = c.side * PP.twist;
+    const twist = -c.side * PP.twist; // the cone's bottom leans ahead, towards where the robot is driving, and its top trails
     const yaw = (c.side * Math.PI) / 2;
     const [a, up, b] = heldBase(0, twist);
     const fx = PP.turretX + a * Math.cos(yaw) - b * Math.sin(yaw);
@@ -175,32 +175,25 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
   const toPole = (from: { at: Pose; arm: Arm }, to: { at: Pose; arm: Arm }, mid: { x: number; y: number }, over: number, spawn: number, drop: number, wristFirst: boolean): Phase[] => {
     const h = from.at.h;
     const base = held(from.arm);
-    const toMid = leg([from.at, mid], h, h, wristFirst ? 1.5 : 1.15, 0, CRUISE);
+    const toMid = leg([from.at, mid], h, h, wristFirst ? 1.9 : 1.55, 0, CRUISE);
     const creep = leg([mid, to.at], h, h, 1.7, CRUISE, 0);
-    const swung: Arm = { lift: over, yaw: 0, tilt: PP.tilt, twist: 0, claw: 0 };
     const lined: Arm = { ...to.arm, lift: over };
+    // The cone is ready by the end of the cruise: the turret starts swinging while the slides are still rising (the wrist still up), and the wrist
+    // comes down and the claw rolls the cone in the same window, so the creep is only a crawl. From the floor the wrist pivots up first with
+    // the slides still all the way down, then they go the whole way up in one move; from the stack the slides start up at once (the cone has
+    // to come up out of the stack before the wrist turns it over).
+    const [turret0, down0, ready] = wristFirst ? [0.5, 0.6, 0.95] : [0.5, 0.62, 0.95];
+    const keys: Partial<Record<Channel, Keys>> = {
+      yaw: key([turret0, 0], [0.85, to.arm.yaw]),
+      tilt: wristFirst
+        ? key([0, 0], [0.3, PP.tilt], [down0, PP.tilt], [ready, 0])
+        : key([0.3, 0], [0.6, PP.tilt], [down0, PP.tilt], [ready, 0]),
+      twist: key([down0, 0], [ready, to.arm.twist]),
+      lift: wristFirst ? key([0.3, base.lift], [0.75, over]) : key([0, base.lift], [0.55, over]),
+    };
     return [
-      {
-        ...toMid,
-        arm: [base, swung],
-        // From the floor the wrist pivots up first with the slides still all the way down, then they go the whole way up in one move; from the
-        // stack the slides start up at once (the cone has to come up out of the stack before the wrist turns it over)
-        keys: wristFirst
-          ? { tilt: key([0, 0], [0.4, PP.tilt]), lift: key([0.4, base.lift], [1, over]) }
-          : { lift: key([0, base.lift], [0.75, over]), tilt: key([0.35, 0], [0.8, PP.tilt]) },
-        carry: always,
-        mark: { what: "spawn", index: spawn, offset: 0.3 },
-      },
-      {
-        ...creep,
-        arm: [swung, lined],
-        keys: {
-          yaw: key([0, 0], [0.55, to.arm.yaw]),
-          tilt: key([0.15, PP.tilt], [0.7, 0]),
-          twist: key([0.5, 0], [0.9, to.arm.twist]),
-        },
-        carry: always,
-      },
+      { ...toMid, arm: [base, lined], keys, carry: always, mark: { what: "spawn", index: spawn, offset: 0.3 } },
+      { ...creep, arm: [lined, lined], carry: always },
       { dur: 0.3, at: to.at, arm: [lined, held(to.arm)], carry: always },
       { dur: 0.4, at: to.at, arm: [held(to.arm), open(to.arm)], carry: (u) => u < 0.2, mark: { what: "drop", index: drop, offset: 0.08 } },
     ];
