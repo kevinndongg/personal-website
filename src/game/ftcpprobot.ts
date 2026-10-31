@@ -41,14 +41,14 @@ const PP_READY: PPPose = { ...PP_WAIT, carrying: false };
 // ---------------------------------------------------------------- the arm's plates
 
 /**
- * One plate of the upper arm in the arm's frame (x out from the turret axis, y up from the pivot's height): deep at the shoulder end,
- * whose top edge falls away to the pivot. It stays under y = 1.2 over the last 3 px before the pivot, where the cone swings past.
+ * One plate of the upper arm in the arm's frame (x out from the turret axis, y up from the pivot's height). Its top edge is flat at
+ * y = 1.2: the cone, swung up and back over the arm, hangs just above it (its lowest rim passes about 0.5 clear).
  */
-const PLATE: [number, number][] = [[-1.2, -1.2], [PP.arm, -1.2], [PP.arm, 1.2], [3.2, 1.2], [1, 2.6], [-1.2, 2.6]];
+const PLATE: [number, number][] = [[-1.2, -1.2], [PP.arm, -1.2], [PP.arm, 1.2], [-0.4, 1.2], [-1.2, 0.4]];
 const PLATE_Z = 1.3; // the middle of each plate, either side of the arm's centre line
 const PLATE_T = 0.5;
 /** Where the standoffs between the plates are (x, y), clear of the forearm's swing and under the plates' top edge. */
-const STANDOFFS: [number, number][] = [[-0.2, 1.9], [2, 1.2], [4, 0.6]];
+const STANDOFFS: [number, number][] = [[1.1, 0.7], [2.3, 0.7], [3.2, 0.5]];
 
 // ---------------------------------------------------------------- the cone
 
@@ -226,15 +226,12 @@ export function ppRobotModel(): Group {
     }
   }
   arm.add(cyl(1, 1, 2.4, BLUE, 0, -1.2, 0, 12)); // the turret's end of the arm, between the plates
-  // between the plates, under the standoffs, black servos, a gearbox and a bracket, so the arm looks solid from above as well as the side; all
-  // kept under y = 0.8 so the cone swings clear over them
+  // between the plates, under the standoffs, black servos, a gearbox and a cable block, so the arm looks solid from above as well as the side; all
+  // kept under y = 0.2 so the standoffs and the cone swing clear over them
   const gap = PLATE_Z * 2 - PLATE_T - 0.1; // as wide as fits between the plates
-  arm.add(box(2, 1.9, gap, BLACK, 2.1, -1.1, 0)); // the turret's servo
-  arm.add(box(0.9, 0.12, gap - 0.4, "#4a4d58", 1.6, 0.8, 0)); // with its label
-  const horn = cyl(0.5, 0.5, 0.15, "#8b909a", 2.8, 0.8, 0, 10); // and its horn
-  arm.add(horn);
-  arm.add(box(1.3, 1.3, gap, "#23252d", 4, -1.1, 0)); // a gearbox
-  arm.add(box(0.4, 0.9, gap, BLACK, 5, -1.1, 0)); // a bracket just short of the forearm's swing
+  arm.add(box(1.8, 1.3, gap, BLACK, 1.5, -1.1, 0)); // the turret's servo
+  arm.add(box(0.9, 0.1, gap - 0.4, "#4a4d58", 1.3, 0.2, 0)); // with its label
+  arm.add(box(1, 1.1, gap, "#23252d", 3.1, -1.1, 0)); // a gearbox
   arm.add(box(1.6, 0.9, gap, BLACK, -0.2, -1.1, 0)); // and the cable block behind the turret
   // the pivot: one solid axle right through both plates, a bearing on each plate where it passes
   const across = (r: number, len: number, color: string, z: number, x = PP.arm) => {

@@ -100,9 +100,9 @@ export const coneRadius = (h: number) => CONE.base + ((CONE.top - CONE.base) * M
 export const PP = {
   half: 5.835, // the chassis is 14 in square
   turretX: -1,
-  arm: 6.4, // turret axis to the pivot
-  grip: 4.4, // pivot to the middle of the jaws, forward, with the claw level
-  drop: 5, // and the jaws' middle is this far below the pivot
+  arm: 4.8, // turret axis to the pivot
+  grip: 6, // pivot to the middle of the jaws, forward, with the claw level
+  drop: 2.4, // and the jaws' middle is this far below the pivot: a cone on the floor is taken with the slides all the way down (pivot 3.4)
   hold: 1, // a held cone's base ring is this far below the jaws' middle (they close just above the ring)
   coneH: CONE.h,
   above: 0.5, // how far above a pole's top a cone's base is let go
