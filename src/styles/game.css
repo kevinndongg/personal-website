@@ -529,9 +529,13 @@ html:has(.game) body {
   background: var(--paper);
 }
 
+/* focus: the ring itself gets bolder and brighter. (A separate outline would be a second circle: the card focuses the button when it opens.) */
 .panel[data-side="right"] .close:focus-visible,
 .panel[data-side="left"] .close:focus-visible {
-  outline-color: var(--paper);
+  outline: none;
+  box-shadow:
+    0 0 0 2.5px var(--paper),
+    0 4px 16px rgba(20, 10, 4, 0.45);
 }
 
 .panel[data-side="right"] .close {
