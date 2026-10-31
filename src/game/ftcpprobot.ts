@@ -237,7 +237,7 @@ export function ppRobotModel(): Group {
   arm.add(box(0.4, 0.9, gap, BLACK, 5, -1.1, 0)); // a bracket just short of the forearm's swing
   arm.add(box(1.6, 0.9, gap, BLACK, -0.2, -1.1, 0)); // and the cable block behind the turret
   // the pivot: one solid axle right through both plates, a bearing on each plate where it passes, and on the outside the round servo
-  // (right) and an end cap (left)
+  // (a matching one each side)
   const across = (r: number, len: number, color: string, z: number, x = PP.arm) => {
     const c = cyl(r, r, len, color, x, 0, z, 14);
     c.rotation.x = Math.PI / 2;
@@ -250,9 +250,10 @@ export function ppRobotModel(): Group {
     across(1.05, 0.25, SILVER, s * (outer + 0.12)); // the bearing's outer race
     across(0.6, 0.3, "#16161b", s * (outer + 0.14)); // and its dark centre round the axle
   }
-  across(1.4, 0.5, "#8fa5c6", outer + 0.65); // the round servo (the part Kevin circled), on the right
-  across(0.7, 0.2, "#16161b", outer + 0.95);
-  across(0.8, 0.3, "#3a3d48", -(outer + 0.5)); // the cap on the left
+  for (const s of [-1, 1]) {
+    across(1.4, 0.5, "#8fa5c6", s * (outer + 0.65)); // a round servo (the part Kevin circled) on each side, so the joint is symmetrical
+    across(0.7, 0.2, "#16161b", s * (outer + 0.95));
+  }
 
   // ---- the wrist pitches the forearm and the claw about the pivot
   const gap2 = PLATE_Z * 2 - PLATE_T - 0.1;
