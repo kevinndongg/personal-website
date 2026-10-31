@@ -234,18 +234,28 @@ export function ppRobotModel(): Group {
   const horn = cyl(0.5, 0.5, 0.15, "#8b909a", 2.8, 0.8, 0, 10); // and its horn
   arm.add(horn);
   arm.add(box(1.3, 1.3, gap, "#23252d", 4, -1.1, 0)); // a gearbox
-  arm.add(box(0.7, 0.9, gap, BLACK, 5.1, -1.1, 0)); // a bracket just short of the forearm's swing
+  arm.add(box(0.4, 0.9, gap, BLACK, 5, -1.1, 0)); // a bracket just short of the forearm's swing
   arm.add(box(1.6, 0.9, gap, BLACK, -0.2, -1.1, 0)); // and the cable block behind the turret
-  const servo = cyl(1.4, 1.4, 0.5, "#8fa5c6", PP.arm, 0, 1.2, 14);
-  servo.rotation.x = Math.PI / 2;
-  servo.position.set(PP.arm, 0, PLATE_Z + PLATE_T / 2 + 0.25);
-  arm.add(servo);
-  const hub = cyl(0.7, 0.7, 0.2, "#16161b", 0, 0, 0, 10);
-  hub.rotation.x = Math.PI / 2;
-  hub.position.set(PP.arm, 0, PLATE_Z + PLATE_T / 2 + 0.55);
-  arm.add(hub);
+  // the pivot: one solid axle right through both plates, a bearing on each plate where it passes, and on the outside the round servo
+  // (right) and an end cap (left)
+  const across = (r: number, len: number, color: string, z: number, x = PP.arm) => {
+    const c = cyl(r, r, len, color, x, 0, z, 14);
+    c.rotation.x = Math.PI / 2;
+    c.position.set(x, 0, z);
+    arm.add(c);
+  };
+  const outer = PLATE_Z + PLATE_T / 2; // the plates' outer faces
+  across(0.45, 2 * outer + 1.6, STEEL, 0); // the axle, sticking out past the bearings
+  for (const s of [-1, 1]) {
+    across(1.05, 0.25, SILVER, s * (outer + 0.12)); // the bearing's outer race
+    across(0.6, 0.3, "#16161b", s * (outer + 0.14)); // and its dark centre round the axle
+  }
+  across(1.4, 0.5, "#8fa5c6", outer + 0.65); // the round servo (the part Kevin circled), on the right
+  across(0.7, 0.2, "#16161b", outer + 0.95);
+  across(0.8, 0.3, "#3a3d48", -(outer + 0.5)); // the cap on the left
 
   // ---- the wrist pitches the forearm and the claw about the pivot
+  const gap2 = PLATE_Z * 2 - PLATE_T - 0.1;
   const tilt = new Group();
   tilt.position.set(PP.arm, 0, 0);
   arm.add(tilt);
@@ -253,7 +263,12 @@ export function ppRobotModel(): Group {
   const len = Math.hypot(palmX, PP.drop);
   const forearm = new Group();
   forearm.rotation.z = Math.atan2(-PP.drop, palmX);
-  forearm.add(box(len, 1.4, 0.8, BLUE, len / 2, -0.7, 0));
+  const wrist = gap2; // the forearm fills the whole space between the bearings, plate to plate
+  forearm.add(box(len, 1.4, wrist, BLUE, len / 2, -0.7, 0));
+  const knuckle = cyl(1.1, 1.1, wrist, BLUE, 0, 0, 0, 14); // a round hub round the axle
+  knuckle.rotation.x = Math.PI / 2;
+  knuckle.position.set(0, 0, 0);
+  forearm.add(knuckle);
   tilt.add(forearm);
 
   // ---- the claw hangs from the forearm's end and rolls about its own axis, through the middle of the jaws; its frame has x along the
