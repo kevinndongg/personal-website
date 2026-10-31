@@ -31,12 +31,12 @@ export const FLOOR = {
     [{ x: 0, y: 0 }, { x: HALF, y: K }],
     [{ x: 0, y: 0 }, { x: -HALF, y: K }],
   ],
-  // Red tape marking the Power Play stations (relative to the field's centre, like the white tape): a strip as wide as half a cone
-  // running half a tile out from the north wall along the middle of the red cone stack; and, on the west wall, a chevron: a line
+  // Red tape marking the Power Play stations (relative to the field's centre, like the white tape): a strip as wide as the other tape
+  // running a whole tile out from the north wall along the middle of the red cone stack; and, on the west wall, a chevron: a line
   // from the middle of the third tile (the human player's cone) to the middle of that tile's south edge, and its mirror from the
   // middle of the fourth tile to the same point. (The lines start a little behind the wall so they run right up to it.)
   red: {
-    strips: [{ x0: -30 - 1.45, y0: -HALF, x1: -30 + 1.45, y1: -HALF + 10 }],
+    strips: [{ x0: -30 - 0.8, y0: -HALF, x1: -30 + 0.8, y1: -HALF + 20 }],
     lines: [{ width: 1.6, points: [{ x: -HALF - 2, y: -12 }, { x: -HALF + 10, y: 0 }, { x: -HALF - 2, y: 12 }] }],
   },
 };
