@@ -514,12 +514,12 @@ html:has(.game) body {
   color: var(--paper);
   background: transparent;
   /*
-   * The cross changes colour in one step, a little way into the fill, not as a fade alongside it: halfway through two fades the
-   * cross is the colour of the fill under it, and it blinks out (most visible when the pointer leaves and comes straight back).
+   * Going back to rest (this is the transition used when the pointer leaves): the fill fades out and the cross stays dark until the
+   * fill is almost gone, then turns cream. Fading both together blinks the cross out halfway (it is the colour of the fill under it).
    */
   transition:
-    background 150ms ease-out,
-    color 0s 60ms;
+    background 160ms ease-out,
+    color 0s 110ms;
   box-shadow:
     0 0 0 1.5px color-mix(in srgb, var(--paper) 85%, transparent),
     0 4px 16px rgba(20, 10, 4, 0.45);
@@ -534,6 +534,8 @@ html:has(.game) body {
 .panel[data-side="left"] .close:hover {
   color: var(--ink);
   background: var(--paper);
+  /* the fill and the dark cross arrive together, at once: any fade in has a moment when the cross matches the fill and flickers */
+  transition: none;
 }
 
 /* focus: the ring itself gets bolder and brighter. (A separate outline would be a second circle: the card focuses the button when it opens.) */
