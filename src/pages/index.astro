@@ -6,6 +6,7 @@ import { statSync } from "node:fs";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import FilmCanister from "../components/FilmCanister.astro";
 import { withBase } from "../lib/url";
+import type { ZoneMedia } from "../game/world";
 import { contactLinks } from "../lib/contact";
 import { lightTableOrder, sortPhotos } from "../lib/photos";
 import "../styles/game.css";
@@ -89,6 +90,27 @@ function parseBody(body = "") {
   };
 }
 
+/** A project's `media` as the card shows it: images optimized (the card is up to about 1000px wide on a big screen, and 580px at its base size, so this is enough for sharp ones), paths made final. */
+async function cardMedia(items: NonNullable<(typeof projects)[number]["data"]["media"]> = []): Promise<ZoneMedia[]> {
+  return Promise.all(
+    items.map(async (m): Promise<ZoneMedia> => {
+      const { size, caption } = m;
+      if (m.type === "image") {
+        const { src, attributes } = await getImage({ src: m.src, width: 1200 });
+        return { type: "image", src, width: Number(attributes.width), height: Number(attributes.height), alt: m.alt, size, caption };
+      }
+      if (m.type === "video") {
+        const { width, height, alt } = m;
+        return { type: "video", src: withBase(m.src), poster: withBase(m.poster), width, height, alt, size, caption };
+      }
+      const params = new URLSearchParams({ autoplay: "1", rel: "0" });
+      if (m.start) params.set("start", String(m.start));
+      const embed = `https://www.youtube-nocookie.com/embed/${m.id}?${params}`;
+      return { type: "youtube", embed, poster: withBase(m.poster), title: m.title, size, caption };
+    })
+  );
+}
+
 const zones = [
   ...(await Promise.all(
     projects.map(async (p) => {
@@ -110,6 +132,7 @@ const zones = [
         brandNote: p.data.cardNote,
         subtitle: p.data.cardTitle,
         techStack: p.data.techStack,
+        media: await cardMedia(p.data.media),
         // the logo, shown whole beside the title
         image: p.data.image && p.data.cardLogo !== false ? (await getImage({ src: p.data.image, width: 240 })).src : undefined,
         actions: [
@@ -255,6 +278,7 @@ const zones = [
         <p class="summary" data-summary></p>
         <ul class="bullets" data-bullets></ul>
         <ul class="tags" data-tags></ul>
+        <div class="media" data-media hidden></div>
         <div class="actions" data-actions></div>
       </div>
       </div>
