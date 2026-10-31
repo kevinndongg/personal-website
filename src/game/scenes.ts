@@ -70,14 +70,17 @@ export interface PowerPlayPlace {
 }
 
 /**
- * What the Power Play robot does, in world px, forever: take the top cone of the stack and put it on the medium junction, take the
- * human player's cone and put it on the high junction. It starts at the stack.
+ * What the Power Play robot does, in world px, forever: take the top cone of the stack to the medium junction, then the human player's
+ * cone to the medium junction, then the human player's cone to the high junction, and again. It starts at the stack.
  */
 export interface PowerPlayCycle {
   stack: PowerPlayPick;
   human: PowerPlayPick;
   high: PowerPlayPlace;
+  /** The medium junction from the lane, facing north (the stack's cone goes here)... */
   medium: PowerPlayPlace;
+  /** ...and from the row, facing west like the high one (the ground cone goes here, the pole on the robot's right). */
+  mediumRow: PowerPlayPlace;
 }
 
 /** What the Into the Deep robot does, all in world px: two jobs it does in turn, forever, and the way between them. */

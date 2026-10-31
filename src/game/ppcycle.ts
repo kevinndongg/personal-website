@@ -60,6 +60,8 @@ interface Mark {
   what: "pick" | "spawn" | "drop" | "clear";
   index: number; // the cone (`ftcField.cone`) or the junction (`ftcField.placed`): stack / human, high / medium
   offset: number;
+  /** For a drop: which way the cone leans as it is let go (world x east, y up, z south). */
+  lean?: [number, number, number];
 }
 
 interface Phase {
@@ -102,9 +104,9 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
   /**
    * Where the robot stands to put a cone on a pole, and how the arm is turned and raised: the turret exactly a quarter turn to the
    * `side` of the pole, so the robot parks where that puts the cone's base (wrist level, claw rolled a little) over the pole's top.
-   * Also, for the pole that the cone is let go over, which way it leans.
+   * Also which way the cone leans as it is let go.
    */
-  const place = (c: PowerPlayPlace, index: number) => {
+  const place = (c: PowerPlayPlace) => {
     const twist = -c.side * PP.twist; // the cone's bottom leans ahead, towards where the robot is driving, and its top trails
     const yaw = (c.side * Math.PI) / 2;
     const [a, up, b] = heldBase(0, twist);
@@ -116,14 +118,14 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
     // the cone's axis, base to tip, as the claw holds it: up, rolled by `twist` towards the arm's side
     const axis = clawDir([0, 1, 0], 0, twist);
     const w = world(c.heading, axis[0] * Math.cos(yaw) - axis[2] * Math.sin(yaw), axis[0] * Math.sin(yaw) + axis[2] * Math.cos(yaw));
-    ftcField.lean[index] = [w.x, axis[1], w.y];
-    return { at, arm: { lift, yaw, tilt: 0, twist, claw: 0 } as Arm };
+    return { at, arm: { lift, yaw, tilt: 0, twist, claw: 0 } as Arm, lean: [w.x, axis[1], w.y] as [number, number, number] };
   };
 
   const A = pick(cfg.stack); // the stack, facing north
   const C = pick(cfg.human); // the ground cone, facing west
-  const B = place(cfg.high, 0); // the high junction, from the row, facing west
-  const D = place(cfg.medium, 1); // the medium junction, from the lane, facing north
+  const B = place(cfg.high); // the high junction, from the row, facing west
+  const D = place(cfg.medium); // the medium junction, from the lane, facing north
+  const M = place(cfg.mediumRow); // the medium junction, from the row, facing west
 
   const curve = (pts: { x: number; y: number }[]) => {
     const c = new CatmullRomCurve3(
@@ -157,6 +159,7 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
   const open = (p: Arm): Arm => ({ ...p, claw: 1 });
   const overB = B.arm.lift + LIFT_OVER; // each junction's height, over which the arm swings out before it lowers
   const overD = D.arm.lift + LIFT_OVER;
+  const overM = M.arm.lift + LIFT_OVER;
   const stowed = (p: Arm): Arm => ({ ...p, lift: STOW, yaw: 0, tilt: PP.tilt, twist: 0, claw: 1 });
   const key = (...k: [number, number][]): Keys => k;
 
@@ -174,7 +177,7 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
    * slides rising to the junction's height; then a slow creep to the stand, during which the turret swings out (the wrist still up), the
    * wrist comes down and the claw rolls; then it lowers the slides a little and lets go. `mid` is where the cruise ends.
    */
-  const toPole = (from: { at: Pose; arm: Arm }, to: { at: Pose; arm: Arm }, mid: { x: number; y: number }, over: number, spawn: number, drop: number, wristFirst: boolean): Phase[] => {
+  const toPole = (from: { at: Pose; arm: Arm }, to: { at: Pose; arm: Arm; lean: [number, number, number] }, mid: { x: number; y: number }, over: number, spawn: number, drop: number, wristFirst: boolean): Phase[] => {
     const h = from.at.h;
     const base = held(from.arm);
     const toMid = leg([from.at, mid], h, h, wristFirst ? 1.9 : 1.55, 0, CRUISE);
@@ -197,7 +200,7 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
       { ...toMid, arm: [base, lined], keys, carry: always, mark: { what: "spawn", index: spawn, offset: farOffset(toMid, from.at, GONE) } }, // the new cone appears once the robot has driven well away
       { ...creep, arm: [lined, lined], carry: always },
       { dur: 0.3, at: to.at, arm: [lined, held(to.arm)], carry: always },
-      { dur: 0.4, at: to.at, arm: [held(to.arm), open(to.arm)], carry: (u) => u < 0.2, mark: { what: "drop", index: drop, offset: 0.06 } },
+      { dur: 0.4, at: to.at, arm: [held(to.arm), open(to.arm)], carry: (u) => u < 0.2, mark: { what: "drop", index: drop, offset: 0.06, lean: to.lean } },
     ];
   };
 
@@ -219,6 +222,11 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
     const x = cfg.high.target.x - HALF_TILE;
     const t = (x - C.at.x) / (B.at.x - C.at.x);
     return { x, y: lerp(C.at.y, B.at.y, t) };
+  })();
+  const midM = (() => {
+    const x = cfg.mediumRow.target.x - HALF_TILE;
+    const t = (x - C.at.x) / (M.at.x - C.at.x);
+    return { x, y: lerp(C.at.y, M.at.y, t) };
   })();
   const midD = (() => {
     const y = cfg.medium.target.y - HALF_TILE;
@@ -250,7 +258,25 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
     carry: never,
     mark: { what: "clear", index: 1, offset: farOffset(westRun, D.at, GONE) }, // the cone it placed stays until it has driven well away
   });
-  // the ground cone: grab, and straight away back east along the row to the high junction
+  // the ground cone: grab, and straight away back east along the row to the medium junction (the pole on its right), then forward (west)
+  // along the row to the ground cone again, retracting on the way
+  loop.push(grab(C, 1));
+  loop.push(...toPole(C, M, midM, overM, 1, 1, true));
+  const afterM: Arm = open(M.arm);
+  const backWest = leg([M.at, C.at], C.at.h, C.at.h, 1.6, 0, 0);
+  loop.push({
+    ...backWest,
+    arm: [afterM, C.arm],
+    keys: {
+      tilt: key([0, 0], [0.3, PP.tilt], [0.62, PP.tilt], [0.92, 0]),
+      yaw: key([0.25, afterM.yaw], [0.6, 0]),
+      twist: key([0.25, afterM.twist], [0.6, 0]),
+      lift: key([0.3, afterM.lift], [0.9, C.arm.lift]),
+    },
+    carry: never,
+    mark: { what: "clear", index: 1, offset: farOffset(backWest, M.at, GONE) },
+  });
+  // and the ground cone again: grab, and straight away back east along the row to the high junction
   loop.push(grab(C, 1));
   loop.push(...toPole(C, B, midB, overB, 1, 0, true));
   // retract as it turns off the row to the north, then up the lane to the stack, the slides rising on the way
@@ -279,26 +305,37 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
   (model.userData.pose as ((p: PPPose) => void) | undefined)?.({ ...A.arm, carrying: false });
 
   // when, in the loop, each thing happens to the field
-  const events: { what: Mark["what"]; index: number; at: number }[] = [];
+  const events: { what: Mark["what"]; index: number; at: number; lean?: [number, number, number] }[] = [];
   let clock = 0;
   for (const p of loop) {
-    if (p.mark) events.push({ what: p.mark.what, index: p.mark.index, at: clock + p.mark.offset });
+    if (p.mark) events.push({ what: p.mark.what, index: p.mark.index, at: clock + p.mark.offset, lean: p.mark.lean });
     clock += p.dur;
   }
+
+  // a pole is dropped on and cleared in turn (more than once a lap for the medium one): each drop is paired with the next clear
+  const pairs = [0, 1].map((i) => {
+    const drops = events.filter((e) => e.what === "drop" && e.index === i).sort((a, b) => a.at - b.at);
+    const clears = events.filter((e) => e.what === "clear" && e.index === i).sort((a, b) => a.at - b.at);
+    return drops.map((d) => ({ at: d.at, lean: d.lean!, clear: clears.find((c) => c.at > d.at)?.at }));
+  });
 
   /** The field at `tl` seconds into the loop: a cone taken is gone until its replacement grows in; a placed one falls, stays, and shrinks away. */
   const field = (tl: number) => {
     const cone = [1, 1];
-    const placed = [0, 0];
     for (const ev of events) {
       if (ev.what === "pick") cone[ev.index] -= ramp(tl, ev.at, FADE.pick);
       else if (ev.what === "spawn") cone[ev.index] += ramp(tl, ev.at, FADE.spawn);
-      else if (ev.what === "drop") placed[ev.index] += ramp(tl, ev.at, FADE.drop);
-      else placed[ev.index] += ramp(tl, ev.at, FADE.clear);
     }
     for (let i = 0; i < 2; i++) {
       ftcField.cone[i] = Math.min(1, Math.max(0, cone[i]));
-      ftcField.placed[i] = Math.min(2, Math.max(0, placed[i]));
+      // the placed cone shown is the one of the latest drop so far
+      let placed = 0;
+      for (const d of pairs[i]) {
+        if (tl < d.at) break;
+        placed = ramp(tl, d.at, FADE.drop) + (d.clear === undefined ? 0 : ramp(tl, d.clear, FADE.clear));
+        ftcField.lean[i] = d.lean;
+      }
+      ftcField.placed[i] = Math.min(2, Math.max(0, placed));
     }
   };
 
