@@ -28,6 +28,7 @@ const CRUISE = 14; // px/s as the robot passes the middle of the tile on its way
 const LIFT_OVER = 1.5; // how much higher than its final height the arm swings out over a pole, and then lowers
 const STOW = 3.4; // the slides all the way down (the carriage's foot on the chassis)
 const HALF_TILE = 10;
+const GONE = 14; // how far (px) the robot has driven from a stop before the cone it leaves there changes (a placed one shrinks, a taken one is replaced)
 
 const smooth = (k: number) => {
   const c = Math.min(1, Math.max(0, k));
@@ -142,6 +143,15 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
     const d = c.getLength();
     return { dur, route: { curve: c, h0, h1, ease: hermite((v0 * dur) / d, (v1 * dur) / d) } };
   };
+  /** How many seconds into a driving phase the robot is first `dist` px from `from` (the phase's end if it never is). */
+  const farOffset = (ph: { dur: number; route: { curve: CatmullRomCurve3; ease?: (u: number) => number } }, from: { x: number; y: number }, dist: number) => {
+    for (let n = 0; n <= 200; n++) {
+      const u = n / 200;
+      const q = ph.route.curve.getPointAt(Math.min(1, Math.max(0, ph.route.ease ? ph.route.ease(u) : smooth(u))));
+      if (Math.hypot(q.x - from.x, q.z - from.y) >= dist) return u * ph.dur;
+    }
+    return ph.dur;
+  };
   /** A straight run between two stops with the heading held and the default ease (the way in). */
   const run = (from: Pose, to: { x: number; y: number }, h: number, min: number) => {
     const c = curve([from, to]);
@@ -192,7 +202,7 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
       lift: wristFirst ? key([0.3, base.lift], [0.75, over]) : key([0, base.lift], [0.55, over]),
     };
     return [
-      { ...toMid, arm: [base, lined], keys, carry: always, mark: { what: "spawn", index: spawn, offset: 0.3 } },
+      { ...toMid, arm: [base, lined], keys, carry: always, mark: { what: "spawn", index: spawn, offset: farOffset(toMid, from.at, GONE) } }, // the new cone appears once the robot has driven well away
       { ...creep, arm: [lined, lined], carry: always },
       { dur: 0.3, at: to.at, arm: [lined, held(to.arm)], carry: always },
       { dur: 0.4, at: to.at, arm: [held(to.arm), open(to.arm)], carry: (u) => u < 0.2, mark: { what: "drop", index: drop, offset: 0.06 } },
@@ -238,14 +248,15 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
     arm: [afterD, stowed(A.arm)],
     keys: retractKeys(afterD),
     carry: never,
-    mark: { what: "clear", index: 1, offset: 0.7 },
   });
   loop.push({ dur: 0.5, at: X, turn: C.at.h, arm: [stowed(A.arm), stowed(A.arm)], carry: never });
+  const westRun = leg([westOfX, C.at], C.at.h, C.at.h, 1.1, 0, 0);
   loop.push({
-    ...leg([westOfX, C.at], C.at.h, C.at.h, 1.1, 0, 0),
+    ...westRun,
     arm: [stowed(A.arm), C.arm],
     keys: approachKeys(C.arm),
     carry: never,
+    mark: { what: "clear", index: 1, offset: farOffset(westRun, D.at, GONE) }, // the cone it placed stays until it has driven well away
   });
   // the ground cone: grab, and straight away back east along the row to the high junction
   loop.push(grab(C, 1));
@@ -258,13 +269,14 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
     arm: [afterB, stowed(A.arm)],
     keys: retractKeys(afterB),
     carry: never,
-    mark: { what: "clear", index: 0, offset: 0.6 },
   });
+  const northRun = leg([turnOut, A.at], A.at.h, A.at.h, 1.5, 18, 0);
   loop.push({
-    ...leg([turnOut, A.at], A.at.h, A.at.h, 1.5, 18, 0),
+    ...northRun,
     arm: [stowed(A.arm), A.arm],
     keys: approachKeys(A.arm),
     carry: never,
+    mark: { what: "clear", index: 0, offset: farOffset(northRun, B.at, GONE) },
   });
   const loopTotal = loop.reduce((s, p) => s + p.dur, 0);
 
