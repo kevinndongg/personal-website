@@ -229,6 +229,16 @@ export function ppRobotModel(): Group {
     }
   }
   arm.add(cyl(1, 1, 2.4, BLUE, 0, -1.2, 0, 12)); // the turret's end of the arm, between the plates
+  // between the plates, under the standoffs, black servos, a gearbox and a bracket, so the arm looks solid from above as well as the side; all
+  // kept under y = 0.8 so the cone swings clear over them
+  const gap = PLATE_Z * 2 - PLATE_T - 0.1; // as wide as fits between the plates
+  arm.add(box(2, 1.9, gap, BLACK, 2.1, -1.1, 0)); // the turret's servo
+  arm.add(box(0.9, 0.12, gap - 0.4, "#4a4d58", 1.6, 0.8, 0)); // with its label
+  const horn = cyl(0.5, 0.5, 0.15, "#8b909a", 2.8, 0.8, 0, 10); // and its horn
+  arm.add(horn);
+  arm.add(box(1.3, 1.3, gap, "#23252d", 4, -1.1, 0)); // a gearbox
+  arm.add(box(0.7, 0.9, gap, BLACK, 5.1, -1.1, 0)); // a bracket just short of the forearm's swing
+  arm.add(box(1.6, 0.9, gap, BLACK, -0.2, -1.1, 0)); // and the cable block behind the turret
   const servo = cyl(1.4, 1.4, 0.5, "#8fa5c6", PP.arm, 0, 1.2, 14);
   servo.rotation.x = Math.PI / 2;
   servo.position.set(PP.arm, 0, PLATE_Z + PLATE_T / 2 + 0.25);
