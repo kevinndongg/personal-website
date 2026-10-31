@@ -69,6 +69,11 @@ export const ftcField = {
   dropped: [0, 0],
   cone: [1, 1],
   placed: [0, 0],
+  /** The way the cone just placed on the high / medium junction leans as it is let go (base to tip, world x east, y up, z south). */
+  lean: [
+    [0, 1, 0],
+    [0, 1, 0],
+  ],
 };
 
 // ---------------------------------------------------------------- Power Play
@@ -81,21 +86,23 @@ export const poleTop = (level: "m" | "h") => 1 + PP_HEIGHT[level] + 0.9;
 
 /**
  * The Power Play robot's dimensions (px; 1 px = 1.2 in), shared by its model, its cycle and the scene. Robot frame: x forward,
- * y up, z to its right. The arm swings about the turret (a vertical axis on the lift's carriage, `turretX` behind the middle);
- * its end is the wrist, a horizontal axis across it; and the claw, level when the wrist is at 0, points along the arm from there.
- * `lift` is the height of the wrist axis (the carriage's foot).
+ * y up, z to its right. One arm swings about the turret (a vertical axis on the lift's carriage, `turretX` from the middle); at its
+ * end an axle runs out sideways to the claw, which hangs in a plane `offset` to the right of the arm, so that it can swing right
+ * over the top without meeting the arm. The claw, level when the wrist is at 0, points along the arm from the axle. `lift` is the
+ * height of the wrist axle (the carriage's foot).
  */
 export const PP = {
   half: 5.835, // the chassis is 14 in square
-  turretX: -3.4,
-  arm: 13.9, // turret axis to wrist axis
-  grip: 2.8, // wrist axis to the middle of the jaws, along the level claw
+  turretX: -2,
+  arm: 8.8, // turret axis to wrist axle
+  offset: 4.2, // the claw's plane, to the right of the arm
+  grip: 3.4, // wrist axle to the middle of the jaws, along the level claw
   hold: 1, // a held cone's base ring is this far below the jaws' middle (they close just above the ring)
   coneH: 5.5,
-  above: 1.5, // how far above a pole's cap the cone's narrow end is let go (its tilted rim dips 0.8 below)
+  above: 0.5, // how far above a pole's cap a cone's base is let go
   stackTop: 2.4, // the base of the top cone of the red stack (three cones, 1.2 apart)
-  rail: 32, // the lift's rails
-  tilt: (135 * Math.PI) / 180, // the wrist's pivot, every time it carries a cone
+  slide: 12, // the height of each stage of the lift's drawer slides
+  tilt: (135 * Math.PI) / 180, // the wrist's pivot to carry a cone (0 to pick one up and to put it on a pole)
   twist: (20 * Math.PI) / 180, // the extra roll about the claw's own axis when depositing from the side
 } as const;
 
@@ -104,7 +111,7 @@ export const PP_WAIT = { lift: 10, yaw: 0, tilt: Math.PI / 2, twist: 0, claw: 1 
 
 /**
  * A point of the claw's frame (x along the claw, y up when level, z across) in the arm's frame (x outward, y up, z sideways),
- * relative to the wrist axis: the claw rolls about its own axis by `twist`, then the wrist pitches it up by `tilt`.
+ * relative to the wrist axle: the claw rolls about its own axis by `twist`, then the wrist pitches it up by `tilt`.
  */
 export function clawToArm(v: readonly [number, number, number], tilt: number, twist: number): [number, number, number] {
   const cr = Math.cos(twist);
@@ -116,15 +123,11 @@ export function clawToArm(v: readonly [number, number, number], tilt: number, tw
   return [v[0] * ct - y1 * st, v[0] * st + y1 * ct, z1];
 }
 
-/** The held cone's narrow tip in the arm's frame, relative to the wrist axis. */
-export const coneTip = (tilt: number, twist: number) => clawToArm([PP.grip, -PP.hold + PP.coneH, 0], tilt, twist);
-
 /**
- * The direction a cone is leaning as it is let go, from its base to its tip, in the frame of a pole that has the robot to its
- * west (the robot facing north, the arm out to its right): x east, y up, z south. The placed cone starts like this and straightens
- * as it slides down the pole (ftcmodels.ts).
+ * The centre of a held cone's base in the arm's frame, relative to the turret axis and the wrist's height (x outward, y up, z
+ * sideways): that is the point that goes over a pole, or on to a cone to be taken.
  */
-export const PLACE_AXIS: [number, number, number] = (() => {
-  const a = clawToArm([0, 1, 0], PP.tilt, PP.twist);
-  return [a[0], a[1], a[2]];
-})();
+export function heldBase(tilt: number, twist: number): [number, number, number] {
+  const c = clawToArm([PP.grip, -PP.hold, 0], tilt, twist);
+  return [PP.arm + c[0], c[1], PP.offset + c[2]];
+}

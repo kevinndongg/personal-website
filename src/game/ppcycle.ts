@@ -1,26 +1,28 @@
 // The Power Play robot's loop, forever: it parks for a moment, then drives to the red stack on the north wall, and from then on it
 // does two jobs in turn. Each job: level claw open wider than the cone, the robot drives up so that the cone stands between the
 // jaws, the jaws close on it near its wide end, the lift raises it off the floor (or the stack), and the wrist pivots up 135 degrees
-// so the cone hangs with its narrow end down and back over the robot. Then it drives to a junction, lifting as it goes, stops in the
-// lane beside it, swings the turret a quarter turn so the arm lies across the lane over the pole (the claw rolling a little about its
-// own axis), and lets go: the cone slides down the pole. The first job takes the top cone of the stack to the high junction; the
-// second takes the human player's cone, standing against the west wall, to the medium one.
+// so the cone hangs with its narrow end down and back over the robot. Then it drives to the middle of the tile beside a junction,
+// lifting as it goes, swings the turret out so the arm reaches over the pole (the claw rolling a little about its own axis), pivots
+// the wrist back to level so the cone stands wide end down over the pole as it was when it was picked up, lowers it and lets go: the
+// cone slides down the pole. The first job takes the top cone of the stack to the high junction; the second takes the human
+// player's cone, standing against the west wall, to the medium one.
 //
 // The game pieces are persistent. The stack's top cone and the human's cone vanish as the jaws close on them and a fresh one grows
 // back once the robot has driven off; the cone it places shows on the pole until the robot has driven away, and then shrinks, so
 // the next lap can do it again. That is `ftcField` (ftcfield.ts), worked out every frame from where the robot is in its loop.
 //
 // Like robotcycle.ts it only sets the prop's x, z and heading (the hover lift owns its height), and poses the model through
-// `userData.pose` (see ftcpprobot.ts). It never turns while it is between two poles: it backs and drives along the lanes with the
+// `userData.pose` (see ftcpprobot.ts). It never turns while it is between two poles: it backs and drives along the lane with the
 // same heading and only spins on the spot at the middle of a tile, where there is room.
 import { CatmullRomCurve3, Vector3, type Group } from "three";
-import { PP, PP_WAIT, coneTip, ftcField, poleTop } from "./ftcfield";
+import { PP, PP_WAIT, clawToArm, ftcField, heldBase, poleTop } from "./ftcfield";
 import type { PPPose } from "./ftcpprobot";
 import type { AnimCtx } from "./models";
 import type { PowerPlayCycle, PowerPlayPick, PowerPlayPlace } from "./scenes";
 
 const SPEED = 36; // px/s along the route (the robot eases out of and into each stop)
 const CLEAR = 5.5; // how far a cone is lifted to get it off the stack, or the floor, before the wrist turns it over
+const LIFT_OVER = 1.5; // how much higher than its final height the arm swings out over a pole, and then lowers
 
 const smooth = (k: number) => {
   const c = Math.min(1, Math.max(0, k));
@@ -72,38 +74,42 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
     y: Math.sin(h) * fx + Math.cos(h) * rz,
   });
 
-  /** Where the robot stands to take a cone, claw level straight ahead of it, and the claw's height. */
+  /**
+   * Where the robot stands to take a cone: the claw level and the arm turned so that the cone's base is straight ahead of the
+   * robot, and the claw's height.
+   */
   const pick = (c: PowerPlayPick) => {
-    const o = world(c.heading, PP.turretX + PP.arm + PP.grip, 0);
+    const [a, , b] = heldBase(0, 0);
+    const o = world(c.heading, PP.turretX + Math.hypot(a, b), 0);
     const at: Pose = { x: c.target.x - o.x, y: c.target.y - o.y, h: c.heading };
-    return { at, arm: { lift: c.base + PP.hold, yaw: 0, tilt: 0, twist: 0, claw: 1 } as Arm };
+    return { at, arm: { lift: c.base + PP.hold, yaw: -Math.atan2(b, a), tilt: 0, twist: 0, claw: 1 } as Arm };
   };
 
   /**
-   * Where it stands to put a cone on a pole: the claw's wrist pivoted to 135 degrees and the arm swung a quarter turn to the
-   * `side`, with the cone's narrow end just over the pole's cap. The cone leans a little to the side (the twist), so the robot
-   * stands a little off square to the pole.
+   * How the arm is turned and raised to put a cone on a pole from `stand`: the wrist level, the claw rolled a little, and the arm
+   * out to the side so that the cone's base is over the pole's cap. Also, for the pole that the cone is let go over, which way it leans.
    */
-  const place = (c: PowerPlayPlace) => {
-    const twist = c.side * PP.twist;
-    const yaw = (c.side * Math.PI) / 2;
-    const tip = coneTip(PP.tilt, twist);
-    const a = PP.arm + tip[0];
-    const b = tip[2];
-    const fx = PP.turretX + a * Math.cos(yaw) - b * Math.sin(yaw);
-    const rz = a * Math.sin(yaw) + b * Math.cos(yaw);
-    const o = world(c.heading, fx, rz);
-    const at: Pose = { x: c.target.x - o.x, y: c.target.y - o.y, h: c.heading };
-    const lift = poleTop(c.top) + PP.above - tip[1];
-    return { at, arm: { lift, yaw, tilt: PP.tilt, twist, claw: 0 } as Arm };
+  const place = (c: PowerPlayPlace, index: number) => {
+    const twist = PP.twist;
+    const [a, up, b] = heldBase(0, twist);
+    const dx = c.target.x - c.stand.x;
+    const dy = c.target.y - c.stand.y;
+    const fx = dx * Math.cos(c.heading) + dy * Math.sin(c.heading);
+    const rz = -dx * Math.sin(c.heading) + dy * Math.cos(c.heading);
+    const yaw = Math.atan2(rz, fx - PP.turretX) - Math.atan2(b, a);
+    const at: Pose = { ...c.stand, h: c.heading };
+    const lift = poleTop(c.top) + PP.above - up;
+    // the cone's axis, base to tip, as the claw holds it: up, rolled by `twist` towards the arm's side
+    const axis = clawToArm([0, 1, 0], 0, twist);
+    const w = world(c.heading, -axis[2] * Math.sin(yaw), axis[2] * Math.cos(yaw));
+    ftcField.lean[index] = [w.x, axis[1], w.y];
+    return { at, arm: { lift, yaw, tilt: 0, twist, claw: 0 } as Arm };
   };
 
   const A = pick(cfg.stack);
   const C = pick(cfg.human);
-  const B = place(cfg.high);
-  const D = place(cfg.medium);
-  // the lane the robot runs along between the poles, and where it crosses the row it takes to the human player's cone
-  const X: Pose = { x: (B.at.x + D.at.x) / 2, y: C.at.y, h: A.at.h };
+  const B = place(cfg.high, 0);
+  const D = place(cfg.medium, 1);
 
   const curve = (pts: { x: number; y: number }[]) => {
     const c = new CatmullRomCurve3(
@@ -125,9 +131,9 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
   // ---- the arm poses along the way
   const held = (p: Arm): Arm => ({ ...p, claw: 0 });
   const raised = (p: Arm): Arm => ({ ...p, lift: p.lift + CLEAR });
-  const turnedOver = (p: Arm): Arm => ({ ...p, tilt: PP.tilt });
-  const squared = (p: Arm): Arm => ({ ...p, yaw: 0, twist: 0 }); // the arm straight ahead, the claw not rolled
+  const carried = (p: Arm): Arm => ({ ...p, tilt: PP.tilt });
   const open = (p: Arm): Arm => ({ ...p, claw: 1 });
+  const higher = (p: Arm, d: number): Arm => ({ ...p, lift: p.lift + d });
 
   /** Closing on a cone, raising it off, and pivoting the wrist over: the arm ends carrying it, with the wrist at 135 degrees. */
   const takePhases = (s: { at: Pose; arm: Arm }, index: number): Phase[] => {
@@ -135,24 +141,35 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
     return [
       { dur: 0.4, at: s.at, arm: [s.arm, got], carry: (u) => u >= 0.75, mark: { what: "pick", index, offset: 0.3 } },
       { dur: 0.55, at: s.at, arm: [got, raised(got)], carry: always },
-      { dur: 0.8, at: s.at, arm: [raised(got), turnedOver(raised(got))], carry: always },
+      { dur: 0.8, at: s.at, arm: [raised(got), carried(raised(got))], carry: always },
     ];
   };
 
-  /** Swinging the arm across, letting go and holding still while the cone slides down. */
-  const placePhases = (s: { at: Pose; arm: Arm }, index: number, over: Arm): Phase[] => [
-    { dur: 0.9, at: s.at, arm: [over, s.arm], carry: always },
-    { dur: 0.45, at: s.at, arm: [s.arm, open(s.arm)], carry: (u) => u < 0.2, mark: { what: "drop", index, offset: 0.09 } },
-    { dur: 0.3, at: s.at, arm: [open(s.arm), open(s.arm)], carry: never },
-  ];
+  /**
+   * At a pole: the arm swings out with the cone still hanging, the wrist pivots back to level (the cone stands wide end down over the
+   * pole), it lowers and lets go; then the arm lifts clear and swings back to `back` (the pick-up yaw), the claw level and ready.
+   */
+  const placePhases = (s: { at: Pose; arm: Arm }, index: number, from: Arm, back: Arm): Phase[] => {
+    const swung: Arm = { ...carried(s.arm), lift: s.arm.lift + LIFT_OVER };
+    const over: Arm = { ...s.arm, lift: swung.lift };
+    const clear: Arm = open(over);
+    return [
+      { dur: 0.8, at: s.at, arm: [from, swung], carry: always },
+      { dur: 0.65, at: s.at, arm: [swung, over], carry: always },
+      { dur: 0.25, at: s.at, arm: [over, s.arm], carry: always },
+      { dur: 0.4, at: s.at, arm: [s.arm, open(s.arm)], carry: (u) => u < 0.2, mark: { what: "drop", index, offset: 0.08 } },
+      { dur: 0.3, at: s.at, arm: [open(s.arm), clear], carry: never },
+      { dur: 0.7, at: s.at, arm: [clear, { ...clear, yaw: back.yaw, twist: 0 }], carry: never },
+    ];
+  };
 
-  const carriedA = turnedOver(raised(held(A.arm)));
-  const overB: Arm = { ...squared(carriedA), lift: B.arm.lift }; // lifted to the pole's height before the arm swings
-  const awayB: Arm = open(squared(B.arm));
-  const carriedC = turnedOver(raised(held(C.arm)));
-  const overD: Arm = { ...squared(carriedC), lift: D.arm.lift };
-  const awayD: Arm = open(squared(D.arm));
-  const readyC: Arm = C.arm;
+  const overB = higher(B.arm, LIFT_OVER).lift; // the high pole's height, which the arm has to be above whenever it swings or the robot spins near it
+  const overD = higher(D.arm, LIFT_OVER).lift;
+  const carriedA = carried(raised(held(A.arm)));
+  const carriedC = carried(raised(held(C.arm)));
+  const toB: Arm = { ...carriedA, lift: overB };
+  const toD: Arm = { ...carriedC, lift: overD };
+  const westFromB: Pose = { ...B.at, h: C.at.h };
 
   const loop: Phase[] = [];
   // the stack: take the top cone
@@ -160,47 +177,36 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
   // back down the lane to the high junction, lifting as it goes; a new cone grows on the stack
   loop.push({
     ...run(A.at, B.at, A.at.h, 1.3),
-    arm: [carriedA, overB],
+    arm: [carriedA, toB],
     when: { lift: [0, 0.75] },
     carry: always,
     mark: { what: "spawn", index: 0, offset: 0.3 },
   });
-  loop.push(...placePhases(B, 0, overB));
-  // away from the high junction: the arm swings back as it drives to the crossing, and the cone it put there goes
-  loop.push({
-    ...run(B.at, X, B.at.h, 0.9),
-    arm: [open(B.arm), awayB],
-    when: { yaw: [0, 0.7], twist: [0, 0.7] },
-    carry: never,
-    mark: { what: "clear", index: 0, offset: 0.45 },
-  });
-  // at the middle of the tile it turns to face the human player's cone, the claw coming down to level; then the arm lowers as it drives
-  loop.push({ dur: 0.55, at: X, turn: C.at.h, arm: [awayB, { ...awayB, tilt: 0 }], carry: never });
-  loop.push({
-    ...run(X, C.at, C.at.h, 1),
-    arm: [{ ...awayB, tilt: 0 }, readyC],
-    when: { lift: [0.1, 0.85] },
-    carry: never,
-  });
+  loop.push(...placePhases(B, 0, toB, A.arm));
+  // at the middle of the tile it turns to face the human player's cone (the cone it put there goes), and the arm lowers as it drives
+  const afterB: Arm = { ...A.arm, lift: overB, claw: 1 };
+  loop.push({ dur: 0.55, at: B.at, turn: C.at.h, arm: [afterB, afterB], carry: never, mark: { what: "clear", index: 0, offset: 0.1 } });
+  loop.push({ ...run(westFromB, C.at, C.at.h, 1), arm: [afterB, C.arm], when: { lift: [0.1, 0.85] }, carry: never });
   loop.push(...takePhases(C, 1));
-  // backing out along the row to the crossing, with the arm rising to the medium junction's height; a new cone appears
+  // backing out along the row to the middle of the tile, the arm rising to the medium junction's height; a new cone appears
   loop.push({
-    ...run(C.at, X, C.at.h, 1),
-    arm: [carriedC, overD],
+    ...run(C.at, westFromB, C.at.h, 1),
+    arm: [carriedC, toD],
     when: { lift: [0.05, 0.9] },
     carry: always,
     mark: { what: "spawn", index: 1, offset: 0.3 },
   });
-  loop.push({ dur: 0.55, at: { ...X, h: C.at.h }, turn: D.at.h, arm: [overD, overD], carry: always });
-  loop.push({ ...run(X, D.at, D.at.h, 1), arm: [overD, overD], carry: always });
-  loop.push(...placePhases(D, 1, overD));
-  // and up the lane to the stack: the arm swings back, the wrist comes round to level and the claw lowers
+  loop.push({ dur: 0.55, at: westFromB, turn: D.at.h, arm: [toD, toD], carry: always });
+  loop.push({ ...run(B.at, D.at, D.at.h, 1), arm: [toD, toD], carry: always });
+  loop.push(...placePhases(D, 1, toD, A.arm));
+  // and up the lane to the stack: the claw lowers
+  const afterD: Arm = { ...A.arm, lift: overD, claw: 1 };
   loop.push({
     ...run(D.at, A.at, A.at.h, 1),
-    arm: [open(D.arm), A.arm],
-    when: { yaw: [0, 0.35], twist: [0, 0.35], tilt: [0.2, 0.6], lift: [0.4, 1] },
+    arm: [afterD, A.arm],
+    when: { lift: [0.3, 1] },
     carry: never,
-    mark: { what: "clear", index: 1, offset: 0.35 },
+    mark: { what: "clear", index: 1, offset: 0.2 },
   });
   const loopTotal = loop.reduce((s, p) => s + p.dur, 0);
 
@@ -212,7 +218,7 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
     { dur: 0.4, at: home, arm: [waiting, waiting], carry: never },
     { ...run(home, P, home.h, 1), arm: [waiting, waiting], carry: never },
     { dur: 0.55, at: P, turn: A.at.h, arm: [waiting, waiting], carry: never },
-    { ...run(P, A.at, A.at.h, 1), arm: [waiting, A.arm], when: { tilt: [0, 0.5], lift: [0.3, 0.9] }, carry: never },
+    { ...run(P, A.at, A.at.h, 1), arm: [waiting, A.arm], when: { tilt: [0, 0.5], yaw: [0, 0.5], lift: [0.3, 0.9] }, carry: never },
   ];
   const introTotal = intro.reduce((s, p) => s + p.dur, 0);
 

@@ -6,8 +6,8 @@ import { box, canvasOf, cyl, fillRect, mesh, nearestTexture, toon } from "./mode
 // Team 6417's Power Play robot, at true scale: 14 in square on a field drawn at 1 px = 1.2 in, so the chassis is 11.67 px. Same
 // conventions as ftcrobot.ts: 1 unit = 1 world px, origin at the chassis centre on the floor, +x = front, +z = the robot's right.
 // A low chassis (four mecanum wheels in corner pods, open dark-blue side frames, lead weights at the front) with a tall black box
-// at the back; two silver rails stand at the back and a blue carriage rides up them (the lift). On the carriage a turret swings the
-// arm sideways; the arm ends in a pair of side plates carrying the wrist, which pitches the claw about an axis across the arm, and
+// at the back; drawer slides stand at the back and a blue carriage rides up them (the lift). On the carriage a turret swings the
+// one-piece arm sideways; at its end an axle runs out to the wrist, which pitches the claw about an axis across the arm, and
 // the claw (two blue jaws with black ribbed pads) opens and closes in its own horizontal plane. Nested pivots posed each frame
 // through `userData.pose`; the model has no timeline of its own: ppcycle.ts drives it.
 
@@ -71,7 +71,7 @@ export function ppRobotModel(): Group {
   const g = new Group();
 
   // ---- the chassis
-  g.add(box(10.4, 0.4, 8, PANEL, 0, 0.5, 0)); // the floor plate between the side frames (its top is at 0.9)
+  g.add(box(9.4, 0.4, 8, PANEL, -0.5, 0.5, 0)); // the floor plate between the side frames (its top is at 0.9)
   for (const sx of [-3.9, 3.9]) for (const sz of [-5.15, 5.15]) g.add(wheel(sx, sz));
   for (const s of [-1, 1]) {
     // the open ladder side frame: a foot rail, a top rail, posts, and a rod across each wheel
@@ -86,8 +86,8 @@ export function ppRobotModel(): Group {
     if (s < 0) plate.rotation.y = Math.PI;
     g.add(plate);
   }
-  g.add(box(0.5, 1.2, 7.2, DKBLUE, 5.6, 0.6, 0)); // the front bumper, kept narrow so the arm's plates pass beside it
-  for (const s of [-1, 1]) g.add(box(2, 1, 1.8, LEAD, 4.4, 0.9, s * 2.3)); // the lead weights, either side of the arm's path
+  g.add(box(0.5, 1.2, 7.2, DKBLUE, 4.65, 0.6, 0)); // the front bumper, kept narrow
+  for (const s of [-1, 1]) g.add(box(2, 1, 1.8, LEAD, 3.8, 0.9, s * 2.3)); // the lead weights, either side of the arm's path
 
   // at the back, one side: the tall tinted-black box with the Control Hub on top, the ultrasonic sensor behind it and the sponsors' vinyl
   g.add(box(6, 7, 2.2, TINT, -2.8, 0.9, -3.7));
@@ -102,51 +102,55 @@ export function ppRobotModel(): Group {
   g.add(box(3.6, 2.4, 1.8, PANEL, -2.8, 0.9, 3.5)); // the battery, on the other side
   g.add(box(2, 0.4, 0.15, "#f2c230", -2.8, 2.4, 2.58));
 
-  // ---- the lift: two silver rails at the back, topped with a bar
-  for (const s of [-1, 1]) g.add(box(0.9, PP.rail - 0.9, 0.9, SILVER, -5, 0.9, s * 1.4));
-  g.add(box(1.4, 0.9, 3.7, STEEL, -5, PP.rail, 0));
+  // ---- the lift: drawer slides, a pair at the back, three stages each that cascade up: the fixed one, a middle one and an inner one,
+  // each a little narrower than the one outside it. Down they are one compact stack; up they share the travel equally.
+  const stages: Group[] = [];
+  const shades = [STEEL, SILVER, "#e2e5ec"];
+  for (let k = 0; k < 3; k++) {
+    const stage = new Group();
+    for (const s of [-1, 1]) {
+      stage.add(box(1.2 - 0.3 * k, PP.slide, 1 - 0.1 * k, shades[k], -5 + 0.3 * k, 0.9, s * 1.4));
+      stage.add(box(0.15, PP.slide - 0.6, 1.1 - 0.1 * k, "#6d717e", -5 + 0.3 * k + 0.5 - 0.15 * k, 1.2, s * 1.4)); // a dark runner down its face
+    }
+    g.add(stage);
+    stages.push(stage);
+  }
 
-  // the carriage rides them: its foot is at the wrist's height
+  // the carriage rides the inner stage: its foot is at the wrist's height
   const carriage = new Group();
   g.add(carriage);
   carriage.add(box(2.2, 3.4, 4.6, BLUE, -5, 0, 0));
   carriage.add(box(1.4, 0.3, 3.2, "#0f1a33", -5, 3.4, 0));
   carriage.add(cyl(1.5, 1.5, 0.9, PANEL, PP.turretX, 0.2, 0, 12)); // the turret's servo
 
-  // ---- the arm swings about the turret: a beam to a cross bar, and two plates running forward either side of the claw
+  // ---- the arm is one piece down the middle, swinging about the turret: a beam to a servo block, and from the block the wrist's axle
+  // runs out sideways to the claw, which hangs beside the arm (so that it can swing right over the top without meeting it)
   const arm = new Group();
   arm.position.x = PP.turretX;
   carriage.add(arm);
   arm.add(cyl(1.3, 1.3, 1.4, BLUE, 0, 1, 0, 12));
-  const far = PP.arm; // the wrist axis
-  arm.add(box(far - 6.4, 1.4, 1.2, BLUE, (far - 6.4) / 2, 1, 0));
-  arm.add(box(0.6, 1.4, 8.8, BLUE, far - 6.7, 1, 0));
-  for (const s of [-1, 1]) {
-    arm.add(box(7.6, 2.4, 0.4, BLUE, far - 3.2, -0.8, s * 4.2));
-    const servo = cyl(0.9, 0.9, 0.5, PANEL, far, -0.2, s * 4.65, 10);
-    servo.rotation.x = Math.PI / 2;
-    servo.position.y = 0;
-    arm.add(servo);
-  }
-  const axle = cyl(0.5, 0.5, 8.4, STEEL, far, 0, 0, 8);
+  arm.add(box(PP.arm, 1.4, 1.2, BLUE, PP.arm / 2, 1, 0));
+  arm.add(box(1.7, 2.8, 1.2, BLUE, PP.arm - 0.35, -0.4, 0)); // the wrist's servo block at its end
+  arm.add(box(1.2, 0.8, 0.4, PANEL, PP.arm, 2, 0.7));
+  const axle = cyl(0.4, 0.4, PP.offset, STEEL, PP.arm, 0, PP.offset / 2 + 0.4, 8);
   axle.rotation.x = Math.PI / 2;
   axle.position.y = 0;
   arm.add(axle);
 
   // ---- the wrist pitches the claw, and the claw rolls about its own axis; its frame has x along the jaws, y up, z across
   const tilt = new Group();
-  tilt.position.x = far;
+  tilt.position.set(PP.arm, 0, PP.offset);
   arm.add(tilt);
   const twist = new Group();
   tilt.add(twist);
-  twist.add(box(1, 1.6, 4, BLUE, 0.5, -0.5, 0)); // the palm
+  twist.add(box(0.6, 1.6, 4, BLUE, 0.3, -0.5, 0)); // the palm, well behind the cone's rim
   const jaws: { g: Group; side: number }[] = [];
   for (const s of [-1, 1]) {
     const jaw = new Group();
-    jaw.add(box(4, 1.4, 0.4, BLUE, 2, -0.4, 0));
-    jaw.add(box(2.4, 1.2, 0.25, BLACK, 1.8, -0.3, -s * 0.325)); // the black rubber pad on the inside
-    for (const rx of [0.9, 1.5, 2.1, 2.7]) jaw.add(box(0.1, 1.2, 0.1, "#3a3a44", rx, -0.3, -s * 0.5)); // and its ribs
-    jaw.position.x = 1;
+    jaw.add(box(4.4, 1.4, 0.4, BLUE, 2.2, -0.4, 0));
+    jaw.add(box(2.4, 1.2, 0.25, BLACK, 2.8, -0.3, -s * 0.325)); // the black rubber pad on the inside
+    for (const rx of [2.2, 2.8, 3.4]) jaw.add(box(0.1, 1.2, 0.1, "#3a3a44", rx, -0.3, -s * 0.5)); // and its ribs
+    jaw.position.x = 0.6;
     twist.add(jaw);
     jaws.push({ g: jaw, side: s });
   }
@@ -154,7 +158,9 @@ export function ppRobotModel(): Group {
   twist.add(held);
 
   const pose = (p: PPPose) => {
-    carriage.position.y = Math.min(PP.rail - 5, Math.max(1, p.lift));
+    const lift = Math.min(27, Math.max(1, p.lift));
+    carriage.position.y = lift;
+    stages.forEach((st, k) => (st.position.y = (k * (lift - 1)) / 3)); // the inner stage reaches 2/3 of the way, the carriage the last third
     arm.rotation.y = -p.yaw;
     tilt.rotation.z = p.tilt;
     twist.rotation.x = p.twist;

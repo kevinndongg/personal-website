@@ -91,7 +91,7 @@ export function ftcScene(ox: number, oy: number): Scene {
   props.push(round("ftc-cones-blue", f(-30, 10), 3));
   // The robot takes the top cone of the red stack against the north wall (centred on the second tile from the left) to the high
   // junction, then the human player's cone, standing against the west wall at the middle of the third tile down, to the medium one
-  // (ppcycle.ts). It starts in the first tile's row, a tile in from the wall, and runs the lanes between the poles.
+  // (ppcycle.ts). It starts in the first tile's row, a tile in from the wall, and runs the lane down the middle of the tile column.
   const NORTH = -Math.PI / 2;
   const STACK = f(-30, -57);
   const HUMAN = f(-57, -10);
@@ -101,8 +101,9 @@ export function ftcScene(ox: number, oy: number): Scene {
     ppCycle: {
       stack: { target: STACK, base: 2.4, heading: NORTH },
       human: { target: HUMAN, base: 0, heading: Math.PI },
-      high: { target: f(-20, 0), top: "h", heading: NORTH, side: 1 },
-      medium: { target: f(-20, -20), top: "m", heading: NORTH, side: 1 },
+      // each from the middle of the tile whose south-east / north-east corner it is, the pole off the robot's right shoulder
+      high: { target: f(-20, 0), stand: f(-30, -10), top: "h", heading: NORTH },
+      medium: { target: f(-20, -20), stand: f(-30, -30), top: "m", heading: NORTH },
     },
   });
 

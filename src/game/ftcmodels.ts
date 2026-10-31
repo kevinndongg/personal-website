@@ -12,7 +12,7 @@ import {
   Vector3,
 } from "three";
 import { FLOOR } from "./ftc";
-import { PLACE_AXIS, PP, PP_HEIGHT, TAKEN, ftcField, poleTop, submersibleSamples } from "./ftcfield";
+import { PP, PP_HEIGHT, TAKEN, ftcField, poleTop, submersibleSamples } from "./ftcfield";
 import { robotModel } from "./ftcrobot";
 import { ppCone, ppRobotModel } from "./ftcpprobot";
 import { centred, pixelText } from "./ftctext";
@@ -105,12 +105,12 @@ function wallModel(w: number, d: number): Group {
 
 // ---- Power Play: a cup or pole standing on a base plate; a scored cone is dropped over the pole and rests on the floor
 
-const DOWN = new Vector3(0, -1, 0);
+const UP = new Vector3(0, 1, 0);
 
 /**
  * A junction. The pole can wear a cone from the start (`scoredCone`), and for the two the robot scores on (`placedIndex`, an
- * index into `ftcField.placed`) a red cone is let go above it and slides down: the cone is shown narrow end down, leaning as the
- * claw held it and straightening as it falls on to the cone already there. It shrinks away once the robot has driven off.
+ * index into `ftcField.placed`) a red cone is let go above it, wide end down, leaning the way the claw held it (`ftcField.lean`),
+ * and slides down the pole, straightening, to nest on the cone that is already there. It shrinks away once the robot has driven off.
  */
 function ppJunction(level: "g" | "l" | "m" | "h", scoredCone?: string, placedIndex?: number): Group {
   const g = new Group();
@@ -127,16 +127,12 @@ function ppJunction(level: "g" | "l" | "m" | "h", scoredCone?: string, placedInd
   if (scoredCone) g.add(ppCone(scoredCone, 0, 1, 0));
 
   if (placedIndex !== undefined && (level === "m" || level === "h")) {
-    const rest = 1 + PP.coneH; // its narrow end comes to rest on top of the cone that is already there
-    const start = poleTop(level) + PP.above; // and is let go with its tip just over the pole's cap
-    const pivot = new Group(); // at the cone's narrow end, so that is where it straightens from
-    const cone = ppCone(RED, 0, 0, 0);
-    cone.rotation.x = Math.PI; // upside down: the tip at the pivot, the wide end up
-    cone.position.y = PP.coneH;
-    pivot.add(cone);
+    const rest = 1 + 1.2; // its base nests inside that cone's, the way the stack's cones do
+    const start = poleTop(level) + PP.above; // and is let go with its base just over the pole's cap
+    const pivot = new Group(); // at the centre of the cone's base, so that is where it straightens from
+    pivot.add(ppCone(RED, 0, 0, 0));
     pivot.visible = false;
     g.add(pivot);
-    const lean = new Vector3(...PLACE_AXIS).normalize(); // base to tip, as it is let go
     const dir = new Vector3();
     g.userData.animate = () => {
       const p = ftcField.placed[placedIndex];
@@ -145,8 +141,9 @@ function ppJunction(level: "g" | "l" | "m" | "h", scoredCone?: string, placedInd
       const fall = Math.min(1, p);
       pivot.position.y = start - (start - rest) * fall * fall; // it speeds up as it falls
       const straight = fall * fall * (3 - 2 * fall);
-      dir.copy(lean).lerp(DOWN, straight).normalize(); // narrow end first, which for the upside down cone is its own -y
-      pivot.quaternion.setFromUnitVectors(DOWN, dir);
+      const lean = ftcField.lean[placedIndex];
+      dir.set(lean[0], lean[1], lean[2]).normalize().lerp(UP, straight).normalize();
+      pivot.quaternion.setFromUnitVectors(UP, dir);
       pivot.scale.setScalar(Math.max(0.001, p > 1 ? 2 - p : 1));
     };
   }
