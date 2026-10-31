@@ -35,6 +35,7 @@ function element(m: ZoneMedia, clips: HTMLVideoElement[]): HTMLElement {
     video.preload = "metadata";
     video.setAttribute("aria-label", m.alt);
     video.style.aspectRatio = `${m.width} / ${m.height}`;
+    video.style.setProperty("--ar", String(m.width / m.height)); // (the css sizes the box by it, so there is never a bar)
     clips.push(video);
     return video;
   }

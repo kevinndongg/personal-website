@@ -1064,10 +1064,14 @@ html:has(.game) body {
   box-shadow: 0 0 0 1px var(--line);
 }
 
-/* a portrait clip on a narrow, one-column card would be taller than the screen: it is letterboxed instead */
+/*
+ * A portrait clip is never taller than 70% of the window: its box gets narrower to keep that, and is centred in its column. The
+ * box always has the clip's own proportions (--ar, width / height), so the picture fills it and there is no black margin: capping
+ * only the height of a full-width box would leave bars at the sides.
+ */
 .media-item video {
-  max-height: 70vh;
-  object-fit: contain;
+  width: min(100%, calc(70vh * var(--ar, 1.7778)));
+  margin-inline: auto;
 }
 
 .media-item figcaption {
