@@ -1,33 +1,32 @@
-import { CylinderGeometry, Group, Mesh, MeshBasicMaterial, PlaneGeometry } from "three";
-import { PP, PP_WAIT } from "./ftcfield";
-import { centred } from "./ftctext";
+import { BoxGeometry, BufferGeometry, DoubleSide, Group, LatheGeometry, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshToonMaterial, PlaneGeometry, Vector2 } from "three";
+import { CONE, PP, PP_WAIT } from "./ftcfield";
+import { centred, pixelText } from "./ftctext";
 import { box, canvasOf, cyl, fillRect, mesh, nearestTexture, toon } from "./models";
 
 // Team 6417's Power Play robot, at true scale: 14 in square on a field drawn at 1 px = 1.2 in, so the chassis is 11.67 px. Same
 // conventions as ftcrobot.ts: 1 unit = 1 world px, origin at the chassis centre on the floor, +x = front, +z = the robot's right.
-// A low chassis (four mecanum wheels in corner pods, open dark-blue side frames, lead weights at the front) with a tall black box
-// at the back; drawer slides stand at the back and a blue carriage rides up them (the lift). On the carriage a turret swings the
-// one-piece arm sideways; at its end an axle runs out to the wrist, which pitches the claw about an axis across the arm, and
-// the claw (two blue jaws with black ribbed pads) opens and closes in its own horizontal plane. Nested pivots posed each frame
-// through `userData.pose`; the model has no timeline of its own: ppcycle.ts drives it.
+// A low chassis (four mecanum wheels hidden between an inner and an outer plate on each side, lead weights at the front) with a tall
+// tinted back plate and small side plates round the electronics; drawer slides stand at the back and a blue carriage rides up them
+// (the lift). On the carriage a turret swings the upper arm sideways; at the end of the arm is the pivot, and from it a forearm
+// hangs down and forward to the claw, which pitches about the pivot. The claw (two blue jaws with black ribbed pads) opens and closes
+// in its own horizontal plane and can roll a little about its own axis. Nested pivots posed each frame through `userData.pose`;
+// the model has no timeline of its own: ppcycle.ts drives it.
 
 const BLUE = "#2f8bdc"; // the printed parts
-const DKBLUE = "#1f4f9c"; // the side frames
+const DKBLUE = "#14224a"; // the plates the vinyl is on
 const BLACK = "#16161b";
 const PANEL = "#23252d";
-const TINT = "#1c2230"; // the tinted-black box at the back
 const STEEL = "#aeb4c0";
 const SILVER = "#c8ccd6";
 const LEAD = "#7d818c";
 const CYAN = "#38d6e8"; // the vinyl
-const ORANGE = "#e8742a";
 const RED = "#d8322c";
 
 /** What `userData.pose` is given each frame (see `PP` in ftcfield.ts for the layout). */
 export interface PPPose {
-  lift: number; // the height of the wrist axis
+  lift: number; // the height of the wrist's pivot
   yaw: number; // the turret: 0 = the arm straight ahead, positive = swung to the robot's right (radians)
-  tilt: number; // the wrist: 0 = the claw level and pointing along the arm, 90 degrees = pointing up, 135 = carrying
+  tilt: number; // the wrist: 0 = the claw level and pointing along the arm, 135 degrees = swung up and back, carrying
   twist: number; // the claw rolled about its own axis
   claw: number; // 0 = closed, 1 = open
   carrying: boolean; // a cone in the jaws
@@ -36,21 +35,66 @@ export interface PPPose {
 /** Wrist up and the claw open: how it waits. */
 const PP_READY: PPPose = { ...PP_WAIT, carrying: false };
 
-/** A Power Play cone, standing: a truncated cone with a flat top (the opening a pole passes through) and a flared base ring. */
+// ---------------------------------------------------------------- the cone
+
+let coneGeo: BufferGeometry | null = null;
+const coneMats = new Map<string, MeshToonMaterial>();
+
+/**
+ * One hollow shell for every cone, like a traffic cone: a flared base ring, a wall that narrows to the top, and a hole at the top (a
+ * pole passes through it); open at the wide end. Built from the profile of its wall, ring and lip, turned about the vertical.
+ */
+function coneShell(): BufferGeometry {
+  if (!coneGeo) {
+    const { h, base, top, ring, wall } = CONE;
+    const inner = (r: number) => r - wall;
+    const pts = [
+      [ring, 0],
+      [ring, 0.5],
+      [base, 0.5],
+      [top, h],
+      [inner(top), h],
+      [inner(base), 0.5],
+      [inner(base), 0],
+      [ring, 0],
+    ];
+    coneGeo = new LatheGeometry(pts.map(([x, y]) => new Vector2(x, y)), 20);
+  }
+  return coneGeo;
+}
+
+/** A Power Play cone, standing with its wide end down: hollow, open at both ends. */
 export function ppCone(color: string, x: number, y: number, z: number, scale = 1): Group {
+  let mat = coneMats.get(color);
+  if (!mat) {
+    mat = toon(color).clone();
+    mat.side = DoubleSide; // the inside shows through the open ends
+    coneMats.set(color, mat);
+  }
   const g = new Group();
-  g.add(mesh(new CylinderGeometry(1.1 * scale, 2.5 * scale, PP.coneH * scale, 14), toon(color), 0, (PP.coneH / 2) * scale, 0));
-  g.add(cyl(2.9 * scale, 2.9 * scale, 0.5 * scale, color, 0, 0, 0, 14));
+  g.add(mesh(coneShell(), mat));
   g.position.set(x, y, z);
+  g.scale.setScalar(scale);
   return g;
 }
 
-/** "BLU CRU" over "6417", in the cyan vinyl, on the dark side plate. */
+// ---------------------------------------------------------------- the vinyl
+
+/** "6417" large and "BLU" over "CRU", in the cyan vinyl, on the dark outer plate. */
 function plateTexture() {
-  const [c, ctx] = canvasOf(28, 16);
-  fillRect(ctx, 0, 0, 28, 16, "#14224a");
-  centred(ctx, 28, "BLU CRU", 2, 1, CYAN);
-  centred(ctx, 28, "6417", 9, 1, CYAN);
+  const [c, ctx] = canvasOf(48, 14);
+  fillRect(ctx, 0, 0, 48, 14, DKBLUE);
+  pixelText(ctx, "6417", 2, 2, 2, CYAN);
+  pixelText(ctx, "BLU", 36, 2, 1, CYAN);
+  pixelText(ctx, "CRU", 36, 8, 1, CYAN);
+  return nearestTexture(c);
+}
+
+/** The sponsors on the back plate: the vinyl is cut out of the plate, so only the lettering shows. */
+function sponsorTexture() {
+  const [c, ctx] = canvasOf(48, 44);
+  for (const [text, y] of [["CROWN POINT", 1], ["MARYLAND", 9], ["ROBOTICS", 15], ["CENTER", 21], ["QUALCOMM", 30], ["BECHTEL", 37]] as const)
+    centred(ctx, 48, text, y, 1, CYAN);
   return nearestTexture(c);
 }
 
@@ -69,38 +113,41 @@ function wheel(x: number, z: number): Group {
 
 export function ppRobotModel(): Group {
   const g = new Group();
+  const HALF = PP.half;
 
-  // ---- the chassis
-  g.add(box(9.4, 0.4, 8, PANEL, -0.5, 0.5, 0)); // the floor plate between the side frames (its top is at 0.9)
-  for (const sx of [-3.9, 3.9]) for (const sz of [-5.15, 5.15]) g.add(wheel(sx, sz));
+  // ---- the chassis: the floor plate between the inner plates
+  g.add(box(9.8, 0.4, 8.3, PANEL, -0.3, 0.5, 0)); // its top is at 0.9
+  for (const sx of [-3.9, 3.9]) for (const sz of [-5, 5]) g.add(wheel(sx, sz));
+  const outerTex = plateTexture();
   for (const s of [-1, 1]) {
-    // the open ladder side frame: a foot rail, a top rail, posts, and a rod across each wheel
-    g.add(box(11, 0.35, 0.4, DKBLUE, 0, 0.7, s * 5.6));
-    g.add(box(11, 0.35, 0.4, DKBLUE, 0, 3.5, s * 5.6));
-    for (const px of [-5.3, -2.3, 2.3, 5.3]) g.add(box(0.4, 3.2, 0.4, DKBLUE, px, 0.7, s * 5.6));
-    for (const wx of [-3.9, 3.9]) g.add(box(2.6, 0.25, 0.3, DKBLUE, wx, 2.5, s * 5.6));
-    // between the wheels, the side plate with the team's name
-    g.add(box(4.4, 2.8, 0.3, "#14224a", 0, 0.8, s * 5.7));
-    const plate = new Mesh(new PlaneGeometry(4.2, 2.4), new MeshBasicMaterial({ map: plateTexture() }));
-    plate.position.set(0, 2.2, s * 5.86);
-    if (s < 0) plate.rotation.y = Math.PI;
-    g.add(plate);
+    // every wheel sits between an outer plate (the one with the team's name) and an inner one, so it cannot be seen from either side;
+    // the top of the pod stays open, with a few silver rods across it
+    g.add(box(11.37, 3.3, 0.285, DKBLUE, 0.15, 0.3, s * (HALF - 0.1425)));
+    g.add(box(11, 3.3, 0.25, DKBLUE, 0, 0.3, s * 4.275));
+    for (const rx of [-4.4, -2.2, 0, 2.2, 4.4]) g.add(box(0.25, 0.3, 1.3, STEEL, rx, 3.6, s * 4.975));
+    const vinyl = new Mesh(new PlaneGeometry(11, 3), new MeshBasicMaterial({ map: outerTex }));
+    vinyl.position.set(0.15, 1.95, s * (HALF + 0.02));
+    if (s < 0) vinyl.rotation.y = Math.PI;
+    g.add(vinyl);
   }
-  g.add(box(0.5, 1.2, 7.2, DKBLUE, 4.65, 0.6, 0)); // the front bumper, kept narrow
+  g.add(box(0.5, 1.2, 7.2, "#1f4f9c", 4.65, 0.6, 0)); // the front bumper, kept narrow
   for (const s of [-1, 1]) g.add(box(2, 1, 1.8, LEAD, 3.8, 0.9, s * 2.3)); // the lead weights, either side of the arm's path
 
-  // at the back, one side: the tall tinted-black box with the Control Hub on top, the ultrasonic sensor behind it and the sponsors' vinyl
-  g.add(box(6, 7, 2.2, TINT, -2.8, 0.9, -3.7));
-  g.add(box(2.6, 0.5, 1.5, ORANGE, -2.2, 7.9, -3.7));
-  g.add(box(1.4, 0.2, 1, BLACK, -2.2, 8.4, -3.7));
-  g.add(box(1, 1.6, 1.6, BLUE, -6.3, 3.2, -3.7)); // the sensor's housing, poking out of the back
-  g.add(box(0.2, 0.7, 0.7, "#bfe9ff", -6.85, 3.65, -3.7));
-  for (const [y, w] of [[5.6, 4.4], [4.4, 3]] as const) {
-    g.add(box(w, 0.5, 0.15, CYAN, -2.8, y, -2.55));
-    g.add(box(w, 0.5, 0.15, CYAN, -2.8, y, -4.85));
-  }
-  g.add(box(3.6, 2.4, 1.8, PANEL, -2.8, 0.9, 3.5)); // the battery, on the other side
-  g.add(box(2, 0.4, 0.15, "#f2c230", -2.8, 2.4, 2.58));
+  // ---- the back: a tall tinted plate across it, small vertical plates over the corners of the sides, and what is behind them
+  const glass = new MeshLambertMaterial({ color: "#1a2a55", transparent: true, opacity: 0.78, depthWrite: false });
+  g.add(mesh(new BoxGeometry(0.3, 9, 2 * HALF - 0.6), glass, -HALF + 0.15, 0.9 + 4.5, 0));
+  for (const s of [-1, 1]) g.add(mesh(new BoxGeometry(3.2, 9, 0.3), glass, -HALF + 1.6, 0.9 + 4.5, s * (HALF - 0.15)));
+  const sponsors = new Mesh(new PlaneGeometry(9.2, 8.4), new MeshBasicMaterial({ map: sponsorTexture(), transparent: true, depthWrite: false }));
+  sponsors.position.set(-HALF - 0.02, 5.6, 0);
+  sponsors.rotation.y = -Math.PI / 2;
+  g.add(sponsors);
+  g.add(box(0.5, 1.5, 2.4, BLUE, -HALF - 0.25, 1.1, -3.4)); // the ultrasonic sensor in its housing, low on the back
+  g.add(box(0.1, 0.8, 0.8, BLACK, -HALF - 0.55, 1.45, -3.9));
+  g.add(box(0.1, 0.8, 0.8, BLACK, -HALF - 0.55, 1.45, -2.9));
+  g.add(box(0.6, 2.6, 2.8, BLACK, -5.2, 3.0, -3.9)); // the Control Hub, black, against the inside of the plate
+  g.add(box(0.1, 1.4, 1.6, "#4a4d58", -4.88, 3.6, -3.9));
+  g.add(box(3.2, 2.4, 1.8, PANEL, -3.4, 0.9, 3.4)); // the battery
+  g.add(box(2, 0.4, 0.15, "#f2c230", -3.4, 2.4, 2.48));
 
   // ---- the lift: drawer slides, a pair at the back, three stages each that cascade up: the fixed one, a middle one and an inner one,
   // each a little narrower than the one outside it. Down they are one compact stack; up they share the travel equally.
@@ -109,64 +156,78 @@ export function ppRobotModel(): Group {
   for (let k = 0; k < 3; k++) {
     const stage = new Group();
     for (const s of [-1, 1]) {
-      stage.add(box(1.2 - 0.3 * k, PP.slide, 1 - 0.1 * k, shades[k], -5 + 0.3 * k, 0.9, s * 1.4));
-      stage.add(box(0.15, PP.slide - 0.6, 1.1 - 0.1 * k, "#6d717e", -5 + 0.3 * k + 0.5 - 0.15 * k, 1.2, s * 1.4)); // a dark runner down its face
+      stage.add(box(1.2 - 0.3 * k, PP.slide, 1 - 0.1 * k, shades[k], -4.2 + 0.3 * k, 0.9, s * 1.4));
+      stage.add(box(0.15, PP.slide - 0.6, 1.1 - 0.1 * k, "#6d717e", -4.2 + 0.3 * k + 0.5 - 0.15 * k, 1.2, s * 1.4)); // a dark runner down its face
     }
     g.add(stage);
     stages.push(stage);
   }
 
-  // the carriage rides the inner stage: its foot is at the wrist's height
+  // the carriage rides the inner stage; its origin is the pivot's height, its foot `PP.carriage` below that
   const carriage = new Group();
   g.add(carriage);
-  carriage.add(box(2.2, 3.4, 4.6, BLUE, -5, 0, 0));
-  carriage.add(box(1.4, 0.3, 3.2, "#0f1a33", -5, 3.4, 0));
-  carriage.add(cyl(1.5, 1.5, 0.9, PANEL, PP.turretX, 0.2, 0, 12)); // the turret's servo
+  carriage.add(box(2.2, 4.5, 4.6, BLUE, -4.2, -PP.carriage, 0));
+  carriage.add(box(1.4, 0.3, 3.2, "#0f1a33", -4.2, -PP.carriage + 4.5, 0));
+  carriage.add(box(PP.turretX + 3.1, 1.25, 2.8, BLUE, (PP.turretX - 3.1) / 2, -PP.carriage, 0)); // the shoulder under the arm, out to the turret
+  carriage.add(cyl(1.3, 1.3, 0.6, PANEL, PP.turretX, -1.85, 0, 12)); // the turret's servo
 
-  // ---- the arm is one piece down the middle, swinging about the turret: a beam to a servo block, and from the block the wrist's axle
-  // runs out sideways to the claw, which hangs beside the arm (so that it can swing right over the top without meeting it)
+  // ---- the upper arm: two thin plates with a narrow gap between them (so it reads as one beam), swinging about the turret out to the
+  // pivot, where a round servo sits on its outer side; between the plates, the forearm
   const arm = new Group();
   arm.position.x = PP.turretX;
   carriage.add(arm);
-  arm.add(cyl(1.3, 1.3, 1.4, BLUE, 0, 1, 0, 12));
-  arm.add(box(PP.arm, 1.4, 1.2, BLUE, PP.arm / 2, 1, 0));
-  arm.add(box(1.7, 2.8, 1.2, BLUE, PP.arm - 0.35, -0.4, 0)); // the wrist's servo block at its end
-  arm.add(box(1.2, 0.8, 0.4, PANEL, PP.arm, 2, 0.7));
-  const axle = cyl(0.4, 0.4, PP.offset, STEEL, PP.arm, 0, PP.offset / 2 + 0.4, 8);
-  axle.rotation.x = Math.PI / 2;
-  axle.position.y = 0;
-  arm.add(axle);
+  for (const s of [-1, 1]) arm.add(box(PP.arm + 1.2, 2.4, 0.5, BLUE, (PP.arm - 1.2) / 2, -1.2, s * 0.7));
+  arm.add(box(PP.arm + 0.6, 0.4, 1.9, BLUE, (PP.arm - 0.6) / 2, 1.2, 0)); // a thin web across their top
+  arm.add(cyl(1.3, 1.3, 2.4, BLUE, 0, -1.2, 0, 12)); // the turret's end of the beam, rounded
+  const servo = cyl(1.4, 1.4, 0.5, "#8fa5c6", PP.arm, 0, 1.2, 14); // the round servo at the pivot (the part Kevin circled)
+  servo.rotation.x = Math.PI / 2;
+  servo.position.set(PP.arm, 0, 1.2);
+  arm.add(servo);
+  const hub = cyl(0.7, 0.7, 0.2, "#16161b", 0, 0, 0, 10);
+  hub.rotation.x = Math.PI / 2;
+  hub.position.set(PP.arm, 0, 1.5);
+  arm.add(hub);
 
-  // ---- the wrist pitches the claw, and the claw rolls about its own axis; its frame has x along the jaws, y up, z across
+  // ---- the wrist pitches the forearm and the claw about the pivot
   const tilt = new Group();
-  tilt.position.set(PP.arm, 0, PP.offset);
+  tilt.position.set(PP.arm, 0, 0);
   arm.add(tilt);
+  const palmX = PP.grip - 3.1; // the palm's centre, the forearm's end
+  const len = Math.hypot(palmX, PP.drop);
+  const forearm = new Group();
+  forearm.rotation.z = Math.atan2(-PP.drop, palmX);
+  forearm.add(box(len, 1.4, 0.8, BLUE, len / 2, -0.7, 0));
+  tilt.add(forearm);
+
+  // ---- the claw hangs from the forearm's end and rolls about its own axis, through the middle of the jaws; its frame has x along the
+  // jaws, y up, z across
   const twist = new Group();
+  twist.position.set(PP.grip, -PP.drop, 0);
   tilt.add(twist);
-  twist.add(box(0.6, 1.6, 4, BLUE, 0.3, -0.5, 0)); // the palm, well behind the cone's rim
+  twist.add(box(0.6, 1.6, 4, BLUE, -3.1, -0.5, 0)); // the palm, well behind the cone's rim
   const jaws: { g: Group; side: number }[] = [];
   for (const s of [-1, 1]) {
     const jaw = new Group();
     jaw.add(box(4.4, 1.4, 0.4, BLUE, 2.2, -0.4, 0));
     jaw.add(box(2.4, 1.2, 0.25, BLACK, 2.8, -0.3, -s * 0.325)); // the black rubber pad on the inside
     for (const rx of [2.2, 2.8, 3.4]) jaw.add(box(0.1, 1.2, 0.1, "#3a3a44", rx, -0.3, -s * 0.5)); // and its ribs
-    jaw.position.x = 0.6;
+    jaw.position.x = -2.8;
     twist.add(jaw);
     jaws.push({ g: jaw, side: s });
   }
-  const held = ppCone(RED, PP.grip, -PP.hold, 0); // the cone in the jaws: upright in the claw's frame, wide end towards the palm's level
+  const held = ppCone(RED, 0, -PP.hold, 0); // the cone in the jaws: upright in the claw's frame, wide end down
   twist.add(held);
 
   const pose = (p: PPPose) => {
-    const lift = Math.min(27, Math.max(1, p.lift));
+    const lift = Math.min(31, Math.max(3, p.lift));
     carriage.position.y = lift;
-    stages.forEach((st, k) => (st.position.y = (k * (lift - 1)) / 3)); // the inner stage reaches 2/3 of the way, the carriage the last third
+    stages.forEach((st, k) => (st.position.y = (k * (lift - PP.carriage - 1)) / 3)); // the inner stage reaches 2/3 of the way, the carriage the last third
     arm.rotation.y = -p.yaw;
     tilt.rotation.z = p.tilt;
     twist.rotation.x = p.twist;
     for (const { g: jaw, side } of jaws) {
-      jaw.position.z = side * (2.65 + 0.5 * p.claw);
-      jaw.rotation.y = -side * 0.2 * p.claw;
+      jaw.position.z = side * (2.85 + 0.8 * p.claw);
+      jaw.rotation.y = -side * 0.15 * p.claw;
     }
     held.visible = p.carrying;
   };

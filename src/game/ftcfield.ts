@@ -81,53 +81,70 @@ export const ftcField = {
 /** How tall each junction's pole is above its base plate (px); the field's exaggerated poles, the high one the tallest. */
 export const PP_HEIGHT = { l: 8, m: 14, h: 20 } as const;
 
-/** The top of a medium or high junction: the base plate (1), the pole and the cap on top of it (0.9). */
-export const poleTop = (level: "m" | "h") => 1 + PP_HEIGHT[level] + 0.9;
+/** The top of a medium or high junction: the base plate (1) and the bare pole, which a cone slides down over. */
+export const poleTop = (level: "m" | "h") => 1 + PP_HEIGHT[level];
+
+/** A Power Play cone (px): hollow like a traffic cone, open at the wide end and with a hole at the narrow one that a pole passes through. */
+export const CONE = { h: 5.5, base: 2.5, top: 1.5, ring: 2.9, wall: 0.35 } as const;
+
+/** The outer radius of a cone's wall at `h` above its base ring (0.5 thick). */
+export const coneRadius = (h: number) => CONE.base + ((CONE.top - CONE.base) * Math.max(0, h - 0.5)) / (CONE.h - 0.5);
 
 /**
  * The Power Play robot's dimensions (px; 1 px = 1.2 in), shared by its model, its cycle and the scene. Robot frame: x forward,
- * y up, z to its right. One arm swings about the turret (a vertical axis on the lift's carriage, `turretX` from the middle); at its
- * end an axle runs out sideways to the claw, which hangs in a plane `offset` to the right of the arm, so that it can swing right
- * over the top without meeting the arm. The claw, level when the wrist is at 0, points along the arm from the axle. `lift` is the
- * height of the wrist axle (the carriage's foot).
+ * y up, z to its right. A horizontal upper arm swings about the turret (a vertical axis on the lift's carriage, `turretX` from the
+ * middle) out to the wrist's pivot; from the pivot a forearm hangs down and forward to the claw, in line with the arm, which grips a
+ * cone near the floor. The wrist pitches the forearm and claw about the pivot (0 = the claw level, jaws pointing along the arm),
+ * so at 135 degrees they have swung up and back over the end of the upper arm. `lift` is the height of the pivot.
  */
 export const PP = {
   half: 5.835, // the chassis is 14 in square
-  turretX: -2,
-  arm: 8.8, // turret axis to wrist axle
-  offset: 4.2, // the claw's plane, to the right of the arm
-  grip: 3.4, // wrist axle to the middle of the jaws, along the level claw
+  turretX: -1,
+  arm: 6.4, // turret axis to the pivot
+  grip: 4.4, // pivot to the middle of the jaws, forward, with the claw level
+  drop: 5, // and the jaws' middle is this far below the pivot
   hold: 1, // a held cone's base ring is this far below the jaws' middle (they close just above the ring)
-  coneH: 5.5,
-  above: 0.5, // how far above a pole's cap a cone's base is let go
-  stackTop: 2.4, // the base of the top cone of the red stack (three cones, 1.2 apart)
-  slide: 12, // the height of each stage of the lift's drawer slides
+  coneH: CONE.h,
+  above: 0.5, // how far above a pole's top a cone's base is let go
+  pitch: 1.8, // how far each cone of a stack stands above the one it is nested in (the wall is 0.35 thick and the cone narrows by 1 in 5)
+  stackTop: 3.6, // the base of the top cone of the red stack (three cones)
+  slide: 13.5, // the height of each stage of the lift's drawer slides
+  carriage: 2.5, // the carriage's foot is this far below the pivot
   tilt: (135 * Math.PI) / 180, // the wrist's pivot to carry a cone (0 to pick one up and to put it on a pole)
   twist: (20 * Math.PI) / 180, // the extra roll about the claw's own axis when depositing from the side
 } as const;
 
 /** How the arm waits (and where reduced motion leaves it): the wrist up, the claw open, the lift part way. */
-export const PP_WAIT = { lift: 10, yaw: 0, tilt: Math.PI / 2, twist: 0, claw: 1 } as const;
+export const PP_WAIT = { lift: 14, yaw: 0, tilt: Math.PI / 2, twist: 0, claw: 1 } as const;
 
 /**
- * A point of the claw's frame (x along the claw, y up when level, z across) in the arm's frame (x outward, y up, z sideways),
- * relative to the wrist axle: the claw rolls about its own axis by `twist`, then the wrist pitches it up by `tilt`.
+ * A point `v` of the claw (relative to the middle of the jaws: x along the claw, y up when level, z across) in the arm's frame
+ * (x outward, y up, z sideways), relative to the pivot: the claw rolls about its own axis by `twist`, hangs from the pivot on the
+ * forearm, and the wrist pitches the whole of it up by `tilt`.
  */
 export function clawToArm(v: readonly [number, number, number], tilt: number, twist: number): [number, number, number] {
   const cr = Math.cos(twist);
   const sr = Math.sin(twist);
-  const y1 = v[1] * cr - v[2] * sr;
-  const z1 = v[1] * sr + v[2] * cr;
+  const x = v[0] + PP.grip;
+  const y = v[1] * cr - v[2] * sr - PP.drop;
+  const z = v[1] * sr + v[2] * cr;
   const ct = Math.cos(tilt);
   const st = Math.sin(tilt);
-  return [v[0] * ct - y1 * st, v[0] * st + y1 * ct, z1];
+  return [x * ct - y * st, x * st + y * ct, z];
+}
+
+/** The same for a direction (the cone's axis, say): no hanging from the pivot. */
+export function clawDir(v: readonly [number, number, number], tilt: number, twist: number): [number, number, number] {
+  const o = clawToArm([0, 0, 0], tilt, twist);
+  const p = clawToArm(v, tilt, twist);
+  return [p[0] - o[0], p[1] - o[1], p[2] - o[2]];
 }
 
 /**
- * The centre of a held cone's base in the arm's frame, relative to the turret axis and the wrist's height (x outward, y up, z
+ * The centre of a held cone's base in the arm's frame, relative to the turret axis and the pivot's height (x outward, y up, z
  * sideways): that is the point that goes over a pole, or on to a cone to be taken.
  */
 export function heldBase(tilt: number, twist: number): [number, number, number] {
-  const c = clawToArm([PP.grip, -PP.hold, 0], tilt, twist);
-  return [PP.arm + c[0], c[1], PP.offset + c[2]];
+  const c = clawToArm([0, -PP.hold, 0], tilt, twist);
+  return [PP.arm + c[0], c[1], c[2]];
 }

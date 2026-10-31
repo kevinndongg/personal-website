@@ -58,10 +58,13 @@ export interface PowerPlayPick {
   heading: number;
 }
 
-/** A junction the Power Play robot scores on: the robot stands at `stand` (the middle of its tile) facing `heading` and swings the arm out to the pole. */
+/**
+ * A junction the Power Play robot scores on, with the robot beside it facing `heading` and the pole on its `side` (1 = its right,
+ * -1 = its left): the turret turns exactly a quarter turn, so the robot parks where that puts the cone over the pole.
+ */
 export interface PowerPlayPlace {
   target: { x: number; y: number };
-  stand: { x: number; y: number };
+  side: 1 | -1;
   top: "m" | "h";
   heading: number;
 }

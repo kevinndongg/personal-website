@@ -1,4 +1,4 @@
-import { SAMPLE_COLORS, TAKEN, submersibleSamples } from "./ftcfield";
+import { PP, SAMPLE_COLORS, TAKEN, submersibleSamples } from "./ftcfield";
 import type { Decal, Footprint, Prop, Scene } from "./scenes";
 
 // The FTC area: one square competition field split into three wedges, one per season, with the duck mascot, the driver
@@ -99,11 +99,11 @@ export function ftcScene(ox: number, oy: number): Scene {
   props.push({
     ...turned("ftc-robot-pp", f(-50, -30), 0, 6),
     ppCycle: {
-      stack: { target: STACK, base: 2.4, heading: NORTH },
+      stack: { target: STACK, base: PP.stackTop, heading: NORTH },
       human: { target: HUMAN, base: 0, heading: Math.PI },
-      // each from the middle of the tile whose south-east / north-east corner it is, the pole off the robot's right shoulder
-      high: { target: f(-20, 0), stand: f(-30, -10), top: "h", heading: NORTH },
-      medium: { target: f(-20, -20), stand: f(-30, -30), top: "m", heading: NORTH },
+      // the pole on the robot's right, the turret turned exactly a quarter turn to it
+      high: { target: f(-20, 0), side: 1, top: "h", heading: NORTH },
+      medium: { target: f(-20, -20), side: 1, top: "m", heading: NORTH },
     },
   });
 

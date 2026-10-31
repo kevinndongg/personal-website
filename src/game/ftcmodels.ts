@@ -121,14 +121,13 @@ function ppJunction(level: "g" | "l" | "m" | "h", scoredCone?: string, placedInd
   } else {
     const h = PP_HEIGHT[level];
     g.add(cyl(0.95, 0.95, h, POLE, 0, 1, 0, 8));
-    g.add(cyl(1.7, 1.7, 0.9, DARK, 0, 1 + h, 0, 8));
   }
   // the cone stands round the foot of the pole, the pole coming out through its tip
   if (scoredCone) g.add(ppCone(scoredCone, 0, 1, 0));
 
   if (placedIndex !== undefined && (level === "m" || level === "h")) {
-    const rest = 1 + 1.2; // its base nests inside that cone's, the way the stack's cones do
-    const start = poleTop(level) + PP.above; // and is let go with its base just over the pole's cap
+    const rest = 1 + PP.pitch; // its base nests over that cone, the way the stack's cones do
+    const start = poleTop(level) + PP.above; // and is let go with its base just over the pole's top
     const pivot = new Group(); // at the centre of the cone's base, so that is where it straightens from
     pivot.add(ppCone(RED, 0, 0, 0));
     pivot.visible = false;
@@ -151,7 +150,7 @@ function ppJunction(level: "g" | "l" | "m" | "h", scoredCone?: string, placedInd
 }
 
 /** Cones nested one inside the next, each `pitch` higher than the last, so only their base rings show. */
-function coneStack(color: string, n = 3, pitch = 1.2): Group {
+function coneStack(color: string, n = 3, pitch = PP.pitch): Group {
   const g = new Group();
   for (let i = 0; i < n; i++) g.add(ppCone(color, 0, i * pitch, 0));
   return g;
