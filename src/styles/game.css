@@ -513,6 +513,13 @@ html:has(.game) body {
 .panel[data-side="left"] .close {
   color: var(--paper);
   background: transparent;
+  /*
+   * The cross changes colour in one step, a little way into the fill, not as a fade alongside it: halfway through two fades the
+   * cross is the colour of the fill under it, and it blinks out (most visible when the pointer leaves and comes straight back).
+   */
+  transition:
+    background 150ms ease-out,
+    color 0s 60ms;
   box-shadow:
     0 0 0 1.5px color-mix(in srgb, var(--paper) 85%, transparent),
     0 4px 16px rgba(20, 10, 4, 0.45);
@@ -794,7 +801,8 @@ html:has(.game) body {
 
 .btn.primary:hover {
   background: color-mix(in srgb, var(--ink) 82%, #fff);
-  transform: translateY(-1px);
+  /* (a lift by shadow, not by moving the button: moving it 1px took the pointer off its bottom edge, and the hover flickered) */
+  box-shadow: 0 3px 10px rgba(30, 16, 6, 0.3);
 }
 
 /*
