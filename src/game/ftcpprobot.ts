@@ -19,7 +19,7 @@ const PANEL = "#23252d";
 const STEEL = "#aeb4c0";
 const SILVER = "#c8ccd6";
 const LEAD = "#7d818c";
-const CYAN = "#38d6e8"; // the vinyl
+const VINYL = "#2f8bdc"; // the vinyl: the robot's own blue
 const RED = "#d8322c";
 
 /** What `userData.pose` is given each frame (see `PP` in ftcfield.ts for the layout). */
@@ -100,13 +100,13 @@ export function ppCone(color: string, x: number, y: number, z: number, scale = 1
 
 // ---------------------------------------------------------------- the vinyl
 
-/** "6417" large and "BLU" over "CRU", in the cyan vinyl, on the dark outer plate. */
+/** "6417" large and "BLU" over "CRU", in the blue vinyl, on the dark outer plate. */
 function plateTexture() {
   const [c, ctx] = canvasOf(48, 14);
   fillRect(ctx, 0, 0, 48, 14, DKBLUE);
-  pixelText(ctx, "6417", 2, 2, 2, CYAN);
-  pixelText(ctx, "BLU", 36, 2, 1, CYAN);
-  pixelText(ctx, "CRU", 36, 8, 1, CYAN);
+  pixelText(ctx, "6417", 2, 2, 2, VINYL);
+  pixelText(ctx, "BLU", 36, 2, 1, VINYL);
+  pixelText(ctx, "CRU", 36, 8, 1, VINYL);
   return nearestTexture(c);
 }
 
@@ -178,10 +178,10 @@ const DUCK = [
   ".........................##########.....................",
 ];
 
-/** The duck in the cyan vinyl on a clear background, for the back plate. */
+/** The duck in the blue vinyl on a clear background, for the back plate. */
 function duckTexture() {
   const [c, ctx] = canvasOf(DUCK[0].length, DUCK.length);
-  ctx.fillStyle = CYAN;
+  ctx.fillStyle = VINYL;
   DUCK.forEach((row, y) => {
     for (let x = 0; x < row.length; x++) if (row[x] === "#") ctx.fillRect(x, y, 1, 1);
   });
