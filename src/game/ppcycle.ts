@@ -1,11 +1,14 @@
 // The Power Play robot's loop, forever: it parks for a moment, then drives to the red stack on the north wall, and from then on it
-// does two jobs in turn. Each job: level claw open wider than the cone, the robot drives up so that the cone stands between the
-// jaws, the jaws close on it near its wide end, the lift raises it off the floor (or the stack), and the wrist pivots up 135 degrees
-// so the cone hangs with its narrow end down and back over the robot. Then it drives to the middle of the tile beside a junction,
-// lifting as it goes, swings the turret out so the arm reaches over the pole (the claw rolling a little about its own axis), pivots
-// the wrist back to level so the cone stands wide end down over the pole as it was when it was picked up, lowers it and lets go: the
-// cone slides down the pole. The first job takes the top cone of the stack to the high junction; the second takes the human
-// player's cone, standing against the west wall, to the medium one.
+// does two jobs in turn, each one a single flowing drive rather than a string of separate moves.
+//
+// The job at the stack: the jaws close on the cone, and the robot backs away at once, lifting the cone off and pivoting the wrist up
+// 135 degrees as it goes; a little later the slides start up to the junction's height. As it passes the middle of the second tile
+// the turret begins to swing out (the wrist still up), the wrist comes back down to level while it turns and then the claw rolls
+// the cone a little, and the robot creeps the last few pixels until the cone is over the pole. It lowers the slides slightly and
+// lets go: the cone slides down. Then it retracts at once: wrist up, a short delay, turret centred, slides all the way down, while
+// it turns and drives off, and the slides rise again on the approach to the next cone. The job at the ground cone is the same.
+// The stack's cone goes to the MEDIUM junction, the human player's cone (standing against the west wall) to the HIGH one, which
+// the robot reaches facing west along the row, with the pole on its left.
 //
 // The game pieces are persistent. The stack's top cone and the human's cone vanish as the jaws close on them and a fresh one grows
 // back once the robot has driven off; the cone it places shows on the pole until the robot has driven away, and then shrinks, so
@@ -13,16 +16,19 @@
 //
 // Like robotcycle.ts it only sets the prop's x, z and heading (the hover lift owns its height), and poses the model through
 // `userData.pose` (see ftcpprobot.ts). It never turns while it is between two poles: it backs and drives along the lane with the
-// same heading and only spins on the spot at the middle of a tile, where there is room.
+// same heading and only spins or curves where there is room.
 import { CatmullRomCurve3, Vector3, type Group } from "three";
 import { PP, PP_WAIT, clawDir, ftcField, heldBase, poleTop } from "./ftcfield";
 import type { PPPose } from "./ftcpprobot";
 import type { AnimCtx } from "./models";
 import type { PowerPlayCycle, PowerPlayPick, PowerPlayPlace } from "./scenes";
 
-const SPEED = 36; // px/s along the route (the robot eases out of and into each stop)
+const SPEED = 36; // px/s for the plain runs of the way in
+const CRUISE = 14; // px/s as the robot passes the middle of the tile on its way to a pole, and from there it creeps
 const CLEAR = 6.5; // how far a cone is lifted to get it off the stack, or the floor, before the wrist turns it over
 const LIFT_OVER = 1.5; // how much higher than its final height the arm swings out over a pole, and then lowers
+const STOW = 3.4; // the slides all the way down (the carriage's foot on the chassis)
+const HALF_TILE = 10;
 
 const smooth = (k: number) => {
   const c = Math.min(1, Math.max(0, k));
@@ -32,8 +38,17 @@ const ramp = (t: number, t0: number, dur: number) => smooth((t - t0) / dur);
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
+/** A speed profile along a route: how far along it the robot is after `u` of the phase, leaving at slope `v0` and arriving at slope `v1` (1 = the average speed). */
+const hermite = (v0: number, v1: number) => (u: number) => {
+  const u2 = u * u;
+  const u3 = u2 * u;
+  return (u3 - 2 * u2 + u) * v0 + (-2 * u3 + 3 * u2) + (u3 - u2) * v1;
+};
+
 type Arm = Omit<PPPose, "carrying">;
 type Channel = keyof Arm;
+/** A joint's value at moments of a phase, `[u, value]`, eased from one to the next. */
+type Keys = [number, number][];
 
 interface Pose {
   x: number;
@@ -53,11 +68,13 @@ interface Phase {
   /** Where the robot stands (a stop), turning to `turn` by the end of the phase if it is given. */
   at?: Pose;
   turn?: number;
-  /** Or the route it drives, with the heading it sets off with and the one it stops with. */
-  route?: { curve: CatmullRomCurve3; h0: number; h1: number };
+  /** Or the route it drives, with the heading it sets off with and the one it stops with, and its speed profile (the default eases in and out). */
+  route?: { curve: CatmullRomCurve3; h0: number; h1: number; ease?: (u: number) => number };
   arm: [Arm, Arm];
   /** When, as a fraction of the phase, each joint moves (the rest move throughout), so that one joint can follow another. */
   when?: Partial<Record<Channel, [number, number]>>;
+  /** Or a joint's own track of values through the phase, which overrides the two above. */
+  keys?: Partial<Record<Channel, Keys>>;
   carry: (u: number) => boolean;
   mark?: Mark;
 }
@@ -106,10 +123,10 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
     return { at, arm: { lift, yaw, tilt: 0, twist, claw: 0 } as Arm };
   };
 
-  const A = pick(cfg.stack);
-  const C = pick(cfg.human);
-  const B = place(cfg.high, 0);
-  const D = place(cfg.medium, 1);
+  const A = pick(cfg.stack); // the stack, facing north
+  const C = pick(cfg.human); // the ground cone, facing west
+  const B = place(cfg.high, 0); // the high junction, from the row, facing west
+  const D = place(cfg.medium, 1); // the medium junction, from the lane, facing north
 
   const curve = (pts: { x: number; y: number }[]) => {
     const c = new CatmullRomCurve3(
@@ -120,7 +137,13 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
     c.arcLengthDivisions = 600;
     return c;
   };
-  /** A straight run between two stops with the heading held (the robot backs or drives, never turning between poles). */
+  /** A run along `pts` taking `dur`, leaving at `v0` px/s and arriving at `v1`; the heading goes from `h0` to `h1`. */
+  const leg = (pts: { x: number; y: number }[], h0: number, h1: number, dur: number, v0: number, v1: number) => {
+    const c = curve(pts);
+    const d = c.getLength();
+    return { dur, route: { curve: c, h0, h1, ease: hermite((v0 * dur) / d, (v1 * dur) / d) } };
+  };
+  /** A straight run between two stops with the heading held and the default ease (the way in). */
   const run = (from: Pose, to: { x: number; y: number }, h: number, min: number) => {
     const c = curve([from, to]);
     return { dur: Math.max(min, c.getLength() / SPEED), route: { curve: c, h0: h, h1: h } };
@@ -130,86 +153,125 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
 
   // ---- the arm poses along the way
   const held = (p: Arm): Arm => ({ ...p, claw: 0 });
-  const raised = (p: Arm): Arm => ({ ...p, lift: p.lift + CLEAR });
-  const carried = (p: Arm): Arm => ({ ...p, tilt: PP.tilt });
   const open = (p: Arm): Arm => ({ ...p, claw: 1 });
-  const higher = (p: Arm, d: number): Arm => ({ ...p, lift: p.lift + d });
+  const overB = B.arm.lift + LIFT_OVER; // each junction's height, over which the arm swings out before it lowers
+  const overD = D.arm.lift + LIFT_OVER;
+  const stowed = (p: Arm): Arm => ({ ...p, lift: STOW, yaw: 0, tilt: PP.tilt, twist: 0, claw: 1 });
+  const key = (...k: [number, number][]): Keys => k;
 
-  /** Closing on a cone, raising it off, and pivoting the wrist over: the arm ends carrying it, with the wrist at 135 degrees. */
-  const takePhases = (s: { at: Pose; arm: Arm }, index: number): Phase[] => {
-    const got = held(s.arm);
-    return [
-      { dur: 0.4, at: s.at, arm: [s.arm, got], carry: (u) => u >= 0.75, mark: { what: "pick", index, offset: 0.3 } },
-      { dur: 0.55, at: s.at, arm: [got, raised(got)], carry: always },
-      { dur: 0.8, at: s.at, arm: [raised(got), carried(raised(got))], carry: always },
-    ];
-  };
+  /** Closing the jaws on a cone, and nothing more: the next phase drives off in the same breath. */
+  const grab = (s: { at: Pose; arm: Arm }, index: number): Phase => ({
+    dur: 0.4,
+    at: s.at,
+    arm: [s.arm, held(s.arm)],
+    carry: (u) => u >= 0.75,
+    mark: { what: "pick", index, offset: 0.3 },
+  });
 
   /**
-   * At a pole: the arm swings out with the cone still hanging, the wrist pivots back to level (the cone stands wide end down over the
-   * pole), it lowers and lets go; then the arm lifts clear and swings back to `back` (the pick-up yaw), the claw level and ready.
+   * From a cone to a pole, backing: a cruise to the middle of the second tile with the cone lifted clear, the wrist pivoting up and the
+   * slides rising to the junction's height; then a slow creep to the stand, during which the turret swings out (the wrist still up), the
+   * wrist comes down and the claw rolls; then it lowers the slides a little and lets go. `mid` is where the cruise ends.
    */
-  const placePhases = (s: { at: Pose; arm: Arm }, index: number, from: Arm, back: Arm): Phase[] => {
-    const swung: Arm = { ...carried(s.arm), lift: s.arm.lift + LIFT_OVER };
-    const over: Arm = { ...s.arm, lift: swung.lift };
-    const clear: Arm = open(over);
+  const toPole = (from: { at: Pose; arm: Arm }, to: { at: Pose; arm: Arm }, mid: { x: number; y: number }, over: number, spawn: number, drop: number): Phase[] => {
+    const h = from.at.h;
+    const base = held(from.arm);
+    const toMid = leg([from.at, mid], h, h, 1.15, 0, CRUISE);
+    const creep = leg([mid, to.at], h, h, 1.7, CRUISE, 0);
+    const swung: Arm = { lift: over, yaw: 0, tilt: PP.tilt, twist: 0, claw: 0 };
+    const lined: Arm = { ...to.arm, lift: over };
     return [
-      { dur: 0.8, at: s.at, arm: [from, swung], carry: always },
-      { dur: 0.65, at: s.at, arm: [swung, over], carry: always },
-      { dur: 0.25, at: s.at, arm: [over, s.arm], carry: always },
-      { dur: 0.4, at: s.at, arm: [s.arm, open(s.arm)], carry: (u) => u < 0.2, mark: { what: "drop", index, offset: 0.08 } },
-      { dur: 0.3, at: s.at, arm: [open(s.arm), clear], carry: never },
-      { dur: 0.7, at: s.at, arm: [clear, { ...clear, yaw: back.yaw, twist: 0 }], carry: never },
+      {
+        ...toMid,
+        arm: [base, swung],
+        keys: {
+          lift: key([0, base.lift], [0.25, base.lift + CLEAR], [0.45, base.lift + CLEAR], [1, over]),
+          tilt: key([0.25, 0], [0.7, PP.tilt]),
+        },
+        carry: always,
+        mark: { what: "spawn", index: spawn, offset: 0.3 },
+      },
+      {
+        ...creep,
+        arm: [swung, lined],
+        keys: {
+          yaw: key([0, 0], [0.55, to.arm.yaw]),
+          tilt: key([0.15, PP.tilt], [0.7, 0]),
+          twist: key([0.5, 0], [0.9, to.arm.twist]),
+        },
+        carry: always,
+      },
+      { dur: 0.3, at: to.at, arm: [lined, held(to.arm)], carry: always },
+      { dur: 0.4, at: to.at, arm: [held(to.arm), open(to.arm)], carry: (u) => u < 0.2, mark: { what: "drop", index: drop, offset: 0.08 } },
     ];
   };
 
-  const overB = higher(B.arm, LIFT_OVER).lift; // the high pole's height, which the arm has to be above whenever it swings or the robot spins near it
-  const overD = higher(D.arm, LIFT_OVER).lift;
-  const carriedA = carried(raised(held(A.arm)));
-  const carriedC = carried(raised(held(C.arm)));
-  const toB: Arm = { ...carriedA, lift: overB };
-  const toD: Arm = { ...carriedC, lift: overD };
-  // the point in the lane, between the two junctions, where it spins on the spot; it faces north along the lane and west along the row
-  const X: Pose = { x: B.at.x, y: C.at.y, h: A.at.h };
+  /** Off a pole: wrist up first, then after a short delay the turret centres and the slides go all the way down. */
+  const retractKeys = (from: Arm): Partial<Record<Channel, Keys>> => ({
+    tilt: key([0, 0], [0.3, PP.tilt]),
+    yaw: key([0.25, from.yaw], [0.6, 0]),
+    twist: key([0.25, from.twist], [0.6, 0]),
+    lift: key([0.3, from.lift], [0.9, STOW]),
+  });
+  /** And on the way to the next cone: the wrist comes down to level and the slides rise to its height. */
+  const approachKeys = (to: Arm): Partial<Record<Channel, Keys>> => ({
+    tilt: key([0.3, PP.tilt], [0.85, 0]),
+    lift: key([0.25, STOW], [1, to.lift]),
+  });
+
+  // the middle of the second tile along each drive to a pole: x = -30 along the row to the high junction, y = -30 down the lane to the medium
+  const midB = (() => {
+    const x = cfg.high.target.x - HALF_TILE;
+    const t = (x - C.at.x) / (B.at.x - C.at.x);
+    return { x, y: lerp(C.at.y, B.at.y, t) };
+  })();
+  const midD = (() => {
+    const y = cfg.medium.target.y - HALF_TILE;
+    const t = (y - A.at.y) / (D.at.y - A.at.y);
+    return { x: lerp(A.at.x, D.at.x, t), y };
+  })();
+  // where it spins on the spot, at the middle of a tile, to face the ground cone (the lane's x, the row's y)
+  const X: Pose = { x: D.at.x, y: C.at.y, h: D.at.h };
   const westOfX: Pose = { ...X, h: C.at.h };
 
   const loop: Phase[] = [];
-  // the stack: take the top cone
-  loop.push(...takePhases(A, 0));
-  // back down the lane to the high junction, lifting as it goes; a new cone grows on the stack
+  // the stack: grab, and straight away back down the lane to the medium junction
+  loop.push(grab(A, 0));
+  loop.push(...toPole(A, D, midD, overD, 0, 1));
+  // retract as it backs off to the middle of the tile on the row, spin to face west, and drive to the ground cone, the slides rising on the way
+  const afterD: Arm = open(D.arm);
   loop.push({
-    ...run(A.at, B.at, A.at.h, 1.3),
-    arm: [carriedA, toB],
-    when: { lift: [0, 0.75] },
-    carry: always,
-    mark: { what: "spawn", index: 0, offset: 0.3 },
-  });
-  loop.push(...placePhases(B, 0, toB, A.arm));
-  // up the lane to the spin point (the cone it put there goes), where it turns to face the human player's cone, the arm lowering as it drives
-  const afterB: Arm = { ...A.arm, lift: overB, claw: 1 };
-  loop.push({ ...run(B.at, X, B.at.h, 0.8), arm: [afterB, afterB], carry: never, mark: { what: "clear", index: 0, offset: 0.1 } });
-  loop.push({ dur: 0.55, at: X, turn: C.at.h, arm: [afterB, afterB], carry: never });
-  loop.push({ ...run(westOfX, C.at, C.at.h, 1), arm: [afterB, C.arm], when: { lift: [0.1, 0.85] }, carry: never });
-  loop.push(...takePhases(C, 1));
-  // backing out along the row to the spin point, the arm rising to the medium junction's height; a new cone appears
-  loop.push({
-    ...run(C.at, westOfX, C.at.h, 1),
-    arm: [carriedC, toD],
-    when: { lift: [0.05, 0.9] },
-    carry: always,
-    mark: { what: "spawn", index: 1, offset: 0.3 },
-  });
-  loop.push({ dur: 0.55, at: westOfX, turn: D.at.h, arm: [toD, toD], carry: always });
-  loop.push({ ...run(X, D.at, D.at.h, 0.8), arm: [toD, toD], carry: always });
-  loop.push(...placePhases(D, 1, toD, A.arm));
-  // and up the lane to the stack: the claw lowers
-  const afterD: Arm = { ...A.arm, lift: overD, claw: 1 };
-  loop.push({
-    ...run(D.at, A.at, A.at.h, 1),
-    arm: [afterD, A.arm],
-    when: { lift: [0.3, 1] },
+    ...leg([D.at, X], D.at.h, D.at.h, 1.1, 0, 0),
+    arm: [afterD, stowed(A.arm)],
+    keys: retractKeys(afterD),
     carry: never,
-    mark: { what: "clear", index: 1, offset: 0.2 },
+    mark: { what: "clear", index: 1, offset: 0.7 },
+  });
+  loop.push({ dur: 0.5, at: X, turn: C.at.h, arm: [stowed(A.arm), stowed(A.arm)], carry: never });
+  loop.push({
+    ...leg([westOfX, C.at], C.at.h, C.at.h, 1.1, 0, 0),
+    arm: [stowed(A.arm), C.arm],
+    keys: approachKeys(C.arm),
+    carry: never,
+  });
+  // the ground cone: grab, and straight away back east along the row to the high junction
+  loop.push(grab(C, 1));
+  loop.push(...toPole(C, B, midB, overB, 1, 0));
+  // retract as it turns off the row to the north, then up the lane to the stack, the slides rising on the way
+  const afterB: Arm = open(B.arm);
+  const turnOut = { x: -HALF_TILE * 3, y: B.at.y - 6 };
+  loop.push({
+    ...leg([B.at, { x: B.at.x - 5, y: B.at.y - 0.4 }, turnOut], B.at.h, A.at.h, 1.2, 0, 18),
+    arm: [afterB, stowed(A.arm)],
+    keys: retractKeys(afterB),
+    carry: never,
+    mark: { what: "clear", index: 0, offset: 0.6 },
+  });
+  loop.push({
+    ...leg([turnOut, A.at], A.at.h, A.at.h, 1.5, 18, 0),
+    arm: [stowed(A.arm), A.arm],
+    keys: approachKeys(A.arm),
+    carry: never,
   });
   const loopTotal = loop.reduce((s, p) => s + p.dur, 0);
 
@@ -251,6 +313,15 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
 
   const channels: Channel[] = ["lift", "yaw", "tilt", "twist", "claw"];
 
+  /** A joint's value at `u` along its own track. */
+  const track = (keys: Keys, u: number) => {
+    if (u <= keys[0][0]) return keys[0][1];
+    for (let n = 1; n < keys.length; n++) {
+      if (u <= keys[n][0]) return lerp(keys[n - 1][1], keys[n][1], smooth((u - keys[n - 1][0]) / (keys[n][0] - keys[n - 1][0])));
+    }
+    return keys[keys.length - 1][1];
+  };
+
   model.userData.animate = ({ t }: AnimCtx) => {
     if (t <= 0) return; // reduced motion: parked, the arm up, every cone where it was
 
@@ -270,8 +341,9 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
 
     let at: Pose;
     if (ph.route) {
-      const p = ph.route.curve.getPointAt(k);
-      at = { x: p.x, y: p.z, h: ph.route.h0 + wrap(ph.route.h1 - ph.route.h0) * k };
+      const s = Math.min(1, Math.max(0, ph.route.ease ? ph.route.ease(u) : k));
+      const p = ph.route.curve.getPointAt(s);
+      at = { x: p.x, y: p.z, h: ph.route.h0 + wrap(ph.route.h1 - ph.route.h0) * s };
     } else if (ph.turn !== undefined) {
       at = { ...ph.at!, h: ph.at!.h + wrap(ph.turn - ph.at!.h) * k };
     } else {
@@ -283,8 +355,12 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
 
     const arm = {} as Arm;
     for (const c of channels) {
-      const w = ph.when?.[c];
-      arm[c] = lerp(ph.arm[0][c], ph.arm[1][c], w ? smooth((u - w[0]) / (w[1] - w[0])) : k);
+      const keys = ph.keys?.[c];
+      if (keys) arm[c] = track(keys, u);
+      else {
+        const w = ph.when?.[c];
+        arm[c] = lerp(ph.arm[0][c], ph.arm[1][c], w ? smooth((u - w[0]) / (w[1] - w[0])) : k);
+      }
     }
     const pose = model.userData.pose as ((p: PPPose) => void) | undefined;
     pose?.({ ...arm, carrying: ph.carry(u) });

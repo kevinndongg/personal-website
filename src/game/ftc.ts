@@ -100,8 +100,9 @@ export function ftcScene(ox: number, oy: number): Scene {
     ppCycle: {
       stack: { target: STACK, base: PP.stackTop, heading: NORTH },
       human: { target: HUMAN, base: 0, heading: Math.PI },
-      // the pole on the robot's right, the turret turned exactly a quarter turn to it
-      high: { target: f(-20, 0), side: 1, top: "h", heading: NORTH },
+      // the pole off the robot's shoulder, the turret turned exactly a quarter turn to it: the high one on its left as it backs east along
+      // the row facing west, the medium one on its right as it backs south down the lane facing north
+      high: { target: f(-20, 0), side: -1, top: "h", heading: Math.PI },
       medium: { target: f(-20, -20), side: 1, top: "m", heading: NORTH },
     },
   });
