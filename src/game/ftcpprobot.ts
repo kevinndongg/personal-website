@@ -174,9 +174,6 @@ export function ppRobotModel(): Group {
     g.add(mesh(new BoxGeometry(0.3, 6.3, HALF - 0.3 - 4.15), glass, -HALF + 0.15, 6.75, s * ((HALF - 0.3 + 4.15) / 2))); // over the pod
     g.add(mesh(new BoxGeometry(3.2, 6.3, 0.3), glass, -HALF + 1.6, 6.75, s * (HALF - 0.15))); // the corner plate, on the outer plate
   }
-  g.add(box(0.5, 1.5, 2.4, BLUE, -HALF - 0.25, 1.1, -3.4)); // the ultrasonic sensor in its housing, low on the back
-  g.add(box(0.1, 0.8, 0.8, BLACK, -HALF - 0.55, 1.45, -3.9));
-  g.add(box(0.1, 0.8, 0.8, BLACK, -HALF - 0.55, 1.45, -2.9));
   g.add(box(0.6, 2.6, 2.8, BLACK, -5.2, 3.0, -3.9)); // the Control Hub, black, against the inside of the plate
   g.add(box(0.1, 1.4, 1.6, "#4a4d58", -4.88, 3.6, -3.9));
   g.add(box(3.2, 2.4, 1.8, PANEL, -3.4, 0.9, 3.4)); // the battery
