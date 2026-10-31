@@ -1,6 +1,6 @@
 import { BoxGeometry, BufferGeometry, DoubleSide, Group, LatheGeometry, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshToonMaterial, PlaneGeometry, Vector2 } from "three";
 import { CONE, PP, PP_WAIT } from "./ftcfield";
-import { centred, pixelText } from "./ftctext";
+import { pixelText } from "./ftctext";
 import { box, canvasOf, cyl, fillRect, mesh, nearestTexture, toon } from "./models";
 
 // Team 6417's Power Play robot, at true scale: 14 in square on a field drawn at 1 px = 1.2 in, so the chassis is 11.67 px. Same
@@ -32,13 +32,27 @@ export interface PPPose {
   carrying: boolean; // a cone in the jaws
 }
 
+/** How far each jaw swings (radians) when the claw is fully open: the front gap goes from 2 to about 8 px, wider than the cone (4.8). */
+const OPEN = (40 * Math.PI) / 180;
+
 /** Wrist up and the claw open: how it waits. */
 const PP_READY: PPPose = { ...PP_WAIT, carrying: false };
 
 // ---------------------------------------------------------------- the cone
 
 let coneGeo: BufferGeometry | null = null;
-const coneMats = new Map<string, MeshToonMaterial>();
+const sidedMats = new Map<string, MeshToonMaterial>();
+
+/** The toon material for `color`, drawn from both sides, for thin shells whose inside shows (the cones, the claw's arcs). */
+function sided(color: string): MeshToonMaterial {
+  let mat = sidedMats.get(color);
+  if (!mat) {
+    mat = toon(color).clone();
+    mat.side = DoubleSide;
+    sidedMats.set(color, mat);
+  }
+  return mat;
+}
 
 /**
  * One hollow shell for every cone, like a traffic cone: a flared base ring, a wall that narrows to the top, and a hole at the top (a
@@ -65,14 +79,8 @@ function coneShell(): BufferGeometry {
 
 /** A Power Play cone, standing with its wide end down: hollow, open at both ends. */
 export function ppCone(color: string, x: number, y: number, z: number, scale = 1): Group {
-  let mat = coneMats.get(color);
-  if (!mat) {
-    mat = toon(color).clone();
-    mat.side = DoubleSide; // the inside shows through the open ends
-    coneMats.set(color, mat);
-  }
   const g = new Group();
-  g.add(mesh(coneShell(), mat));
+  g.add(mesh(coneShell(), sided(color))); // the inside shows through the open ends
   g.position.set(x, y, z);
   g.scale.setScalar(scale);
   return g;
@@ -90,12 +98,14 @@ function plateTexture() {
   return nearestTexture(c);
 }
 
-/** The sponsors on the back plate: the vinyl is cut out of the plate, so only the lettering shows. */
-function sponsorTexture() {
-  const [c, ctx] = canvasOf(48, 44);
-  for (const [text, y] of [["CROWN POINT", 1], ["MARYLAND", 9], ["ROBOTICS", 15], ["CENTER", 21], ["QUALCOMM", 30], ["BECHTEL", 37]] as const)
-    centred(ctx, 48, text, y, 1, CYAN);
-  return nearestTexture(c);
+/**
+ * An arc of a ring about the vertical axis, between radii `r0` and `r1` and heights `y0` and `y1`, from `th0` to `th1` degrees measured
+ * from straight ahead (+x) towards +z (negative angles go the other way).
+ */
+function arc(color: string, r0: number, r1: number, y0: number, y1: number, th0: number, th1: number): Mesh {
+  const profile = [[r0, y0], [r1, y0], [r1, y1], [r0, y1], [r0, y0]].map(([x, y]) => new Vector2(x, y));
+  const rad = Math.PI / 180;
+  return mesh(new LatheGeometry(profile, Math.max(3, Math.ceil((th1 - th0) / 8)), (90 - th1) * rad, (th1 - th0) * rad), sided(color));
 }
 
 /** A mecanum wheel with its axle along z: black body, grey hub. */
@@ -125,6 +135,17 @@ export function ppRobotModel(): Group {
     g.add(box(11.37, 3.3, 0.285, DKBLUE, 0.15, 0.3, s * (HALF - 0.1425)));
     g.add(box(11, 3.3, 0.25, DKBLUE, 0, 0.3, s * 4.275));
     for (const rx of [-4.4, -2.2, 0, 2.2, 4.4]) g.add(box(0.25, 0.3, 1.3, STEEL, rx, 3.6, s * 4.975));
+    // between the wheels, dark structure: a deck, two motors on their sides, and C-channel brackets with a brace across them
+    g.add(box(4.4, 0.3, 1.15, "#1b1d24", 0, 0.3, s * 4.975));
+    for (const mx of [-1.1, 1.1]) {
+      const motor = cyl(0.7, 0.7, 1.6, "#2a2d36", mx, 0, s * 4.975, 10);
+      motor.rotation.z = Math.PI / 2;
+      motor.position.y = 1.5;
+      g.add(motor);
+      g.add(box(0.15, 0.9, 0.9, "#3a3d48", mx + 0.85, 1.05, s * 4.975));
+    }
+    for (const bx of [-1.8, 0, 1.8]) g.add(box(0.25, 2.5, 1, "#3a3d48", bx, 0.6, s * 4.975));
+    g.add(box(4, 0.25, 0.3, "#2a2d36", 0, 2.85, s * 4.975));
     const vinyl = new Mesh(new PlaneGeometry(11, 3), new MeshBasicMaterial({ map: outerTex }));
     vinyl.position.set(0.15, 1.95, s * (HALF + 0.02));
     if (s < 0) vinyl.rotation.y = Math.PI;
@@ -133,14 +154,14 @@ export function ppRobotModel(): Group {
   g.add(box(0.5, 1.2, 7.2, "#1f4f9c", 4.65, 0.6, 0)); // the front bumper, kept narrow
   for (const s of [-1, 1]) g.add(box(2, 1, 1.8, LEAD, 3.8, 0.9, s * 2.3)); // the lead weights, either side of the arm's path
 
-  // ---- the back: a tall tinted plate across it, small vertical plates over the corners of the sides, and what is behind them
+  // ---- the back: a tall tinted plate across it that stops 2.7 px above the floor over each wheel pod, so that the rear wheels show behind
+  // it as they do in the photo; small vertical plates stand over the corners of the sides
   const glass = new MeshLambertMaterial({ color: "#1a2a55", transparent: true, opacity: 0.78, depthWrite: false });
-  g.add(mesh(new BoxGeometry(0.3, 9, 2 * HALF - 0.6), glass, -HALF + 0.15, 0.9 + 4.5, 0));
-  for (const s of [-1, 1]) g.add(mesh(new BoxGeometry(3.2, 9, 0.3), glass, -HALF + 1.6, 0.9 + 4.5, s * (HALF - 0.15)));
-  const sponsors = new Mesh(new PlaneGeometry(9.2, 8.4), new MeshBasicMaterial({ map: sponsorTexture(), transparent: true, depthWrite: false }));
-  sponsors.position.set(-HALF - 0.02, 5.6, 0);
-  sponsors.rotation.y = -Math.PI / 2;
-  g.add(sponsors);
+  g.add(mesh(new BoxGeometry(0.3, 9, 8.3), glass, -HALF + 0.15, 0.9 + 4.5, 0)); // the middle, down to the floor plate
+  for (const s of [-1, 1]) {
+    g.add(mesh(new BoxGeometry(0.3, 6.3, HALF - 0.3 - 4.15), glass, -HALF + 0.15, 6.75, s * ((HALF - 0.3 + 4.15) / 2))); // over the pod
+    g.add(mesh(new BoxGeometry(3.2, 6.3, 0.3), glass, -HALF + 1.6, 6.75, s * (HALF - 0.15))); // the corner plate, on the outer plate
+  }
   g.add(box(0.5, 1.5, 2.4, BLUE, -HALF - 0.25, 1.1, -3.4)); // the ultrasonic sensor in its housing, low on the back
   g.add(box(0.1, 0.8, 0.8, BLACK, -HALF - 0.55, 1.45, -3.9));
   g.add(box(0.1, 0.8, 0.8, BLACK, -HALF - 0.55, 1.45, -2.9));
@@ -205,13 +226,22 @@ export function ppRobotModel(): Group {
   twist.position.set(PP.grip, -PP.drop, 0);
   tilt.add(twist);
   twist.add(box(0.6, 1.6, 4, BLUE, -3.1, -0.5, 0)); // the palm, well behind the cone's rim
+  // the jaws are two curved arms, a ring round the cone with its front open: blue arcs with black ribbed pads on the inside. They meet the
+  // palm behind, and each hinges there (at its rear end) and swings out to open the front wider than the cone
   const jaws: { g: Group; side: number }[] = [];
+  const hinge = { x: 2.7 * Math.cos((165 * Math.PI) / 180), z: 2.7 * Math.sin((165 * Math.PI) / 180) };
   for (const s of [-1, 1]) {
     const jaw = new Group();
-    jaw.add(box(4.4, 1.4, 0.4, BLUE, 2.2, -0.4, 0));
-    jaw.add(box(2.4, 1.2, 0.25, BLACK, 2.8, -0.3, -s * 0.325)); // the black rubber pad on the inside
-    for (const rx of [2.2, 2.8, 3.4]) jaw.add(box(0.1, 1.2, 0.1, "#3a3a44", rx, -0.3, -s * 0.5)); // and its ribs
-    jaw.position.x = -2.8;
+    const arcs = new Group(); // drawn about the ring's centre, offset so that the jaw's group origin is its hinge
+    const [a0, a1] = s > 0 ? [25, 165] : [-165, -25];
+    arcs.add(arc(BLUE, 2.65, 3, -0.4, 1, a0, a1));
+    for (let i = 0; i < 5; i++) {
+      const t0 = 30 + i * 27;
+      arcs.add(arc(BLACK, 2.45, 2.65, -0.3, 0.9, s > 0 ? t0 : -(t0 + 22), s > 0 ? t0 + 22 : -t0)); // the ribs
+    }
+    arcs.position.set(-hinge.x, 0, -s * hinge.z);
+    jaw.position.set(hinge.x, 0, s * hinge.z);
+    jaw.add(arcs);
     twist.add(jaw);
     jaws.push({ g: jaw, side: s });
   }
@@ -225,10 +255,7 @@ export function ppRobotModel(): Group {
     arm.rotation.y = -p.yaw;
     tilt.rotation.z = p.tilt;
     twist.rotation.x = p.twist;
-    for (const { g: jaw, side } of jaws) {
-      jaw.position.z = side * (2.85 + 0.8 * p.claw);
-      jaw.rotation.y = -side * 0.15 * p.claw;
-    }
+    for (const { g: jaw, side } of jaws) jaw.rotation.y = -side * OPEN * p.claw;
     held.visible = p.carrying;
   };
   g.userData.pose = pose;

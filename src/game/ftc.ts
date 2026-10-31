@@ -88,7 +88,6 @@ export function ftcScene(ox: number, oy: number): Scene {
     [-20, 0, "ftc-pp-h-blue"],
   ];
   for (const [x, y, sprite] of junctions) props.push(round(sprite, f(x, y), 2.5));
-  props.push(round("ftc-cones-blue", f(-30, 10), 3));
   // The robot takes the top cone of the red stack against the north wall (centred on the second tile from the left) to the high
   // junction, then the human player's cone, standing against the west wall at the middle of the third tile down, to the medium one
   // (ppcycle.ts). It starts in the first tile's row, a tile in from the wall, and runs the lane down the middle of the tile column.

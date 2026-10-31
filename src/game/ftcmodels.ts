@@ -670,8 +670,6 @@ export function ftcModel(id: string, w: number, d: number): Group | null {
       return ppStack();
     case "pp-cone":
       return ppHumanCone();
-    case "cones-blue":
-      return coneStack(BLUE);
     case "backdrop":
       return backdropModel(w, d);
     case "truss":
