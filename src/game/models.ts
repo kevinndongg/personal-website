@@ -19,6 +19,7 @@ import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeom
 import cmrLogo from "../content/projects/CMR_Logo.png";
 import { carWatch } from "./drive";
 import { crewDoor } from "./errand";
+import { markMoving } from "./bake";
 import type { WalkerPose } from "./errand";
 import { shade } from "./ground";
 import { GARAGE_DOOR } from "./scenes";
@@ -239,6 +240,7 @@ export function garageModel(w: number, d: number): Group {
     doorOpen += (crewDoor.open - doorOpen) * (1 - Math.exp(-dt * 8));
     hinge.rotation.y = 1.7 * doorOpen; // (about +z: the free edge swings outward)
   };
+  markMoving(g, hinge);
 
   // roll-up door: a light frame, a dark housing above it on the bay side, and a slatted shutter part way down
   const bayFace = ex + t / 2; // the wall's face toward the bay
@@ -561,6 +563,7 @@ export function typistModel(): Group {
     work += ((watching ? 0 : 1) - work) * (1 - Math.exp(-dt * 6));
     pose(work, t);
   };
+  markMoving(g, head, ...arms.flatMap((a) => [a.upper, a.forearm]));
   return g;
 }
 
@@ -906,6 +909,7 @@ export function grillModel(): Group {
     flip.position.y = 9.6 + Math.sin(Math.PI * u) * 6;
     flip.rotation.x = (cycle % 2) * Math.PI + Math.PI * u;
   };
+  markMoving(g, flip, ...puffs);
   return g;
 }
 
@@ -930,6 +934,7 @@ export function cookModel(): Group {
     const u = Math.min(1, Math.max(0, (p - 2.1) / 0.7));
     arm.rotation.z = -0.12 + Math.sin(Math.PI * u) * 0.62; // spatula goes under the patty, lifts, drops
   };
+  markMoving(g, arm);
   return g;
 }
 
