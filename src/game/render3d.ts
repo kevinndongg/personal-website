@@ -6,6 +6,7 @@ import {
   ColorManagement,
   DirectionalLight,
   Group,
+  HalfFloatType,
   HemisphereLight,
   LinearFilter,
   LinearMipmapLinearFilter,
@@ -74,6 +75,10 @@ const BLUR_FS = `
     return t.rgb + (1.0 - t.a) * voidCol;
   }
 
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+  }
+
   void main() {
     float outside = max(max(focusRect.x - vUv.x, vUv.x - focusRect.z), max(focusRect.y - vUv.y, vUv.y - focusRect.w));
     float away = smoothstep(0.0, 0.16, outside) * focusAmt; // 0 inside the focused box, 1 well outside
@@ -90,6 +95,10 @@ const BLUR_FS = `
         }
       }
     }
+#ifdef DITHER
+    // (an 8-bit target rounds a smooth blur into bands, which the grade then brightens: a step of noise hides them)
+    c += (hash(gl_FragCoord.xy) + hash(gl_FragCoord.xy + 17.0) - 1.0) / 255.0;
+#endif
     gl_FragColor = vec4(c, 1.0);
   }
 `;
@@ -411,11 +420,14 @@ export class Renderer3D {
       samples: 4, // multisampled, so edges are smooth rather than pixelated
     });
 
+    // 16 bits a channel where the GPU can draw into them (a smooth blur keeps its steps small; the 8-bit scene target it reads
+    // is already rounded, but this one would round it again before the grade brightens it), else 8 bits and a dither
+    const deep = this.renderer.extensions.has("EXT_color_buffer_float") || this.renderer.extensions.has("EXT_color_buffer_half_float");
     this.blurTarget = new WebGLRenderTarget(1, 1, {
       minFilter: LinearFilter,
       magFilter: LinearFilter,
       format: RGBAFormat,
-      type: UnsignedByteType,
+      type: deep ? HalfFloatType : UnsignedByteType,
       depthBuffer: false,
     });
 
@@ -441,6 +453,7 @@ export class Renderer3D {
     this.blurQuad = new ShaderMaterial({
       vertexShader: POST_VS,
       fragmentShader: BLUR_FS,
+      defines: deep ? {} : { DITHER: 1 },
       uniforms: { tColor, texel, focusRect, focusAmt, voidCol },
       depthTest: false,
       depthWrite: false,
