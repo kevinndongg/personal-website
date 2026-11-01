@@ -161,7 +161,11 @@ const POST_FS = `
     // zoomed right into a photo: no grade at all (no muting, tint, exposure, vignette or grain), so the pixels on screen
     // are the photo's own; only the dimming away from it stays, for the margins round it
     vec3 raw = mid * (1.0 - 0.42 * away);
-    gl_FragColor = vec4(mix(c, raw, pure), 1.0);
+    // A step of dither on the whole picture (a bell-shaped plus or minus one level of the 8-bit screen): the vignette, the dimming
+    // and the blur are smooth gradients, which the screen would round into bands. Not on the photo itself when zoomed right
+    // into it (its pixels are left as they are), only on the dimmed margins round it.
+    float dither = (hash(px + 41.0) + hash(px + 73.0) - 1.0) / 255.0 * (1.0 - pure * (1.0 - away));
+    gl_FragColor = vec4(mix(c, raw, pure) + dither, 1.0);
   }
 `;
 
