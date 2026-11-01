@@ -11,6 +11,7 @@ import {
   LinearFilter,
   LinearMipmapLinearFilter,
   LinearSRGBColorSpace,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
@@ -33,7 +34,7 @@ import {
   WebGLRenderTarget,
   WebGLRenderer,
 } from "three";
-import { bakeStatic } from "./bake";
+import { bakeStatic, canJoinAcross, joinAcross } from "./bake";
 import { attachLap } from "./drive";
 import { attachErrand } from "./errand";
 import { attachPowerPlay } from "./ppcycle";
@@ -536,6 +537,8 @@ export class Renderer3D {
 
     // scene props
     for (const zone of world.zones) {
+      const still: { model: Object3D; matrix: Matrix4 }[] = []; // props that stand still, to be joined into one group (below)
+      let stillMeshes = 0;
       for (const p of zone.scene.props) {
         const fp = p.solid;
         const model = sceneryModel(p.sprite, fp, p, world.zones) ?? createModel(p.sprite, fp, world.zones);
@@ -552,6 +555,14 @@ export class Renderer3D {
         model.userData.baseY = p.elevation ?? 0;
         if (p.angle !== undefined) model.rotation.y = -p.angle;
         model.scale.setScalar(VISUAL_SCALE[p.sprite.split("-")[0]] ?? 1);
+        // a prop that never changes, and is not moved by anything else, is not added on its own: its meshes are joined with those of
+        // the others of its zone (they rise together on hover, so one group does for all)
+        if (!p.focus && !p.drive && !p.errand && !p.cycle && !p.ppCycle && canJoinAcross(model)) {
+          model.updateMatrix();
+          still.push({ model, matrix: model.matrix.clone() });
+          stillMeshes += baked.to;
+          continue;
+        }
         if (p.focus) {
           const wide = resolveFocus(p.focus);
           this.focusProps.push({
@@ -581,6 +592,18 @@ export class Renderer3D {
         let list = this.zoneModels.get(zone.id);
         if (!list) this.zoneModels.set(zone.id, (list = []));
         list.push(model);
+      }
+      if (still.length) {
+        const joined = joinAcross(still);
+        this.merged.to += joined.to - stillMeshes;
+        joined.group.userData.baseY = 0;
+        joined.group.userData.zoneId = zone.id;
+        joined.group.userData.sprite = "static"; // (what a click on one of them hits: the zone, which is all `pick` is used for)
+        map.add(joined.group);
+        this.pickables.push(joined.group);
+        let list = this.zoneModels.get(zone.id);
+        if (!list) this.zoneModels.set(zone.id, (list = []));
+        list.push(joined.group);
       }
     }
 

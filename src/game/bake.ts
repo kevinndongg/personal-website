@@ -1,4 +1,4 @@
-import { Matrix4, Mesh } from "three";
+import { Group, Matrix4, Mesh } from "three";
 import type { BufferGeometry, Material, Object3D } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
@@ -68,6 +68,19 @@ function canJoin(mesh: Mesh, frame: Object3D, model: Object3D): boolean {
 }
 
 /**
+ * One geometry out of these (which belong to the caller to throw away afterwards), or null when they cannot be joined. They have
+ * to carry the same attributes, and all be indexed or none: what they have in common is kept.
+ */
+function joinGeometries(geometries: BufferGeometry[]): BufferGeometry | null {
+  const names = Object.keys(geometries[0].attributes).filter((name) => geometries.every((g) => g.attributes[name]));
+  const indexed = geometries.every((g) => g.index);
+  for (const g of geometries) {
+    for (const name of Object.keys(g.attributes)) if (!names.includes(name)) g.deleteAttribute(name);
+  }
+  return mergeGeometries(indexed ? geometries : geometries.map((g) => (g.index ? g.toNonIndexed() : g)));
+}
+
+/**
  * Joins the meshes of a model that share a material (and shadow flags) and move together into one each. Returns how many
  * meshes there were and how many there are now. A model that cannot be joined (see `joinable`) is left alone.
  */
@@ -93,13 +106,7 @@ export function bakeStatic(model: Object3D): { from: number; to: number } {
   for (const { frame, material, cast, receive, order, meshes } of groups.values()) {
     if (meshes.length < 2) continue;
     const geometries = meshes.map((mesh) => mesh.geometry.clone().applyMatrix4(inFrame(mesh, frame)));
-    // (the geometries have to carry the same attributes, and all be indexed or none: keep what they have in common)
-    const names = Object.keys(geometries[0].attributes).filter((name) => geometries.every((g) => g.attributes[name]));
-    const indexed = geometries.every((g) => g.index);
-    for (const g of geometries) {
-      for (const name of Object.keys(g.attributes)) if (!names.includes(name)) g.deleteAttribute(name);
-    }
-    const joined = mergeGeometries(indexed ? geometries : geometries.map((g) => (g.index ? g.toNonIndexed() : g)));
+    const joined = joinGeometries(geometries);
     geometries.forEach((g: BufferGeometry) => g.dispose());
     if (!joined) continue;
     const mesh = new Mesh(joined, material);
@@ -119,4 +126,73 @@ export function bakeStatic(model: Object3D): { from: number; to: number } {
   };
   if (to < from) prune(model);
   return { from, to };
+}
+
+/**
+ * Whether a prop can be joined with the others of its zone (see `joinAcross`): nothing about it changes once it is built (no
+ * functions in its `userData`, no part that moves), and nothing outside it holds on to its parts (picking, the table's controls, the
+ * lift, the ground), and it is plain opaque meshes all through.
+ */
+export function canJoinAcross(model: Object3D): boolean {
+  let ok = true;
+  let meshes = 0;
+  model.traverse((o) => {
+    for (const [key, value] of Object.entries(o.userData)) {
+      if (typeof value === "function" || MARKS.includes(key) || ["flat", "liftOverlay", "moves", "bakeable"].includes(key)) ok = false;
+    }
+    if (!o.visible) ok = false;
+    const mesh = o as Mesh;
+    if (!mesh.isMesh) return;
+    meshes++;
+    const material = mesh.material as Material;
+    if (
+      (o as { isInstancedMesh?: boolean }).isInstancedMesh ||
+      Array.isArray(material) ||
+      !material.visible ||
+      material.transparent ||
+      material.clippingPlanes?.length ||
+      mesh.customDepthMaterial ||
+      mesh.customDistanceMaterial ||
+      Object.prototype.hasOwnProperty.call(mesh, "onBeforeRender")
+    ) {
+      ok = false;
+    }
+  });
+  return ok && meshes > 0;
+}
+
+/**
+ * Joins the meshes of props that stand still (each with its `matrix`: where it is in the map) into one group at the map's origin,
+ * one mesh for each material (and shadow flags), the placement baked in. Raising the group raises them all together.
+ */
+export function joinAcross(parts: { model: Object3D; matrix: Matrix4 }[]): { group: Group; from: number; to: number } {
+  const groups = new Map<string, { material: Material; cast: boolean; receive: boolean; order: number; geometries: BufferGeometry[] }>();
+  let from = 0;
+  for (const { model, matrix } of parts) {
+    model.traverse((o) => {
+      const mesh = o as Mesh;
+      if (!mesh.isMesh) return;
+      from++;
+      const material = mesh.material as Material;
+      const key = `${material.uuid}|${mesh.castShadow}|${mesh.receiveShadow}|${mesh.renderOrder}`;
+      let group = groups.get(key);
+      if (!group) groups.set(key, (group = { material, cast: mesh.castShadow, receive: mesh.receiveShadow, order: mesh.renderOrder, geometries: [] }));
+      group.geometries.push(mesh.geometry.clone().applyMatrix4(matrix.clone().multiply(inFrame(mesh, model))));
+    });
+  }
+  const out = new Group();
+  let to = 0;
+  for (const { material, cast, receive, order, geometries } of groups.values()) {
+    const joined = geometries.length > 1 ? joinGeometries(geometries) : geometries[0];
+    // (one that will not join with the rest is kept as it is, in its place)
+    for (const geometry of joined ? [joined] : geometries) {
+      const mesh = new Mesh(geometry, material);
+      mesh.castShadow = cast;
+      mesh.receiveShadow = receive;
+      mesh.renderOrder = order;
+      out.add(mesh);
+      to++;
+    }
+  }
+  return { group: out, from, to };
 }
