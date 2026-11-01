@@ -10,8 +10,12 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 // (`markMoving`): the meshes are then joined within each part (everything that moves with it), and the moving parts themselves
 // are left as they are. A prop that animates but does not say is left alone.
 
-/** `userData` keys that mark a part for something outside the model (picking, the table's controls, the lift, the ground). */
-const MARKS = ["part", "slot", "noPick", "liftOverlay", "flat"];
+/**
+ * `userData` keys that mark a part for something outside the model (picking, the table's controls). A mesh with one of them, or
+ * inside a part with one, has to stay where it is, with the mark on its path. (The model's own group may carry them: a mesh joined
+ * into it still has it above, so a click on it is still a click on that part.)
+ */
+const MARKS = ["part", "slot", "noPick"];
 
 /**
  * Says that `parts` are the objects the model's animation moves: it changes their position, rotation or scale, or shows and
@@ -26,13 +30,13 @@ export function markMoving(model: Object3D, ...parts: Object3D[]): void {
 /**
  * Whether the model can be joined at all. What can change it, once it is built, is handed out through `userData` as functions
  * (`animate`, `pose`, `drive`, `setGlow`...), which hold on to its parts: such a model has to have said what moves (see
- * `markMoving`), and only its own group may carry the functions. A part marked for something else (see `MARKS`) rules it out.
+ * `markMoving`), and only its own group may carry the functions. One that lifts a sheet of its own (`liftOverlay`) is left alone.
  */
 function joinable(model: Object3D): boolean {
   let ok = true;
   model.traverse((o) => {
     for (const [key, value] of Object.entries(o.userData)) {
-      if (MARKS.includes(key) || (typeof value === "function" && !(o === model && model.userData.bakeable))) ok = false;
+      if (key === "liftOverlay" || (typeof value === "function" && !(o === model && model.userData.bakeable))) ok = false;
     }
   });
   return ok;
@@ -55,7 +59,8 @@ function inFrame(part: Object3D, frame: Object3D): Matrix4 {
 }
 
 /** Whether a mesh can be joined with others without changing how it draws. */
-function canJoin(mesh: Mesh, frame: Object3D): boolean {
+function canJoin(mesh: Mesh, frame: Object3D, model: Object3D): boolean {
+  for (let o: Object3D | null = mesh; o && o !== model; o = o.parent) if (MARKS.some((key) => key in o!.userData)) return false;
   if (mesh.userData.moves || Array.isArray(mesh.material) || mesh.material.transparent || mesh.material.clippingPlanes?.length) return false;
   if (mesh.customDepthMaterial || mesh.customDistanceMaterial || Object.prototype.hasOwnProperty.call(mesh, "onBeforeRender")) return false;
   for (let o: Object3D | null = mesh; o && o !== frame; o = o.parent) if (!o.visible) return false;
@@ -77,7 +82,7 @@ export function bakeStatic(model: Object3D): { from: number; to: number } {
     from++;
     if (!all || (o as { isInstancedMesh?: boolean }).isInstancedMesh) return;
     const frame = frameOf(mesh, model);
-    if (!canJoin(mesh, frame)) return;
+    if (!canJoin(mesh, frame, model)) return;
     const material = mesh.material as Material;
     const key = `${frame.uuid}|${material.uuid}|${mesh.castShadow}|${mesh.receiveShadow}|${mesh.renderOrder}`;
     let group = groups.get(key);

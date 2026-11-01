@@ -472,12 +472,10 @@ export class Renderer3D {
       for (const p of zone.scene.props) {
         const fp = p.solid;
         const model = sceneryModel(p.sprite, fp, p, world.zones) ?? createModel(p.sprite, fp, world.zones);
-        // a prop that never changes has the meshes of one material joined (those with motion attached, or posed, are left)
-        if (!p.drive && !p.errand && !p.cycle) {
-          const baked = bakeStatic(model);
-          this.merged.from += baked.from;
-          this.merged.to += baked.to;
-        }
+        // the meshes of one material that move together are joined (a prop that moves says which of its parts do: see bake.ts)
+        const baked = bakeStatic(model);
+        this.merged.from += baked.from;
+        this.merged.to += baked.to;
         const cx = p.x;
         let cz = p.y - 2;
         if (p.angle !== undefined) cz = p.y;

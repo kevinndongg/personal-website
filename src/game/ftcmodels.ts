@@ -163,6 +163,7 @@ function ppJunction(level: "g" | "l" | "m" | "h", scoredCone?: string, placedInd
       pivot.quaternion.setFromUnitVectors(UP, dir);
       pivot.scale.setScalar(Math.max(0.001, p > 1 ? 2 - p : 1));
     };
+    markMoving(g, pivot);
   }
   return g;
 }
@@ -184,6 +185,7 @@ function ppStack(): Group {
     top.visible = p > 0.02;
     top.scale.setScalar(Math.max(0.001, p)); // it shrinks into the stack, not into its own middle
   };
+  markMoving(g, top);
   return g;
 }
 
@@ -197,6 +199,7 @@ function ppHumanCone(): Group {
     cone.visible = p > 0.02;
     cone.scale.setScalar(Math.max(0.001, p));
   };
+  markMoving(g, cone);
   return g;
 }
 

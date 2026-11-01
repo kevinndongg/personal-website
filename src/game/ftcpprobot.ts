@@ -1,4 +1,5 @@
 import { BoxGeometry, BufferGeometry, DoubleSide, ExtrudeGeometry, Group, LatheGeometry, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshToonMaterial, PlaneGeometry, Shape, Vector2 } from "three";
+import { markMoving } from "./bake";
 import { CONE, PP, PP_WAIT } from "./ftcfield";
 import { pixelText } from "./ftctext";
 import { box, canvasOf, cyl, fillRect, mesh, nearestTexture, toon } from "./models";
@@ -378,5 +379,6 @@ export function ppRobotModel(): Group {
   };
   g.userData.pose = pose;
   pose(PP_READY);
+  markMoving(g, carriage, ...stages, arm, tilt, twist, ...jaws.map((j) => j.g), held);
   return g;
 }

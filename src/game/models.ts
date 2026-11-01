@@ -460,6 +460,7 @@ export function formulaModel(): Group {
   const hit = new Mesh(new BoxGeometry(55, 14.5, 32), new MeshBasicMaterial({ visible: false }));
   hit.position.set(-0.5, 7.25, 0);
   g.add(hit);
+  markMoving(g, glow); // (the lap moves the whole car; only the halo is shown and hidden)
   return g;
 }
 
@@ -613,6 +614,7 @@ export function walkerModel(): Group {
     burger.visible = holding;
   };
   g.userData.pose({ phase: 0, swing: 0, reach: 0, burger: false });
+  markMoving(g, figure, legL, legR, armL, armR, burger);
   return g;
 }
 
