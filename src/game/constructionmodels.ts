@@ -3,6 +3,7 @@ import type { BufferGeometry, Material, Mesh } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { isMirrored, siteLayout, siteRand } from "./construction";
 import { box, cyl, mesh, toon } from "./models";
+import { markMoving } from "./bake";
 import type { AnimCtx } from "./models";
 import type { Prop } from "./scenes";
 import type { Zone } from "./world";
@@ -162,6 +163,7 @@ function towerCraneModel(seed: number, name: string, h: number, jib: number, fac
     line.scale.y = len;
     hook.position.y = -1.6 - len;
   };
+  markMoving(g, top, trolley, line, hook);
   return g;
 }
 
@@ -231,6 +233,7 @@ function mobileCraneModel(seed: number, name: string, facing: 1 | -1): Group {
     line.scale.y = len;
     hook.position.y = -len;
   };
+  markMoving(g, turret, boom, inner, tip, line, hook);
   return g;
 }
 
@@ -534,6 +537,7 @@ function workerModel(seed: number, name: string, route: Route, look: Look): Grou
     armL.rotation.z = holding ? 1.15 : -step * 0.8;
     armR.rotation.z = holding ? 1.15 : look.clipboard ? 0.9 : step * 0.8;
   };
+  markMoving(g, walker, figure, legL, legR, armL, armR, ...(plank ? [plank] : []));
   return g;
 }
 
