@@ -6,16 +6,18 @@ import {
   ColorManagement,
   DirectionalLight,
   Group,
+  HalfFloatType,
   HemisphereLight,
   LinearFilter,
   LinearMipmapLinearFilter,
   LinearSRGBColorSpace,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
   Object3D,
   OrthographicCamera,
-  PCFSoftShadowMap,
+  PCFShadowMap,
   PlaneGeometry,
   Plane,
   Raycaster,
@@ -32,6 +34,7 @@ import {
   WebGLRenderTarget,
   WebGLRenderer,
 } from "three";
+import { bakeStatic, canJoinAcross, joinAcross } from "./bake";
 import { attachLap } from "./drive";
 import { attachErrand } from "./errand";
 import { attachPowerPlay } from "./ppcycle";
@@ -56,8 +59,54 @@ const MAX_RENDER_RATIO = 1.5;
 // ------------------------------------------------------------------ "cinematic miniature" post pass
 // A muted green/warm grade, vignette and film grain (heavier on the dark surface around the map), plus the focus blur.
 const POST_VS = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+
+// The focus blur, a gaussian over both axes (a 5x5 grid of taps, the one-dimensional weights multiplied), so that it is round, not
+// a vertical smear. It is drawn on its own at half the size (a quarter of the pixels: it is a blur, so nothing is lost), only while
+// it can be seen, and the grade below lays it over the picture.
+const BLUR_FS = `
+  uniform sampler2D tColor;
+  uniform vec2 texel; // of the full-size picture: the radius is in its pixels
+  uniform vec4 focusRect;
+  uniform float focusAmt;
+  uniform vec3 voidCol;
+  varying vec2 vUv;
+
+  vec3 scene(vec2 uv) {
+    vec4 t = texture2D(tColor, uv);
+    return t.rgb + (1.0 - t.a) * voidCol;
+  }
+
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+  }
+
+  void main() {
+    float outside = max(max(focusRect.x - vUv.x, vUv.x - focusRect.z), max(focusRect.y - vUv.y, vUv.y - focusRect.w));
+    float away = smoothstep(0.0, 0.16, outside) * focusAmt; // 0 inside the focused box, 1 well outside
+    float blur = away * 3.2; // radius in pixels
+    vec3 c = scene(vUv);
+    if (blur > 0.05) {
+      float offs[3] = float[3](0.0, 1.3846153846, 3.2307692308);
+      float wts[3] = float[3](0.2270270270, 0.3162162162, 0.0702702703);
+      c = vec3(0.0);
+      for (int j = -2; j <= 2; j++) {
+        for (int i = -2; i <= 2; i++) {
+          vec2 o = vec2(sign(float(i)) * offs[abs(i)], sign(float(j)) * offs[abs(j)]) * texel * blur;
+          c += scene(vUv + o) * (wts[abs(i)] * wts[abs(j)]);
+        }
+      }
+    }
+#ifdef DITHER
+    // (an 8-bit target rounds a smooth blur into bands, which the grade then brightens: a step of noise hides them)
+    c += (hash(gl_FragCoord.xy) + hash(gl_FragCoord.xy + 17.0) - 1.0) / 255.0;
+#endif
+    gl_FragColor = vec4(c, 1.0);
+  }
+`;
+
 const POST_FS = `
   uniform sampler2D tColor;
+  uniform sampler2D tBlur; // the blurred picture (BLUR_FS), at half the size
   uniform vec2 texel;
   uniform vec2 res;
   uniform vec4 focusRect; // focused project box in screen uv (minX, minY, maxX, maxY)
@@ -81,20 +130,12 @@ const POST_FS = `
     float outside = max(max(focusRect.x - vUv.x, vUv.x - focusRect.z), max(focusRect.y - vUv.y, vUv.y - focusRect.w));
     float away = smoothstep(0.0, 0.16, outside) * focusAmt; // 0 inside the focused box, 1 well outside
     float blur = away * 3.2; // radius in pixels
-    float bg = 1.0 - texture2D(tColor, vUv).a; // the scene clears to alpha 0, so this is how much of this pixel is the dark surface
-    // a gaussian over both axes (a 5x5 grid of taps, the one-dimensional weights multiplied), so the blur is round, not a vertical smear
-    vec3 c = scene(vUv);
-    if (blur > 0.05) {
-      float offs[3] = float[3](0.0, 1.3846153846, 3.2307692308);
-      float wts[3] = float[3](0.2270270270, 0.3162162162, 0.0702702703);
-      c = vec3(0.0);
-      for (int j = -2; j <= 2; j++) {
-        for (int i = -2; i <= 2; i++) {
-          vec2 o = vec2(sign(float(i)) * offs[abs(i)], sign(float(j)) * offs[abs(j)]) * texel * blur;
-          c += scene(vUv + o) * (wts[abs(i)] * wts[abs(j)]);
-        }
-      }
-    }
+    vec4 here = texture2D(tColor, vUv);
+    float bg = 1.0 - here.a; // the scene clears to alpha 0, so this is how much of this pixel is the dark surface
+    vec3 mid = here.rgb + bg * voidCol; // (this pixel, as scene(vUv) gives it)
+    // the blur, from its own pass (below a pixel of radius it is mostly the sharp picture: the half-size copy is a little softer)
+    vec3 c = mid;
+    if (blur > 0.05) c = mix(mid, texture2D(tBlur, vUv).rgb, clamp(blur / 1.5, 0.0, 1.0));
 
     // grade: slightly muted, warm highlights, cool green-teal shadows, a little contrast
     float l = dot(c, vec3(0.299, 0.587, 0.114));
@@ -120,8 +161,12 @@ const POST_FS = `
 
     // zoomed right into a photo: no grade at all (no muting, tint, exposure, vignette or grain), so the pixels on screen
     // are the photo's own; only the dimming away from it stays, for the margins round it
-    vec3 raw = scene(vUv) * (1.0 - 0.42 * away);
-    gl_FragColor = vec4(mix(c, raw, pure), 1.0);
+    vec3 raw = mid * (1.0 - 0.42 * away);
+    // A step of dither on the whole picture (a bell-shaped plus or minus one level of the 8-bit screen): the vignette, the dimming
+    // and the blur are smooth gradients, which the screen would round into bands. Not on the photo itself when zoomed right
+    // into it (its pixels are left as they are), only on the dimmed margins round it.
+    float dither = (hash(px + 41.0) + hash(px + 73.0) - 1.0) / 255.0 * (1.0 - pure * (1.0 - away));
+    gl_FragColor = vec4(mix(c, raw, pure) + dither, 1.0);
   }
 `;
 
@@ -279,6 +324,9 @@ export class Renderer3D {
   readonly camera = new OrthographicCamera(-1, 1, 1, -1, 1, 6000);
   private renderer: WebGLRenderer;
   private colorTarget: WebGLRenderTarget;
+  private blurTarget: WebGLRenderTarget; // half the size of `colorTarget`: the focus blur is drawn into it (see BLUR_FS)
+  private blurScene = new Scene();
+  private blurQuad: ShaderMaterial;
   private quadScene = new Scene();
   private quadCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private quad: ShaderMaterial;
@@ -291,7 +339,7 @@ export class Renderer3D {
   /** The pulsing halo round the racing area that says "start here" (`on` until the viewer opens something). */
   private invite: { mesh: Mesh; on: boolean; amount: number } | null = null;
   /** Per-model animation callbacks (see `userData.animate` in models.ts) grouped by zone. */
-  private animators: { fn: (c: AnimCtx) => void; zoneId: string }[] = [];
+  private animators: { fn: (c: AnimCtx) => void; zoneId: string; pauseOnHover: boolean }[] = [];
   /** Props that grow and move while their project is zoomed into (`Prop.focus`), with the placement they start from. */
   private focusProps: {
     model: Object3D;
@@ -344,6 +392,12 @@ export class Renderer3D {
   private slab!: Mesh;
   private width = 1;
   private height = 1;
+  private sun!: DirectionalLight;
+  private disposed = false;
+  /** What the last scene draw cost, kept because `renderer.info` is reset by the post pass that follows it (dev only). */
+  private drawn = { calls: 0, triangles: 0 };
+  /** How many meshes the props had when built, and how many are left once the static ones are joined (see bake.ts). */
+  private merged = { from: 0, to: 0 };
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -357,7 +411,8 @@ export class Renderer3D {
     // a material may carry its own clipping planes (the light table's film is cut off at the plate while it slides)
     this.renderer.localClippingEnabled = true;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = PCFSoftShadowMap;
+    // (three has dropped PCFSoftShadowMap and draws PCFShadowMap in its place, with a console warning: this is what it drew)
+    this.renderer.shadowMap.type = PCFShadowMap;
     // alpha 0 marks "nothing drawn here" in the scene target; the post pass uses it to grain the surface around the map
     this.renderer.setClearColor(new Color(VOID), 0);
 
@@ -370,11 +425,23 @@ export class Renderer3D {
       samples: 4, // multisampled, so edges are smooth rather than pixelated
     });
 
+    // 16 bits a channel where the GPU can draw into them (a smooth blur keeps its steps small; the 8-bit scene target it reads
+    // is already rounded, but this one would round it again before the grade brightens it), else 8 bits and a dither
+    const deep = this.renderer.extensions.has("EXT_color_buffer_float") || this.renderer.extensions.has("EXT_color_buffer_half_float");
+    this.blurTarget = new WebGLRenderTarget(1, 1, {
+      minFilter: LinearFilter,
+      magFilter: LinearFilter,
+      format: RGBAFormat,
+      type: deep ? HalfFloatType : UnsignedByteType,
+      depthBuffer: false,
+    });
+
     this.quad = new ShaderMaterial({
       vertexShader: POST_VS,
       fragmentShader: POST_FS,
       uniforms: {
         tColor: { value: this.colorTarget.texture },
+        tBlur: { value: this.blurTarget.texture },
         texel: { value: new Vector2(1, 1) },
         res: { value: new Vector2(1, 1) },
         focusRect: { value: new Vector4(0, 0, 0, 0) },
@@ -386,6 +453,17 @@ export class Renderer3D {
       depthWrite: false,
     });
     this.quadScene.add(new Mesh(new PlaneGeometry(2, 2), this.quad));
+    // the blur pass reads the same numbers as the grade (the uniforms are shared, so they are set once a frame)
+    const { tColor, texel, focusRect, focusAmt, voidCol } = this.quad.uniforms;
+    this.blurQuad = new ShaderMaterial({
+      vertexShader: POST_VS,
+      fragmentShader: BLUR_FS,
+      defines: deep ? {} : { DITHER: 1 },
+      uniforms: { tColor, texel, focusRect, focusAmt, voidCol },
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.blurScene.add(new Mesh(new PlaneGeometry(2, 2), this.blurQuad));
 
     this.dapple = dappleTexture();
     this.buildScene();
@@ -399,17 +477,24 @@ export class Renderer3D {
     // low warm sun from the front-left (long soft shadows toward the back-right) plus a cool sky fill
     scene.add(new HemisphereLight("#d8e4ff", "#8d826f", 0.95));
     scene.add(new AmbientLight("#ffffff", 0.22));
-    const sun = new DirectionalLight("#ffd9a6", 2.4);
+    const sun = (this.sun = new DirectionalLight("#ffd9a6", 2.4));
     sun.position.set(mapSize / 2 - 420, 300, mapSize / 2 + 380);
     sun.target.position.copy(this.center);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(4096, 4096);
     sun.shadow.radius = 4;
+    // The shadow map is fitted to what can cast a shadow onto what is seen, in the sun's own view (x across, y up it). The
+    // map is 768 across and tall, and the sun looks at it from the front-left, 28 degrees up, so the map's footprint there
+    // is 1084 x 630 (heights up to 260 added: the cranes are 78, and a zoomed project's props grow). The photography page,
+    // zoomed, shows the region round the table, which reaches a little past the map to the right. The numbers below are
+    // that, with a margin, and the map has the same 3 texels a unit as the square 1360 x 1360 one it replaced, in about half
+    // the texels. (If the map, the sun or the tallest prop changes, work these out again: project the corners of the map's
+    // box onto the sun's right and up axes.)
     const cam = sun.shadow.camera;
-    cam.left = -680;
-    cam.right = 680;
-    cam.top = 680;
-    cam.bottom = -680;
+    cam.left = -590;
+    cam.right = 630;
+    cam.top = 490;
+    cam.bottom = -300;
+    sun.shadow.mapSize.set(3664, 2384); // (3 texels a unit across the 1220 x 790 window)
     cam.near = 50;
     cam.far = 1700;
     sun.shadow.bias = -0.0004;
@@ -452,9 +537,15 @@ export class Renderer3D {
 
     // scene props
     for (const zone of world.zones) {
+      const still: { model: Object3D; matrix: Matrix4 }[] = []; // props that stand still, to be joined into one group (below)
+      let stillMeshes = 0;
       for (const p of zone.scene.props) {
         const fp = p.solid;
         const model = sceneryModel(p.sprite, fp, p, world.zones) ?? createModel(p.sprite, fp, world.zones);
+        // the meshes of one material that move together are joined (a prop that moves says which of its parts do: see bake.ts)
+        const baked = bakeStatic(model);
+        this.merged.from += baked.from;
+        this.merged.to += baked.to;
         const cx = p.x;
         let cz = p.y - 2;
         if (p.angle !== undefined) cz = p.y;
@@ -464,6 +555,14 @@ export class Renderer3D {
         model.userData.baseY = p.elevation ?? 0;
         if (p.angle !== undefined) model.rotation.y = -p.angle;
         model.scale.setScalar(VISUAL_SCALE[p.sprite.split("-")[0]] ?? 1);
+        // a prop that never changes, and is not moved by anything else, is not added on its own: its meshes are joined with those of
+        // the others of its zone (they rise together on hover, so one group does for all)
+        if (!p.focus && !p.drive && !p.errand && !p.cycle && !p.ppCycle && canJoinAcross(model)) {
+          model.updateMatrix();
+          still.push({ model, matrix: model.matrix.clone() });
+          stillMeshes += baked.to;
+          continue;
+        }
         if (p.focus) {
           const wide = resolveFocus(p.focus);
           this.focusProps.push({
@@ -484,13 +583,27 @@ export class Renderer3D {
         if (p.cycle) attachCycle(model, p.cycle);
         if (p.ppCycle) attachPowerPlay(model, p.ppCycle);
         model.traverse((o) => {
-          if (typeof o.userData.animate === "function") this.animators.push({ fn: o.userData.animate, zoneId: zone.id });
+          if (typeof o.userData.animate === "function") {
+            this.animators.push({ fn: o.userData.animate, zoneId: zone.id, pauseOnHover: !!zone.scene.animation?.pauseOnHover });
+          }
         });
         map.add(model);
         this.pickables.push(model);
         let list = this.zoneModels.get(zone.id);
         if (!list) this.zoneModels.set(zone.id, (list = []));
         list.push(model);
+      }
+      if (still.length) {
+        const joined = joinAcross(still);
+        this.merged.to += joined.to - stillMeshes;
+        joined.group.userData.baseY = 0;
+        joined.group.userData.zoneId = zone.id;
+        joined.group.userData.sprite = "static"; // (what a click on one of them hits: the zone, which is all `pick` is used for)
+        map.add(joined.group);
+        this.pickables.push(joined.group);
+        let list = this.zoneModels.get(zone.id);
+        if (!list) this.zoneModels.set(zone.id, (list = []));
+        list.push(joined.group);
       }
     }
 
@@ -632,6 +745,7 @@ export class Renderer3D {
     this.canvas.style.width = "100%";
     this.canvas.style.height = "100%";
     this.colorTarget.setSize(this.width, this.height);
+    this.blurTarget.setSize(Math.max(1, Math.round(this.width / 2)), Math.max(1, Math.round(this.height / 2)));
     this.quad.uniforms.texel.value.set(1 / this.width, 1 / this.height);
     this.quad.uniforms.res.value.set(this.width, this.height);
     this.tall = this.width < this.height * 0.9;
@@ -858,6 +972,7 @@ export class Renderer3D {
   }
 
   private pulseNow = 0.5;
+  private scratch = new Vector3(); // (for the per-frame work in `draw`, which should not allocate)
 
   /** Where the halo is in its pulse, 0 (dimmest) to 1 (brightest): the note beside it breathes with this, so the two stay in step. */
   get invitePulse(): number {
@@ -991,6 +1106,7 @@ export class Renderer3D {
   }
 
   draw(time: number) {
+    if (this.disposed) return;
     const { renderer } = this;
 
     // ease the camera toward its target (a gentle exponential approach: quick start, soft landing)
@@ -1079,9 +1195,9 @@ export class Renderer3D {
     for (const a of this.animators) {
       const hover = this.hoverAmount.get(a.zoneId) ?? 0;
       const focus = this.zoneFocus.get(a.zoneId) ?? 0;
-      const pause = this.world.zones.find((z) => z.id === a.zoneId)?.scene.animation?.pauseOnHover && hover > 0.5;
+      const pause = a.pauseOnHover && hover > 0.5;
       if (!pause) this.frozenT.set(a.zoneId, time);
-      a.fn({ t: this.reduceMotion ? 0 : (this.frozenT.get(a.zoneId) ?? time), hover, focus, pixel });
+      a.fn({ t: this.reduceMotion ? 0 : (this.frozenT.get(a.zoneId) ?? time), hover, focus, pixel, view: this.camDir });
     }
 
     // where the focused project box sits on screen (uv), for the dim/blur outside it
@@ -1104,7 +1220,7 @@ export class Renderer3D {
         };
         if (pts) {
           // zoomed into one thing on the project (a photo on the table): keep that sharp, and let the rest fall back
-          for (const p of pts) take(p.clone().project(this.camera));
+          for (const p of pts) take(this.scratch.copy(p).project(this.camera));
         } else {
           for (const y of [0, zone.scene.height ?? 26]) {
             for (const [x, z] of [
@@ -1113,7 +1229,7 @@ export class Renderer3D {
               [a.x, a.y + a.h],
               [a.x + a.w, a.y + a.h],
             ]) {
-              take(new Vector3(x, y, z).project(this.camera));
+              take(this.scratch.set(x, y, z).project(this.camera));
             }
           }
         }
@@ -1128,8 +1244,20 @@ export class Renderer3D {
     // scene -> multisampled target, then the grade / grain pass to the screen
     renderer.setRenderTarget(this.colorTarget);
     renderer.render(this.scene, this.camera);
+    if (import.meta.env.DEV) this.drawn = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
+    // the blur is only there while a project is open, and not seen once the view is right up to a photo (the grade is skipped then)
+    if (this.focusAmt > 0.002 && this.quad.uniforms.pure.value < 1) {
+      renderer.setRenderTarget(this.blurTarget);
+      renderer.render(this.blurScene, this.quadCamera);
+    }
     renderer.setRenderTarget(null);
     renderer.render(this.quadScene, this.quadCamera);
+  }
+
+  /** Dev probe: draw calls (the shadow pass counts) and triangles of the last scene draw, and what the GPU is holding. */
+  stats() {
+    const { memory } = this.renderer.info;
+    return { ...this.drawn, geometries: memory.geometries, textures: memory.textures, meshes: { ...this.merged } };
   }
 
   /** Puts a texture on the GPU now, instead of in the first frame that draws with it. */
@@ -1142,6 +1270,7 @@ export class Renderer3D {
    * the first one the viewer sees does not have to. Asynchronous: the page keeps painting while it compiles.
    */
   async warm() {
+    if (this.disposed) return;
     try {
       await this.renderer.compileAsync(this.scene, this.camera);
     } catch {
@@ -1153,16 +1282,37 @@ export class Renderer3D {
       setTimeout(resolve, 60);
     });
     this.draw(this.lastTime);
+    // (the blur pass is drawn once as well: its shader compiled and its target made now, not the first time a project opens)
+    this.renderer.setRenderTarget(this.blurTarget);
+    this.renderer.render(this.blurScene, this.quadCamera);
+    this.renderer.setRenderTarget(null);
   }
 
+  /**
+   * Lets go of everything the scene put on the GPU, and the context itself: a new scene is built (with a context of its
+   * own) every time the page is visited, and a browser only allows so many at once.
+   */
   dispose() {
-    if (this.invite) {
-      const material = this.invite.mesh.material as MeshBasicMaterial;
-      material.map?.dispose();
-      material.dispose();
-      this.invite.mesh.geometry.dispose();
-    }
-    this.renderer.dispose();
+    this.disposed = true;
+    // (the geometries, materials and textures of the models; some are shared between scenes through the model caches, which
+    // is fine: what the GPU holds is per renderer, and the next scene uploads them again)
+    this.scene.traverse((o) => {
+      const m = o as Mesh;
+      if (!m.isMesh) return;
+      m.geometry.dispose();
+      for (const material of Array.isArray(m.material) ? m.material : [m.material]) {
+        for (const value of Object.values(material)) if ((value as Texture | null)?.isTexture) (value as Texture).dispose();
+        material.dispose();
+      }
+    });
+    for (const texture of [this.groundTex, this.edgeMask, this.dapple]) texture.dispose();
+    this.sun.shadow.map?.dispose();
+    this.quad.dispose();
+    this.blurQuad.dispose();
+    for (const scene of [this.quadScene, this.blurScene]) scene.traverse((o) => (o as Mesh).geometry?.dispose());
     this.colorTarget.dispose();
+    this.blurTarget.dispose();
+    this.renderer.dispose();
+    this.renderer.forceContextLoss();
   }
 }

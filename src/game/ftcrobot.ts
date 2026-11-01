@@ -1,4 +1,5 @@
 import { Group, Mesh, MeshBasicMaterial, PlaneGeometry, TorusGeometry } from "three";
+import { markMoving } from "./bake";
 import { box, canvasOf, cyl, fillRect, mesh, nearestTexture, toon } from "./models";
 
 // Team 6417's Into the Deep robot, at true scale: 15 in square on a field drawn at 1 px = 1.2 in, so the chassis is 12.5 px.
@@ -235,5 +236,6 @@ export function robotModel(): Group {
   };
   g.userData.pose = pose;
   pose({ ...STOWED, spin: 0, carrying: false, carryColor: YELLOW, slide: 1 });
+  markMoving(g, shoulder, ...stages, wrist, head, paddle, sample);
   return g;
 }

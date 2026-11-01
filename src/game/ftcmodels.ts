@@ -3,6 +3,7 @@ import {
   CanvasTexture,
   CylinderGeometry,
   DoubleSide,
+  FrontSide,
   Group,
   LinearFilter,
   Mesh,
@@ -12,6 +13,7 @@ import {
   Vector3,
 } from "three";
 import { FLOOR } from "./ftc";
+import { markMoving } from "./bake";
 import { PP, PP_HEIGHT, TAKEN, ftcField, poleTop, submersibleSamples } from "./ftcfield";
 import { robotModel } from "./ftcrobot";
 import { ppCone, ppRobotModel } from "./ftcpprobot";
@@ -48,7 +50,7 @@ function strut(a: [number, number, number], b: [number, number, number], thick: 
 /** A flat picture facing +z (towards the camera), unlit so its pixels stay as drawn. */
 function picture(w: number, h: number, canvas: HTMLCanvasElement, twoSided = false): { plane: Mesh; tex: CanvasTexture } {
   const tex = nearestTexture(canvas);
-  const plane = new Mesh(new PlaneGeometry(w, h), new MeshBasicMaterial({ map: tex, side: twoSided ? DoubleSide : undefined }));
+  const plane = new Mesh(new PlaneGeometry(w, h), new MeshBasicMaterial({ map: tex, side: twoSided ? DoubleSide : FrontSide }));
   return { plane, tex };
 }
 
@@ -161,6 +163,7 @@ function ppJunction(level: "g" | "l" | "m" | "h", scoredCone?: string, placedInd
       pivot.quaternion.setFromUnitVectors(UP, dir);
       pivot.scale.setScalar(Math.max(0.001, p > 1 ? 2 - p : 1));
     };
+    markMoving(g, pivot);
   }
   return g;
 }
@@ -182,6 +185,7 @@ function ppStack(): Group {
     top.visible = p > 0.02;
     top.scale.setScalar(Math.max(0.001, p)); // it shrinks into the stack, not into its own middle
   };
+  markMoving(g, top);
   return g;
 }
 
@@ -195,6 +199,7 @@ function ppHumanCone(): Group {
     cone.visible = p > 0.02;
     cone.scale.setScalar(Math.max(0.001, p));
   };
+  markMoving(g, cone);
   return g;
 }
 
@@ -342,6 +347,7 @@ function submersibleModel(w: number, d: number): Group {
       s.position.y = 1.2 + 0.8 * p; // it shrinks towards the floor, not towards its own middle
     });
   };
+  markMoving(g, ...taken);
 
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(box(1.4, TOP + 1 - 1.2, 1.4, STEEL, sx * hx, 1.2, sz * hz)); // posts
   for (const y of [1.2, TOP]) {
@@ -410,6 +416,7 @@ function basketModel(stripe: string, index: number, held: string[], dropped: str
     top.scale.setScalar(Math.max(0.001, p));
     top.position.y = 18.5 + 0.8 * p + (1 - p) * 3;
   };
+  markMoving(g, top);
   return g;
 }
 
@@ -475,6 +482,7 @@ function duckModel(): Group {
     const blink = t % 4.3 < 0.16;
     for (const e of eyes) e.scale.y = blink ? 0.15 : 1;
   };
+  markMoving(g, head, ...eyes);
   return g;
 }
 
@@ -606,6 +614,7 @@ function scoreboardModel(w: number, d: number): Group {
     shown = sec;
     draw(sec);
   };
+  markMoving(g); // (it only redraws its own texture)
   return g;
 }
 
@@ -639,6 +648,7 @@ function bannerModel(): Group {
     // a slight sway, in steps
     cloth.rotation.y = [0, 0.06, 0, -0.06][Math.floor(t * 1.4) % 4];
   };
+  markMoving(g, cloth);
   return g;
 }
 
