@@ -66,7 +66,9 @@ export function box(w: number, h: number, d: number, color: string | Material, x
 /** Like `box()`, with softly rounded edges (radius `r`) so it catches the light the way the car and cones do. */
 function rbox(w: number, h: number, d: number, color: string, x: number, y: number, z: number, r = 0.5): Mesh {
   const rr = Math.min(r, w / 2, h / 2, d / 2);
-  return mesh(new RoundedBoxGeometry(w, h, d, 2, rr), toon(color), x, y + h / 2, z);
+  // (a rounded box is 5 x 5 quads a face at 2 segments, 3 x 3 at 1: the radii here are half a pixel or so, which is a chamfer of one
+  // step to the eye, so only a bigger radius gets the second)
+  return mesh(new RoundedBoxGeometry(w, h, d, rr > 1 ? 2 : 1, rr), toon(color), x, y + h / 2, z);
 }
 
 export function cyl(rTop: number, rBottom: number, h: number, color: string, x: number, y: number, z: number, seg = 10): Mesh {

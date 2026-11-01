@@ -29,7 +29,7 @@ export function nameModel(): Group {
   const { shapes } = nameShapes(NAME.letters);
   const geometry = new ExtrudeGeometry(shapes, {
     depth: THICK,
-    curveSegments: 8,
+    curveSegments: 1, // (the outline is straight segments already: see `nameShapes`)
     bevelEnabled: true,
     bevelThickness: BEVEL,
     bevelSize: 1.1, // outwards, which also makes the hairline serifs a solid stroke
