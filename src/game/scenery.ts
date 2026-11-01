@@ -234,6 +234,8 @@ export class FilmRig {
    * counts as done). Resolves when all have been. Set by the table model (the images and textures are its own).
    */
   warmUp?: (upload: (texture: Texture) => void, onPhoto?: (done: number, total: number) => void) => Promise<void>;
+  /** Lets go of the photos' textures and decoded bitmaps (the scene is being taken down). Set by the table model. */
+  dispose?: () => void;
   /** Whether the gallery is open (set by the camera model): the idle pass is quicker then. */
   isOpen = false;
   /**
@@ -913,6 +915,10 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
   plate.rotation.x = -Math.PI / 2;
   plate.position.y = Y_PLATE;
   top.add(plate);
+  // Everything laid on the plate (the film, the photos, their numbers, the outline and the places to click) goes in `layer`,
+  // which is stretched along the table's depth to make up for the slant it is seen at (see `animate`, below).
+  const layer = new Group();
+  top.add(layer);
 
   // ---- the photos: plain data, loaded for the page that is showing (and the next)
   const photos: ZonePhoto[] = zone?.photos ?? [];
@@ -942,6 +948,9 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
   const clipL = new Plane();
   const clipR = new Plane();
   const clip = [clipL, clipR];
+  const across = new Vector3(); // (scratch for the planes, rebuilt every frame)
+  const edge = new Vector3();
+  const depth = new Vector3();
   // The map's black and white is made as the film is drawn, not baked: one pair of values, shared by every film material
   // (`gray` 1 = black and white .. 0 = colour, `dim` = brightness), set each frame from how lit the table is. So the live
   // layers are what the map shows too, and the page slides there exactly as it does open.
@@ -1038,7 +1047,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
       m.rotation.x = -Math.PI / 2;
       m.position.set(cx, y, cz);
       m.renderOrder = order;
-      top.add(m);
+      layer.add(m);
       return m;
     };
     const meshes = { base: plane(mats.base, Y_BASE, 4), haze: plane(mats.haze, Y_HAZE, 6, 1.04) };
@@ -1073,7 +1082,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     m.renderOrder = 5;
     m.visible = false;
     m.userData.noPick = true; // the slot's own plane is what a click lands on
-    top.add(m);
+    layer.add(m);
     // the photo that was here before: just under this one, so a new photo fades in over it
     const ghostMat = grey(
       new MeshBasicMaterial({
@@ -1090,7 +1099,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     ghost.renderOrder = 4.5;
     ghost.visible = false;
     ghost.userData.noPick = true;
-    top.add(ghost);
+    layer.add(ghost);
     photoPlanes.push({ mesh: m, mat, ready: false, src: null, amt: 1, ghost, ghostMat, ghostSrc: null, ghostA: 0, ghostT: 0 });
   }
   // the frame numbers, each on a little canvas of its own
@@ -1110,7 +1119,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     m.renderOrder = 4.2;
     m.visible = false;
     m.userData.part = "film";
-    top.add(m);
+    layer.add(m);
     numberPlates.push({ canvas, tex, mat, mesh: m });
     // the number that was there, for the page sliding out (a copy of the canvas, taken as the slide starts)
     const gCanvas = mkCanvas(b.fw * NUM_SCALE, NUM_H * NUM_SCALE);
@@ -1125,7 +1134,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     gm.renderOrder = 4.2;
     gm.visible = false;
     gm.userData.noPick = true;
-    top.add(gm);
+    layer.add(gm);
     numberGhosts.push({ canvas: gCanvas, tex: gTex, mat: gMat, mesh: gm });
   }
   // Textures for the images on the page (and the next), made when an image has arrived and let go of when no longer near.
@@ -1196,7 +1205,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     m.renderOrder = 7;
     m.userData.part = "slot";
     m.userData.slot = slot;
-    top.add(m);
+    layer.add(m);
     slotMeshes.push(m);
   }
   /**
@@ -1209,15 +1218,13 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     const m = slotMeshes[slot];
     const cell = cellOf[slot];
     const f = fitInWindow(cell, rig.aspects[index] ?? 4 / 3);
-    m.updateWorldMatrix(true, false);
+    top.updateWorldMatrix(true, false);
     const hw = (f.w * s) / 2;
     const hh = cell.ww > cell.wh ? (cell.wh / 2 + BAND) * s : (f.h * s) / 2;
-    return [
-      new Vector3(-hw, -hh, 0).applyMatrix4(m.matrixWorld),
-      new Vector3(hw, -hh, 0).applyMatrix4(m.matrixWorld),
-      new Vector3(hw, hh, 0).applyMatrix4(m.matrixWorld),
-      new Vector3(-hw, hh, 0).applyMatrix4(m.matrixWorld),
-    ];
+    // (placed without the layer's stretch: the view is framing the photo for when it is square-on, and the stretch is gone by
+    // then, so the corners are where the photo will be, not where it is while the view is still turning)
+    const corner = (x: number, y: number) => new Vector3(x, y, 0).applyEuler(m.rotation).add(m.position).applyMatrix4(top.matrixWorld);
+    return [corner(-hw, -hh), corner(hw, -hh), corner(hw, hh), corner(-hw, hh)];
   };
 
   // The first two pages' photos at their own resolution before anything is shown: the page that opens, and the one the lever
@@ -1265,6 +1272,15 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
         setTimeout(resolve, 60); // (a hidden tab does not run animation frames)
       });
     }
+  };
+
+  rig.dispose = () => {
+    for (const e of textures.values()) {
+      e.small.dispose();
+      e.full?.dispose();
+      e.bitmap?.close();
+    }
+    textures.clear();
   };
 
   // ---- painting a page
@@ -1435,7 +1451,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
       m.rotation.x = -Math.PI / 2;
       m.renderOrder = 8;
       m.userData.noPick = true;
-      top.add(m);
+      layer.add(m);
       return m;
     });
     /** Puts the outline round a rectangle centred at (cx, cz), `fw` x `fh`. */
@@ -1475,7 +1491,7 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
   let fade = 0; // 0..1: the page's film, dipping out and back in when it is changed
   let slide: { dir: 1 | -1; t: number } | null = null; // the film sliding to a new page (see below)
   let hazeSlide = 1; // 0..1: the haze, dipping out while the film slides
-  g.userData.animate = ({ t, hover, focus }: AnimCtx) => {
+  g.userData.animate = ({ t, hover, focus, view }: AnimCtx) => {
     rig.step(t);
     const instant = t <= 0; // reduced motion: the scene clock is held, so ease nothing
     const dt = Math.max(0, t - lastT);
@@ -1540,9 +1556,16 @@ function lightTableModel(w: number, d: number, zone: Zone | undefined, rig: Film
     // the clip planes: the plate's left and right edges, in the world as it is now
     top.updateWorldMatrix(true, false);
     const me = top.matrixWorld;
-    const across = new Vector3(me.elements[0], me.elements[1], me.elements[2]).normalize();
-    clipL.setFromNormalAndCoplanarPoint(across, new Vector3(-plateW / 2, 0, 0).applyMatrix4(me));
-    clipR.setFromNormalAndCoplanarPoint(across.clone().negate(), new Vector3(plateW / 2, 0, 0).applyMatrix4(me));
+    // The table is seen slantwise, which shortens its depth on the screen (the camera is 58 degrees up and the top 10 more
+    // toward it: its depth is seen at 68 degrees, 7% short), so every photo would look squashed. The layer is stretched by
+    // what is lost, which makes the photos the shape they were shot. Worked out from the view itself, so it fades away as the
+    // camera turns square-on to a photo (and the photo is not stretched then).
+    depth.set(me.elements[8], me.elements[9], me.elements[10]).normalize();
+    const along = depth.dot(view);
+    layer.scale.z = 1 / Math.max(0.7, Math.sqrt(Math.max(0, 1 - along * along)));
+    across.set(me.elements[0], me.elements[1], me.elements[2]).normalize();
+    clipL.setFromNormalAndCoplanarPoint(across, edge.set(-plateW / 2, 0, 0).applyMatrix4(me));
+    clipR.setFromNormalAndCoplanarPoint(across.negate(), edge.set(plateW / 2, 0, 0).applyMatrix4(me));
     // Photos at their own resolution, once the table is hovered or opened: one plane a frame (a mipmapped upload each), so
     // a page's six never land in one frame; a page that has just slid in sharpens within a few frames of arriving.
     if (hover > 0.5 || focus > 0.02 || looking) {
