@@ -15,7 +15,7 @@ import {
   MeshLambertMaterial,
   Object3D,
   OrthographicCamera,
-  PCFSoftShadowMap,
+  PCFShadowMap,
   PlaneGeometry,
   Plane,
   Raycaster,
@@ -32,6 +32,7 @@ import {
   WebGLRenderTarget,
   WebGLRenderer,
 } from "three";
+import { bakeStatic } from "./bake";
 import { attachLap } from "./drive";
 import { attachErrand } from "./errand";
 import { attachCycle } from "./robotcycle";
@@ -346,6 +347,8 @@ export class Renderer3D {
   private disposed = false;
   /** What the last scene draw cost, kept because `renderer.info` is reset by the post pass that follows it (dev only). */
   private drawn = { calls: 0, triangles: 0 };
+  /** How many meshes the props had when built, and how many are left once the static ones are joined (see bake.ts). */
+  private merged = { from: 0, to: 0 };
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -359,7 +362,8 @@ export class Renderer3D {
     // a material may carry its own clipping planes (the light table's film is cut off at the plate while it slides)
     this.renderer.localClippingEnabled = true;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = PCFSoftShadowMap;
+    // (three has dropped PCFSoftShadowMap and draws PCFShadowMap in its place, with a console warning: this is what it drew)
+    this.renderer.shadowMap.type = PCFShadowMap;
     // alpha 0 marks "nothing drawn here" in the scene target; the post pass uses it to grain the surface around the map
     this.renderer.setClearColor(new Color(VOID), 0);
 
@@ -464,6 +468,12 @@ export class Renderer3D {
       for (const p of zone.scene.props) {
         const fp = p.solid;
         const model = sceneryModel(p.sprite, fp, p, world.zones) ?? createModel(p.sprite, fp, world.zones);
+        // a prop that never changes has the meshes of one material joined (those with motion attached, or posed, are left)
+        if (!p.drive && !p.errand && !p.cycle) {
+          const baked = bakeStatic(model);
+          this.merged.from += baked.from;
+          this.merged.to += baked.to;
+        }
         const cx = p.x;
         let cz = p.y - 2;
         if (p.angle !== undefined) cz = p.y;
@@ -1105,7 +1115,7 @@ export class Renderer3D {
   /** Dev probe: draw calls (the shadow pass counts) and triangles of the last scene draw, and what the GPU is holding. */
   stats() {
     const { memory } = this.renderer.info;
-    return { ...this.drawn, geometries: memory.geometries, textures: memory.textures };
+    return { ...this.drawn, geometries: memory.geometries, textures: memory.textures, meshes: { ...this.merged } };
   }
 
   /** Puts a texture on the GPU now, instead of in the first frame that draws with it. */

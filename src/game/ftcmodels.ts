@@ -3,6 +3,7 @@ import {
   CanvasTexture,
   CylinderGeometry,
   DoubleSide,
+  FrontSide,
   Group,
   LinearFilter,
   Mesh,
@@ -118,7 +119,7 @@ function centred(ctx: CanvasRenderingContext2D, width: number, text: string, y: 
 /** A flat picture facing +z (towards the camera), unlit so its pixels stay as drawn. */
 function picture(w: number, h: number, canvas: HTMLCanvasElement, twoSided = false): { plane: Mesh; tex: CanvasTexture } {
   const tex = nearestTexture(canvas);
-  const plane = new Mesh(new PlaneGeometry(w, h), new MeshBasicMaterial({ map: tex, side: twoSided ? DoubleSide : undefined }));
+  const plane = new Mesh(new PlaneGeometry(w, h), new MeshBasicMaterial({ map: tex, side: twoSided ? DoubleSide : FrontSide }));
   return { plane, tex };
 }
 
