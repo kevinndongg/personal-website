@@ -57,8 +57,46 @@ const MAX_RENDER_RATIO = 1.5;
 // ------------------------------------------------------------------ "cinematic miniature" post pass
 // A muted green/warm grade, vignette and film grain (heavier on the dark surface around the map), plus the focus blur.
 const POST_VS = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+
+// The focus blur, a gaussian over both axes (a 5x5 grid of taps, the one-dimensional weights multiplied), so that it is round, not
+// a vertical smear. It is drawn on its own at half the size (a quarter of the pixels: it is a blur, so nothing is lost), only while
+// it can be seen, and the grade below lays it over the picture.
+const BLUR_FS = `
+  uniform sampler2D tColor;
+  uniform vec2 texel; // of the full-size picture: the radius is in its pixels
+  uniform vec4 focusRect;
+  uniform float focusAmt;
+  uniform vec3 voidCol;
+  varying vec2 vUv;
+
+  vec3 scene(vec2 uv) {
+    vec4 t = texture2D(tColor, uv);
+    return t.rgb + (1.0 - t.a) * voidCol;
+  }
+
+  void main() {
+    float outside = max(max(focusRect.x - vUv.x, vUv.x - focusRect.z), max(focusRect.y - vUv.y, vUv.y - focusRect.w));
+    float away = smoothstep(0.0, 0.16, outside) * focusAmt; // 0 inside the focused box, 1 well outside
+    float blur = away * 3.2; // radius in pixels
+    vec3 c = scene(vUv);
+    if (blur > 0.05) {
+      float offs[3] = float[3](0.0, 1.3846153846, 3.2307692308);
+      float wts[3] = float[3](0.2270270270, 0.3162162162, 0.0702702703);
+      c = vec3(0.0);
+      for (int j = -2; j <= 2; j++) {
+        for (int i = -2; i <= 2; i++) {
+          vec2 o = vec2(sign(float(i)) * offs[abs(i)], sign(float(j)) * offs[abs(j)]) * texel * blur;
+          c += scene(vUv + o) * (wts[abs(i)] * wts[abs(j)]);
+        }
+      }
+    }
+    gl_FragColor = vec4(c, 1.0);
+  }
+`;
+
 const POST_FS = `
   uniform sampler2D tColor;
+  uniform sampler2D tBlur; // the blurred picture (BLUR_FS), at half the size
   uniform vec2 texel;
   uniform vec2 res;
   uniform vec4 focusRect; // focused project box in screen uv (minX, minY, maxX, maxY)
@@ -85,19 +123,9 @@ const POST_FS = `
     vec4 here = texture2D(tColor, vUv);
     float bg = 1.0 - here.a; // the scene clears to alpha 0, so this is how much of this pixel is the dark surface
     vec3 mid = here.rgb + bg * voidCol; // (this pixel, as scene(vUv) gives it)
-    // a gaussian over both axes (a 5x5 grid of taps, the one-dimensional weights multiplied), so the blur is round, not a vertical smear
+    // the blur, from its own pass (below a pixel of radius it is mostly the sharp picture: the half-size copy is a little softer)
     vec3 c = mid;
-    if (blur > 0.05) {
-      float offs[3] = float[3](0.0, 1.3846153846, 3.2307692308);
-      float wts[3] = float[3](0.2270270270, 0.3162162162, 0.0702702703);
-      c = vec3(0.0);
-      for (int j = -2; j <= 2; j++) {
-        for (int i = -2; i <= 2; i++) {
-          vec2 o = vec2(sign(float(i)) * offs[abs(i)], sign(float(j)) * offs[abs(j)]) * texel * blur;
-          c += scene(vUv + o) * (wts[abs(i)] * wts[abs(j)]);
-        }
-      }
-    }
+    if (blur > 0.05) c = mix(mid, texture2D(tBlur, vUv).rgb, clamp(blur / 1.5, 0.0, 1.0));
 
     // grade: slightly muted, warm highlights, cool green-teal shadows, a little contrast
     float l = dot(c, vec3(0.299, 0.587, 0.114));
@@ -282,6 +310,9 @@ export class Renderer3D {
   readonly camera = new OrthographicCamera(-1, 1, 1, -1, 1, 6000);
   private renderer: WebGLRenderer;
   private colorTarget: WebGLRenderTarget;
+  private blurTarget: WebGLRenderTarget; // half the size of `colorTarget`: the focus blur is drawn into it (see BLUR_FS)
+  private blurScene = new Scene();
+  private blurQuad: ShaderMaterial;
   private quadScene = new Scene();
   private quadCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private quad: ShaderMaterial;
@@ -380,11 +411,20 @@ export class Renderer3D {
       samples: 4, // multisampled, so edges are smooth rather than pixelated
     });
 
+    this.blurTarget = new WebGLRenderTarget(1, 1, {
+      minFilter: LinearFilter,
+      magFilter: LinearFilter,
+      format: RGBAFormat,
+      type: UnsignedByteType,
+      depthBuffer: false,
+    });
+
     this.quad = new ShaderMaterial({
       vertexShader: POST_VS,
       fragmentShader: POST_FS,
       uniforms: {
         tColor: { value: this.colorTarget.texture },
+        tBlur: { value: this.blurTarget.texture },
         texel: { value: new Vector2(1, 1) },
         res: { value: new Vector2(1, 1) },
         focusRect: { value: new Vector4(0, 0, 0, 0) },
@@ -396,6 +436,16 @@ export class Renderer3D {
       depthWrite: false,
     });
     this.quadScene.add(new Mesh(new PlaneGeometry(2, 2), this.quad));
+    // the blur pass reads the same numbers as the grade (the uniforms are shared, so they are set once a frame)
+    const { tColor, texel, focusRect, focusAmt, voidCol } = this.quad.uniforms;
+    this.blurQuad = new ShaderMaterial({
+      vertexShader: POST_VS,
+      fragmentShader: BLUR_FS,
+      uniforms: { tColor, texel, focusRect, focusAmt, voidCol },
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.blurScene.add(new Mesh(new PlaneGeometry(2, 2), this.blurQuad));
 
     this.dapple = dappleTexture();
     this.buildScene();
@@ -655,6 +705,7 @@ export class Renderer3D {
     this.canvas.style.width = "100%";
     this.canvas.style.height = "100%";
     this.colorTarget.setSize(this.width, this.height);
+    this.blurTarget.setSize(Math.max(1, Math.round(this.width / 2)), Math.max(1, Math.round(this.height / 2)));
     this.quad.uniforms.texel.value.set(1 / this.width, 1 / this.height);
     this.quad.uniforms.res.value.set(this.width, this.height);
     this.tall = this.width < this.height * 0.9;
@@ -1154,6 +1205,11 @@ export class Renderer3D {
     renderer.setRenderTarget(this.colorTarget);
     renderer.render(this.scene, this.camera);
     if (import.meta.env.DEV) this.drawn = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
+    // the blur is only there while a project is open, and not seen once the view is right up to a photo (the grade is skipped then)
+    if (this.focusAmt > 0.002 && this.quad.uniforms.pure.value < 1) {
+      renderer.setRenderTarget(this.blurTarget);
+      renderer.render(this.blurScene, this.quadCamera);
+    }
     renderer.setRenderTarget(null);
     renderer.render(this.quadScene, this.quadCamera);
   }
@@ -1186,6 +1242,10 @@ export class Renderer3D {
       setTimeout(resolve, 60);
     });
     this.draw(this.lastTime);
+    // (the blur pass is drawn once as well: its shader compiled and its target made now, not the first time a project opens)
+    this.renderer.setRenderTarget(this.blurTarget);
+    this.renderer.render(this.blurScene, this.quadCamera);
+    this.renderer.setRenderTarget(null);
   }
 
   /**
@@ -1208,8 +1268,10 @@ export class Renderer3D {
     for (const texture of [this.groundTex, this.edgeMask, this.dapple]) texture.dispose();
     this.sun.shadow.map?.dispose();
     this.quad.dispose();
-    this.quadScene.traverse((o) => (o as Mesh).geometry?.dispose());
+    this.blurQuad.dispose();
+    for (const scene of [this.quadScene, this.blurScene]) scene.traverse((o) => (o as Mesh).geometry?.dispose());
     this.colorTarget.dispose();
+    this.blurTarget.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
   }
