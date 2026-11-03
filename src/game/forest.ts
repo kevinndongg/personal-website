@@ -33,15 +33,14 @@ import { toon } from "./models";
 import type { Rect } from "./scenes";
 
 /**
- * A preview of the whole scene standing in a forest, the project yard being a small clearing in it (switched on with `?forest`
- * on the home page; `?forest=grass` also turns the yard's asphalt into grass). Nothing here is part of the map: it is only
- * scenery round it, drawn in the map's own group so that it zooms with it.
+ * A preview of the projects living in a forest instead of on a square yard (switched on with `?forest` on the home page;
+ * `?forest=grass` for a lawn clearing instead of packed earth). The map's tiles and outlines are gone (see `buildGroundLayer`'s
+ * `bare`): this is the floor they stand on, a clearing that follows the projects and is not a rectangle, and what grows round
+ * them. Nothing here is part of the map as such, it is scenery in the map's own group, so that it zooms with it.
  *
- *  - `yard`: the asphalt stays, ringed by a worn dirt apron, then grass, then trees.
- *  - `grass`: the whole clearing is a meadow (the ground layer paints grass: see `buildGroundLayer`).
- *
- * Big trees stand well apart (a few to a screen), a dirt path winds in from the front, and there is a small camp at the east edge:
- * a fire, a tent, stumps to sit on, a pile of logs, lanterns and a string of lights over the path.
+ * Wide-crowned trees stand far apart, never where their crown would hide a project; a dirt path comes in from the front to the
+ * name; and there is a small camp in the quietest corner: a fire, a tent, stumps to sit on, a pile of logs, lanterns, and a
+ * string of lights over the path.
  */
 export type ForestStyle = "yard" | "grass";
 
@@ -52,7 +51,13 @@ export interface Forest {
   dispose(): void;
 }
 
-/** How far past the yard the trees (and the floor texture) reach, in world px. Past it the floor is nearly black. */
+/** What the forest needs to know of a project: where it stands. */
+export interface ForestZone {
+  kind: string;
+  area: Rect;
+}
+
+/** How far past the projects the trees (and the floor texture) reach, in world px. Past it the floor is nearly black. */
 export const FOREST_REACH = 230;
 const TAU = Math.PI * 2;
 
@@ -97,35 +102,57 @@ function smooth(x: number, a: number, b: number) {
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
-/**
- * How far a point is outside the yard, in px (negative inside it), with the edge made ragged so the clearing is not a
- * rectangle: the floor texture and the tree placement both read this, so the trees keep to the line the floor draws.
- */
-function clearingDist(x: number, z: number, mapSize: number) {
-  const h = mapSize / 2;
-  const qx = Math.abs(x - h) - h;
-  const qz = Math.abs(z - h) - h;
-  const sd = Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0);
-  return sd + (vnoise(x / 38, z / 38, 3) - 0.5) * 22 + (vnoise(x / 11, z / 11, 5) - 0.5) * 7;
+/** Signed distance from a point to a rectangle (negative inside it). */
+function rectSdf(x: number, z: number, r: Rect) {
+  const qx = Math.abs(x - (r.x + r.w / 2)) - r.w / 2;
+  const qz = Math.abs(z - (r.y + r.h / 2)) - r.h / 2;
+  return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0);
 }
 
 // ------------------------------------------------------------------ where things are
 
-/** The path in from the front of the map and the camp on its east side, shared by the floor, the trees and the props. */
-interface Layout {
+/** The path in from the front of the map to the name in the middle of it. */
+interface PathLayout {
   mapSize: number;
-  pathX: number;
+  /** Where the path ends: just south of the name. */
+  hub: { x: number; z: number };
+  /** Where it passes between the projects along the front. */
+  gapX: number;
+  /** The top of those projects: the path has reached `gapX` by here. */
+  rowTop: number;
+}
+
+/** The path and the camp, shared by the floor, the trees and the props. */
+interface Layout extends PathLayout {
   camp: { x: number; z: number };
 }
 
-/** The middle of the widest gap between the projects along the front edge: the path comes in there. */
-function widestGap(mapSize: number, areas: Rect[]): number {
+/** The path's middle `z` px down the map: from the name, over to the gap in the front row, then wandering off south. */
+function pathCenter(p: PathLayout, z: number) {
+  const t = smooth(z, p.hub.z, Math.max(p.hub.z + 1, p.rowTop - 30));
+  const wander = 20 * Math.sin((z - p.mapSize) / 52) * smooth(z, p.mapSize, p.mapSize + 80);
+  return lerp(p.hub.x, p.gapX, t) + wander;
+}
+
+function pathHalfWidth(dz: number) {
+  return lerp(8.5, 5, smooth(dz, 0, 170));
+}
+
+/** How far a point is beyond the path's edge (negative on the path), or past its end at the name. */
+function pathGap(p: PathLayout, x: number, z: number) {
+  const lateral = Math.abs(x - pathCenter(p, z)) * 0.93 - pathHalfWidth(z - p.mapSize);
+  return Math.max(lateral, p.hub.z - z);
+}
+
+function pathLayout(mapSize: number, zones: ForestZone[]): PathLayout {
+  // the name stands in the middle of the map: the path ends at its front edge
+  const name = zones.find((z) => z.kind === "about")?.area;
+  const hub = name ? { x: name.x + name.w / 2, z: name.y + name.h + 12 } : { x: mapSize / 2, z: mapSize / 2 };
+  // the widest gap between the projects of the front row, where the path passes through them
+  const row = zones.map((z) => z.area).filter((a) => a.y + a.h > mapSize - 110);
+  const spans = row.map((a) => [a.x, a.x + a.w] as const).sort((p, q) => p[0] - q[0]);
   const lo = 40;
   const hi = mapSize - 40;
-  const spans = areas
-    .filter((a) => a.y + a.h > mapSize - 110)
-    .map((a) => [a.x, a.x + a.w] as const)
-    .sort((p, q) => p[0] - q[0]);
   let best = { w: 0, c: mapSize / 2 };
   let cursor = lo;
   for (const [s, e] of spans) {
@@ -133,30 +160,66 @@ function widestGap(mapSize: number, areas: Rect[]): number {
     cursor = Math.max(cursor, e);
   }
   if (hi - cursor > best.w) best = { w: hi - cursor, c: (hi + cursor) / 2 };
-  return best.c;
+  return { mapSize, hub, gapX: best.c, rowTop: row.length ? Math.min(...row.map((a) => a.y)) : mapSize - 150 };
 }
 
-/** Where the path runs `dz` px south of the yard's front edge: straight at the edge, then wandering. */
-function pathCenter(l: Layout, dz: number) {
-  return l.pathX + 20 * Math.sin(dz / 52) * smooth(dz, 6, 80);
+/** The camp goes where there is the most room: far from every project and from the path, leaning east. */
+function pickCamp(p: PathLayout, zones: ForestZone[]) {
+  const { mapSize } = p;
+  let best = { score: -1, x: 0, z: 0 };
+  for (let z = mapSize * 0.25; z <= mapSize * 0.8; z += 16) {
+    for (let x = mapSize * 0.45; x <= mapSize - 50; x += 16) {
+      let s = 999;
+      for (const zone of zones) s = Math.min(s, rectSdf(x, z, zone.area));
+      s = Math.min(s, pathGap(p, x, z) + 20) + (x / mapSize) * 10;
+      if (s > best.score) best = { score: s, x, z };
+    }
+  }
+  // (no room inside the map: it goes just outside it, on the east side)
+  return best.score >= 75 ? { x: best.x, z: best.z } : { x: mapSize + 70, z: mapSize * 0.5 };
 }
 
-function pathHalfWidth(dz: number) {
-  return lerp(8.5, 5, smooth(dz, 0, 170));
-}
-
-/** How far a point is beyond the path's edge (negative on the path); large anywhere that is not south of the yard. */
-function pathGap(l: Layout, x: number, z: number) {
-  const dz = z - l.mapSize;
-  if (dz < -8) return 999;
-  return Math.abs(x - pathCenter(l, dz)) * 0.93 - pathHalfWidth(dz);
+/**
+ * How far a point is outside the clearing, in px (negative inside it): the projects' areas with a margin, melted together at
+ * their corners, and the camp, with the edge made ragged. The floor texture and the tree placement both read this, so the trees
+ * keep to the line the floor draws. The smooth part is worked out once on a coarse grid.
+ */
+function clearingField(mapSize: number, zones: ForestZone[], camp: { x: number; z: number }) {
+  const pad = FOREST_REACH + 4;
+  const step = 4;
+  const n = Math.ceil((mapSize + 2 * pad) / step) + 1;
+  const grid = new Float32Array(n * n);
+  const K = 22; // how far the corners melt together
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const x = i * step - pad;
+      const z = j * step - pad;
+      let sum = Math.exp(-(Math.hypot(x - camp.x, z - camp.z) - 44) / K);
+      for (const zone of zones) sum += Math.exp(-rectSdf(x, z, zone.area) / K);
+      grid[j * n + i] = -K * Math.log(sum + 1e-12) - 18;
+    }
+  }
+  return (x: number, z: number) => {
+    const fx = Math.min(n - 1.001, Math.max(0, (x + pad) / step));
+    const fz = Math.min(n - 1.001, Math.max(0, (z + pad) / step));
+    const i = Math.floor(fx);
+    const j = Math.floor(fz);
+    const u = fx - i;
+    const v = fz - j;
+    const a = grid[j * n + i];
+    const b = grid[j * n + i + 1];
+    const c = grid[(j + 1) * n + i];
+    const d = grid[(j + 1) * n + i + 1];
+    const smoothPart = a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+    return smoothPart + (vnoise(x / 38, z / 38, 3) - 0.5) * 22 + (vnoise(x / 11, z / 11, 5) - 0.5) * 7;
+  };
 }
 
 // ------------------------------------------------------------------ the forest floor
 
 type RGB = [number, number, number];
-const DIRT: RGB = [0x7b, 0x65, 0x46];
-const PATH: RGB = [0x8a, 0x72, 0x4f];
+const EARTH: RGB = [0x6c, 0x59, 0x3f];
+const PATH: RGB = [0x9a, 0x82, 0x5c];
 const GRASS: RGB = [0x44, 0x70, 0x3a];
 const MOSS: RGB = [0x27, 0x44, 0x2a];
 const DEEP: RGB = [0x16, 0x28, 0x1c];
@@ -171,8 +234,8 @@ function mix(out: RGB, a: RGB, b: RGB, t: number) {
   out[2] = a[2] + (b[2] - a[2]) * t;
 }
 
-/** The ground the trees stand on, one texture over the yard and `FOREST_REACH` past it: dirt, grass, moss, dusk, and the path. */
-function floorTexture(l: Layout, style: ForestStyle): CanvasTexture {
+/** The ground everything stands on, one texture over the map and `FOREST_REACH` past it: earth or lawn, grass, moss, dusk, and the path. */
+function floorTexture(l: Layout, field: (x: number, z: number) => number, style: ForestStyle): CanvasTexture {
   const { mapSize } = l;
   const pad = FOREST_REACH + 4;
   const size = Math.ceil(mapSize + 2 * pad);
@@ -181,7 +244,6 @@ function floorTexture(l: Layout, style: ForestStyle): CanvasTexture {
   const ctx = c.getContext("2d")!;
   const img = ctx.createImageData(size, size);
   const data = img.data;
-  const dirtW = style === "grass" ? 0 : 7;
   const col: RGB = [0, 0, 0];
   const tmp: RGB = [0, 0, 0];
   const pathCol: RGB = [0, 0, 0];
@@ -189,14 +251,16 @@ function floorTexture(l: Layout, style: ForestStyle): CanvasTexture {
     for (let px = 0; px < size; px++) {
       const x = px - pad;
       const z = py - pad;
-      const d = clearingDist(x, z, mapSize);
+      const d = field(x, z);
       const n = vnoise(x / 14, z / 14, 8);
-      // dirt next to the yard, grass beyond it, moss under the first trees, then deepening into the dark
-      mix(col, GRASS, MOSS, smooth(d, dirtW + 8, 55));
-      mix(col, col, DEEP, smooth(d, 55, 140));
+      // grass beyond the clearing, moss under the first trees, then deepening into the dark
+      mix(col, GRASS, MOSS, smooth(d, 10, 60));
+      mix(col, col, DEEP, smooth(d, 60, 140));
       mix(col, col, DARK, smooth(d, 140, FOREST_REACH));
-      if (dirtW > 0) {
-        mix(tmp, DIRT, col, smooth(d + (n - 0.5) * 5, dirtW - 1, dirtW + 4));
+      if (style === "yard") {
+        // packed earth where the projects stand, worn through the grass; ragged at the edge, with tufts coming through
+        const e = 1 - smooth(d + (n - 0.5) * 8, -3, 6);
+        mix(tmp, col, EARTH, e * (1 - 0.35 * smooth(vnoise(x / 9, z / 9, 21), 0.62, 0.8)));
         col[0] = tmp[0];
         col[1] = tmp[1];
         col[2] = tmp[2];
@@ -221,7 +285,7 @@ function floorTexture(l: Layout, style: ForestStyle): CanvasTexture {
       }
       // soft patches and a grain of single pixels; needles and leaf litter, mostly under the trees
       const patch = 1 + (n - 0.5) * 0.24 + (vnoise(x / 40, z / 40, 2) - 0.5) * 0.14 + (hash(px, py) - 0.5) * 0.07;
-      if (d > 12 && pg > 4 && hash(px, py, 7) < 0.025) mix(col, col, LITTER, 0.5);
+      if (d > 10 && pg > 4 && hash(px, py, 7) < 0.025) mix(col, col, LITTER, 0.5);
       const i = (py * size + px) * 4;
       data[i] = Math.min(255, col[0] * patch);
       data[i + 1] = Math.min(255, col[1] * patch);
@@ -279,7 +343,7 @@ function moved(geo: BufferGeometry, x: number, y: number, z: number): BufferGeom
   return geo.translate(x, y, z);
 }
 
-/** A conifer about 38 high: a trunk and three stacked skirts, darker at the bottom. Scaled per tree. */
+/** A conifer about 38 high and 26 across: a trunk and three stacked skirts, darker at the bottom. Scaled per tree. */
 function pineGeometry(): BufferGeometry {
   const skirt = (r: number, h: number, base: number, hex: string) =>
     painted(moved(new ConeGeometry(r, h, 8, 1, true), 0, base + h / 2, 0), hex);
@@ -291,16 +355,20 @@ function pineGeometry(): BufferGeometry {
   ])!;
 }
 
-/** A broadleaf about 38 high: a trunk and a clump of four round blobs. */
-function oakGeometry(): BufferGeometry {
+/** A broadleaf about 52 high and 54 across: a thick trunk and a wide, lumpy crown of eight blobs. Scaled per tree. */
+function broadGeometry(): BufferGeometry {
   const blob = (r: number, x: number, y: number, z: number, hex: string) =>
     painted(moved(new IcosahedronGeometry(r, 1), x, y, z), hex);
   return mergeGeometries([
-    painted(moved(new CylinderGeometry(2, 3, 14, 6), 0, 7, 0), "#4d3622"),
-    blob(11, 0, 23, 0, "#2f6a2c"),
-    blob(8.5, 7, 18, 2, "#2a5f28"),
-    blob(8, -6.5, 19, -3, "#27582a"),
-    blob(7.5, 1, 31, -1, "#3d7c34"),
+    painted(moved(new CylinderGeometry(2.6, 4, 22, 7), 0, 11, 0), "#4d3622"),
+    blob(14, 0, 34, 0, "#2f6a2c"),
+    blob(12, 15, 29, 4, "#2a5f28"),
+    blob(12, -14, 30, -5, "#27582a"),
+    blob(11, 4, 29, 15, "#2d6429"),
+    blob(11, -5, 31, -14, "#2a5f28"),
+    blob(10, 0, 43, 0, "#3d7c34"),
+    blob(8, 17, 36, -8, "#35722f"),
+    blob(8, -17, 35, 9, "#306b2c"),
   ])!;
 }
 
@@ -365,6 +433,8 @@ interface Placed {
   z: number;
   /** Height above the ground (a log in a pile). */
   y?: number;
+  /** How far its crown reaches (a tree), for the patch of shade under it. */
+  r?: number;
   yaw: number;
   sx: number;
   sy: number;
@@ -415,25 +485,27 @@ function disks(mat: Material, spots: { x: number; y: number; z: number; r: numbe
 // ------------------------------------------------------------------ the forest
 
 /**
- * The forest: a floor, a few big trees well apart, and the cosy things at the clearing's edge. The camera looks over the front
- * of the map, so the front is kept low (trees there are small and shrubs fill in, and a tall trunk would hide the projects);
- * the big ones stand behind and beside the yard, taller the further out they are, pines and oaks in groves, a few oaks turned to
- * autumn. Trees cast no shadow (the sun's shadow map is fitted to the map), so each gets a soft dark patch on the ground instead.
+ * The forest: a floor, a few wide-crowned trees far apart, and the cosy things at the clearing's edge.
+ *
+ * The camera looks over the front of the map from above, so a tree hides the ground north of it: a crown at height h covers
+ * the ground `0.625 h` further north, and a building stands up 28 px or so of ground-equivalent besides. A tree is only put where
+ * that patch (see `hides`) misses every project, and shrunk until it does, so the ones near the projects are small and the big
+ * ones stand further out, behind and beside. Trees cast no shadow (the sun's shadow map is fitted to the map), so each gets a soft
+ * dark patch on the ground instead.
  */
-export function buildForest(mapSize: number, style: ForestStyle, areas: Rect[], seed = 11): Forest {
+export function buildForest(mapSize: number, style: ForestStyle, zones: ForestZone[], seed = 11): Forest {
   const rand = rng(seed);
   const group = new Group();
   group.name = "forest";
-  const layout: Layout = {
-    mapSize,
-    pathX: widestGap(mapSize, areas),
-    camp: { x: mapSize + 38, z: mapSize * 0.55 },
-  };
+  const path = pathLayout(mapSize, zones);
+  const layout: Layout = { ...path, camp: pickCamp(path, zones) };
   const { camp } = layout;
+  const field = clearingField(mapSize, zones, camp);
+  const areas = zones.map((z) => z.area);
 
   // the floor under it all, and a dark plane past its end for wide and tall screens
   const total = mapSize + 2 * (FOREST_REACH + 4);
-  const floor = new Mesh(new PlaneGeometry(total, total), new MeshBasicMaterial({ map: floorTexture(layout, style) }));
+  const floor = new Mesh(new PlaneGeometry(total, total), new MeshBasicMaterial({ map: floorTexture(layout, field, style) }));
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(mapSize / 2, -0.4, mapSize / 2);
   floor.renderOrder = -3;
@@ -444,25 +516,42 @@ export function buildForest(mapSize: number, style: ForestStyle, areas: Rect[], 
   group.add(beyond, floor);
 
   const pines: Placed[] = [];
-  const oaks: Placed[] = [];
+  const broads: Placed[] = [];
   const bushes: Placed[] = [];
   const rocks: Placed[] = [];
   const logs: Placed[] = [];
   const stumps: Placed[] = [];
   const campDist = (x: number, z: number) => Math.hypot(x - camp.x, z - camp.z);
 
-  const addTree = (x: number, z: number, grow: number, r2: number, r3: number, r4: number, r5: number) => {
+  /** Would a tree here, with a crown `r` wide and `h` high, hide any project (or hang over one)? */
+  const hides = (x: number, z: number, r: number, h: number) =>
+    areas.some((a) => x + r > a.x - 6 && x - r < a.x + a.w + 6 && z + 0.6 * r + 28 > a.y - 6 && z - (0.625 * h + 0.5 * r) < a.y + a.h + 6);
+
+  /** Plants a tree of about size `grow` here, or a smaller one if that would hide a project, or none. */
+  const plant = (x: number, z: number, grow: number, r2: number, r3: number, r4: number, r5: number) => {
+    const pine = vnoise(x / 90, z / 90, 4) + (r4 - 0.5) * 0.5 > 0.62;
     const l = 0.85 + r3 * 0.3;
-    const pine = vnoise(x / 90, z / 90, 4) + (r4 - 0.5) * 0.5 > 0.45;
     const tint = new Color();
     if (pine) tint.setRGB(l * 0.92, l, l * 1.04);
     else if (r5 < 0.13) tint.setRGB(l * 2.6, l * 1.15, l * 0.4); // (turned to yellow and orange)
     else tint.setRGB(l * (0.9 + r3 * 0.2), l, l * 0.9);
-    (pine ? pines : oaks).push({ x, z, yaw: r2 * TAU, sx: grow * (0.8 + r5 * 0.15), sy: grow, tint });
+    const baseR = pine ? 13 : 26;
+    const baseH = pine ? 48 : 52;
+    for (const f of [1, 0.8, 0.62, 0.5]) {
+      const g = grow * f;
+      const r = baseR * g;
+      if (hides(x, z, r, baseH * g)) continue;
+      // (a pine is stretched up and a broadleaf spreads: wide crowns are the point)
+      const tree: Placed = pine
+        ? { x, z, r, yaw: r2 * TAU, sx: g * 0.95, sy: g * 1.25, tint }
+        : { x, z, r, yaw: r2 * TAU, sx: g * (0.92 + r5 * 0.16), sy: g * (0.9 + r3 * 0.2), tint };
+      (pine ? pines : broads).push(tree);
+      return;
+    }
   };
 
   // the big trees: a jittered grid with wide cells, thinned toward the far edge and into the groves' gaps
-  const CELL = 48;
+  const CELL = 110;
   for (let gz = -FOREST_REACH; gz < mapSize + FOREST_REACH; gz += CELL) {
     for (let gx = -FOREST_REACH; gx < mapSize + FOREST_REACH; gx += CELL) {
       // (every random number is drawn whether or not the spot is used, so the same forest comes back each time)
@@ -473,25 +562,19 @@ export function buildForest(mapSize: number, style: ForestStyle, areas: Rect[], 
       const r3 = rand();
       const r4 = rand();
       const r5 = rand();
-      const x = gx + (jx - 0.5) * CELL * 0.8;
-      const z = gz + (jz - 0.5) * CELL * 0.8;
-      const d = clearingDist(x, z, mapSize);
+      const x = gx + (jx - 0.5) * CELL * 0.75;
+      const z = gz + (jz - 0.5) * CELL * 0.75;
+      const d = field(x, z);
       if (d < 14 || d > FOREST_REACH) continue;
-      const keep = lerp(0.55, 0.9, smooth(d, 30, 80)) * (1 - 0.45 * smooth(d, 100, FOREST_REACH)) * (0.7 + 0.6 * vnoise(x / 80, z / 80, 9));
+      const keep = lerp(0.6, 0.9, smooth(d, 30, 80)) * (1 - 0.4 * smooth(d, 100, FOREST_REACH)) * (0.75 + 0.5 * vnoise(x / 120, z / 120, 9));
       if (r1 > keep) continue;
-      if (pathGap(layout, x, z) < 16 || campDist(x, z) < 52) continue;
-      // about 2-3 buildings high out in the woods, lower at the clearing's edge, and kept low in front (a front tree's tip must not
-      // climb past the yard's front edge on screen: the tilt means that height h hides 0.53 h of ground that is 0.85 d away)
-      const front = smooth(z, mapSize - 10, mapSize + 30);
-      let grow = lerp(1.5, 2.9, smooth(d, 25, 110)) * (0.85 + r2 * 0.3);
-      grow = lerp(grow, Math.min(grow, d / 28), front);
-      // and a crown must not hang over the yard
-      if (d < 13 * grow * 0.9 * 0.75 + 12) continue;
-      addTree(x, z, grow, r2, r3, r4, r5);
+      if (pathGap(layout, x, z) < 16 || campDist(x, z) < 70) continue;
+      // lower at the clearing's edge, tall (well past a building) out in the woods
+      plant(x, z, lerp(1.1, 2.2, smooth(d, 20, 110)) * (0.85 + r2 * 0.3), r2, r3, r4, r5);
     }
   }
 
-  // young trees, undergrowth, stumps, rocks and fallen logs at the clearing's edge
+  // young trees, undergrowth, stumps, rocks and fallen logs round the clearing
   const SMALL = 14;
   for (let gz = -90; gz < mapSize + 90; gz += SMALL) {
     for (let gx = -90; gx < mapSize + 90; gx += SMALL) {
@@ -504,17 +587,17 @@ export function buildForest(mapSize: number, style: ForestStyle, areas: Rect[], 
       const r5 = rand();
       const x = gx + (jx - 0.5) * SMALL;
       const z = gz + (jz - 0.5) * SMALL;
-      const d = clearingDist(x, z, mapSize);
+      const d = field(x, z);
       if (d < 5 || d > 90) continue;
       if (pathGap(layout, x, z) < 6 || campDist(x, z) < 40) continue;
       const clump = vnoise(x / 30, z / 30, 6);
       const l = 0.85 + r3 * 0.3;
-      if (r1 < 0.16 * clump * 2) {
+      if (r1 < 0.12 * clump * 2) {
         const s = 0.9 + r2 * 0.8;
         bushes.push({ x, z, yaw: r3 * TAU, sx: s, sy: s * 0.9, tint: new Color(l, l * 1.02, l * 0.92) });
-      } else if (r1 > 0.8 && r1 < 0.84 && d > 22) {
-        // a young tree, small enough to stand in front of the yard
-        addTree(x, z, Math.min(1.2, Math.max(0.45, d / 34)) * (0.8 + r2 * 0.4), r2, r3, r4, r5);
+      } else if (r1 > 0.8 && r1 < 0.825 && d > 22) {
+        // a young tree, small enough to stand close to a project
+        plant(x, z, Math.min(0.9, Math.max(0.4, d / 40)) * (0.8 + r2 * 0.4), r2, r3, r4, r5);
       } else if (r1 > 0.955 && r1 < 0.965 && d > 12) {
         const s = 0.9 + r2 * 0.4;
         stumps.push({ x, z, yaw: r3 * TAU, sx: s, sy: s, tint: new Color(l, l, l) });
@@ -543,16 +626,17 @@ export function buildForest(mapSize: number, style: ForestStyle, areas: Rect[], 
   [-2.4, 2.4].forEach((dz) => logs.push({ x: pile.x, z: pile.z + dz, y: 4.2, yaw: 0, sx: 1, sy: 1, tint: WHITE }));
   logs.push({ x: pile.x, z: pile.z, y: 8.4, yaw: 0, sx: 1, sy: 1, tint: WHITE });
 
-  // ---- lights: posts with a lantern along the path and by the tent, and a string of bulbs over the path's mouth
+  // ---- lights: posts with a lantern along the path and by the tent, and a string of bulbs over the path in the woods
   const posts: { x: number; z: number }[] = [];
   [18, 60, 102].forEach((dz, i) => {
-    posts.push({ x: pathCenter(layout, dz) + (i % 2 ? 1 : -1) * (pathHalfWidth(dz) + 8), z: mapSize + dz });
+    const z = mapSize + dz;
+    posts.push({ x: pathCenter(layout, z) + (i % 2 ? 1 : -1) * (pathHalfWidth(dz) + 8), z });
   });
   posts.push({ x: camp.x + 6, z: camp.z - 18 });
   const POST_H = 15;
   const poles: Placed[] = posts.map((p) => ({ x: p.x, z: p.z, yaw: 0, sx: 1, sy: 1, tint: WHITE }));
   const STRING_Z = mapSize + 40;
-  const stringMid = pathCenter(layout, 40);
+  const stringMid = pathCenter(layout, STRING_Z);
   const stringA = new Vector3(stringMid - 32, 44, STRING_Z);
   const stringB = new Vector3(stringMid + 32, 44, STRING_Z);
   const tallPoles: Placed[] = [stringA, stringB].map((p) => ({ x: p.x, z: p.z, yaw: 0, sx: 1, sy: 1, tint: WHITE }));
@@ -568,7 +652,7 @@ export function buildForest(mapSize: number, style: ForestStyle, areas: Rect[], 
   const treeMat = foliageMaterial();
   for (const mesh of [
     instances(pineGeometry(), treeMat, pines),
-    instances(oakGeometry(), treeMat, oaks),
+    instances(broadGeometry(), treeMat, broads),
     instances(bushGeometry(), treeMat, bushes),
     instances(rockGeometry(), treeMat, rocks),
     instances(logGeometry(), treeMat, logs),
@@ -592,7 +676,7 @@ export function buildForest(mapSize: number, style: ForestStyle, areas: Rect[], 
   });
   const patches = disks(
     shadowMat,
-    [...pines, ...oaks].map((t) => ({ x: t.x + 5 * t.sx, y: -0.3, z: t.z - 5 * t.sx, r: 12 * t.sx, stretch: 1.5, yaw: Math.PI / 4 }))
+    [...pines, ...broads].map((t) => ({ x: t.x + 0.2 * (t.r ?? 0), y: -0.3, z: t.z - 0.2 * (t.r ?? 0), r: 0.85 * (t.r ?? 0), stretch: 1.35, yaw: Math.PI / 4 }))
   );
   if (patches) {
     patches.renderOrder = -2;
