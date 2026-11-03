@@ -32,6 +32,13 @@ export const GROUND = {
   marker: "#f6d02a",
 };
 
+/** The yard as a meadow (the forest preview's `?forest=grass`): close to the grass the forest floor starts with, so they meet without a seam. */
+export const MEADOW = {
+  tiles: ["#5b8a3d", "#5f8f40"],
+  speck: ["#4a7630", "#78a24f"],
+  flower: ["#f4f1e6", "#f6d02a"],
+};
+
 export const CAR = {
   body: "#d8322c",
   bodyDark: "#8e1d1a",

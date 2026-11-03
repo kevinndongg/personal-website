@@ -39,6 +39,8 @@ import { attachLap } from "./drive";
 import { attachErrand } from "./errand";
 import { attachPowerPlay } from "./ppcycle";
 import { attachCycle } from "./robotcycle";
+import { buildForest } from "./forest";
+import type { ForestStyle } from "./forest";
 import { GROUND_MARGIN, buildGroundLayer } from "./ground";
 import { createModel, tireModel, woodTexture } from "./models";
 import type { AnimCtx } from "./models";
@@ -177,6 +179,18 @@ const POST_FS = `
 export type EdgeMode = "cut" | "slab" | "fade";
 const SLAB_H = 28; // thickness of the board in "slab" mode
 const VOID = "#1d1e24"; // the dark surface the map sits on
+
+/**
+ * Preview: the scene in a forest, the yard a clearing in it (`?forest`, or `?forest=grass` for a meadow instead of asphalt).
+ * Off unless asked for. The camera backs off by `FOREST_PAD` to take the first trees in, whose tops reach `FOREST_TOP`.
+ */
+const FOREST_PAD = 5 * TILE;
+const FOREST_TOP = 60;
+function forestParam(): ForestStyle | null {
+  if (typeof location === "undefined") return null;
+  const q = new URLSearchParams(location.search);
+  return q.has("forest") ? (q.get("forest") === "grass" ? "grass" : "yard") : null;
+}
 const SHADOW_PAD = 3 * TILE; // how far the drop shadow's texture reaches past the map
 
 /** Defaults for the hover effect on a project box (a scene can override via `scene.hover`). */
@@ -383,6 +397,7 @@ export class Renderer3D {
   private dapple: CanvasTexture;
   private mapSize: number;
   private edge: EdgeMode = "cut";
+  private forest: ForestStyle | null = null;
   private groundMesh!: Mesh;
   private catcherMesh!: Mesh;
   private leavesMesh!: Mesh;
@@ -466,9 +481,11 @@ export class Renderer3D {
     this.blurScene.add(new Mesh(new PlaneGeometry(2, 2), this.blurQuad));
 
     this.dapple = dappleTexture();
+    this.forest = forestParam();
     this.buildScene();
     const q = typeof location !== "undefined" ? new URLSearchParams(location.search).get("edge") : null;
-    this.setEdge(q === "slab" || q === "fade" ? q : "cut");
+    // (the forest's floor runs right up to the yard, so the board's side and the fade have no place in it)
+    this.setEdge(!this.forest && (q === "slab" || q === "fade") ? q : "cut");
   }
 
   private buildScene() {
@@ -507,7 +524,7 @@ export class Renderer3D {
 
     // ground: the 2D floor drawing as a smooth texture, a shadow-catching overlay and drifting leaf-shade
     // (the texture also holds a margin of plain asphalt past the map, which only "fade" mode reveals)
-    const tex = new CanvasTexture(buildGroundLayer(world));
+    const tex = new CanvasTexture(buildGroundLayer(world, this.forest === "grass"));
     tex.minFilter = LinearMipmapLinearFilter;
     tex.magFilter = LinearFilter;
     tex.generateMipmaps = true;
@@ -679,6 +696,9 @@ export class Renderer3D {
     this.slab = slab;
 
     this.edgeMask = fadeMaskTexture(mapSize + 2 * GROUND_MARGIN, mapSize);
+
+    // the preview forest goes in last, after the shadow flags above: it casts none and takes none
+    if (this.forest) map.add(buildForest(mapSize, this.forest));
   }
 
   /**
@@ -762,8 +782,8 @@ export class Renderer3D {
       minY = Infinity,
       maxY = -Infinity;
     // room around the map for whatever the edge adds: the fade margin, the board's side, the drop shadow
-    const pad = this.edge === "fade" ? GROUND_MARGIN : TILE * 1.25;
-    for (const y of [this.edge === "slab" ? -SLAB_H : 0, 45]) {
+    const pad = this.forest ? FOREST_PAD : this.edge === "fade" ? GROUND_MARGIN : TILE * 1.25;
+    for (const y of [this.edge === "slab" ? -SLAB_H : 0, this.forest ? FOREST_TOP : 45]) {
       for (const x of [-pad, mapSize + pad]) {
         for (const z of [-pad, mapSize + pad]) {
           const v = new Vector3(x, y, z).applyMatrix4(inv);
