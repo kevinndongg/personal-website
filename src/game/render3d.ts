@@ -114,6 +114,7 @@ const POST_FS = `
   uniform vec4 focusRect; // focused project box in screen uv (minX, minY, maxX, maxY)
   uniform float focusAmt;
   uniform float pure; // 0 the graded picture .. 1 the scene's own pixels (zoomed right into a photo)
+  uniform float golden; // 0 the usual grade .. 1 an amber cast over it (late afternoon)
   uniform vec3 voidCol;
   varying vec2 vUv;
 
@@ -144,6 +145,7 @@ const POST_FS = `
     c = mix(vec3(l), c, 0.86);
     c += vec3(0.010, 0.030, 0.026) * (1.0 - l);        // shadows lean green/teal
     c *= mix(vec3(1.0), vec3(1.07, 1.02, 0.90), l);     // highlights lean warm
+    c = mix(c, c * vec3(1.09, 0.985, 0.84), golden);    // late afternoon (the forest preview): the whole picture a little amber
     c = (c - 0.5) * 1.05 + 0.5;
     c *= 1.14; // a little exposure: the scene is lit low and warm, keep it from going muddy
 
@@ -279,14 +281,39 @@ function blurredRectTexture(total: number, inner: number, blur: number): CanvasT
   return new CanvasTexture(c);
 }
 
+/** A white rectangle with rounded, feathered edges, `w` x `h` units (the forest preview's hover glow, in place of a hard-edged square). */
+function softPadTexture(w: number, h: number, feather: number): CanvasTexture {
+  const k = 256 / Math.max(w, h);
+  const cw = Math.max(2, Math.round(w * k));
+  const ch = Math.max(2, Math.round(h * k));
+  const c = document.createElement("canvas");
+  c.width = cw;
+  c.height = ch;
+  const ctx = c.getContext("2d")!;
+  // as in blurredRectTexture: only the shadow is wanted, so the rectangle is drawn far off-canvas and its shadow cast back in
+  const far = cw * 4;
+  ctx.shadowColor = "#fff";
+  ctx.shadowBlur = feather * k;
+  ctx.shadowOffsetX = far;
+  const inset = feather * k * 0.9;
+  ctx.fillRect(inset - far, inset, cw - 2 * inset, ch - 2 * inset);
+  return new CanvasTexture(c);
+}
+
 /** A soft warm halo just outside a rectangle (the glow that invites a click): `w` x `h` units, the rectangle `margin` in from each edge. */
-function haloTexture(w: number, h: number, margin: number): CanvasTexture {
+function haloTexture(w: number, h: number, margin: number, radius = 0): CanvasTexture {
   const size = 512;
   const k = size / w;
   const c = document.createElement("canvas");
   c.width = size;
   c.height = Math.max(2, Math.round(h * k));
   const ctx = c.getContext("2d")!;
+  // (with a `radius` the outline's corners are rounded, which the forest preview wants: no hard square glowing in it)
+  const outline = (x: number, y: number) => {
+    ctx.beginPath();
+    if (radius > 0) ctx.roundRect(x, y, (w - 2 * margin) * k, (h - 2 * margin) * k, radius * k);
+    else ctx.rect(x, y, (w - 2 * margin) * k, (h - 2 * margin) * k);
+  };
   // as in blurredRectTexture: only the shadow is wanted, so the outline is drawn far off-canvas and its shadow cast back in
   const far = size * 4;
   ctx.shadowColor = "rgb(255, 243, 214)";
@@ -294,8 +321,7 @@ function haloTexture(w: number, h: number, margin: number): CanvasTexture {
   ctx.shadowOffsetX = far;
   ctx.lineWidth = margin * 0.35 * k;
   ctx.strokeStyle = "#fff";
-  ctx.beginPath();
-  ctx.rect(margin * k - far, margin * k, (w - 2 * margin) * k, (h - 2 * margin) * k);
+  outline(margin * k - far, margin * k);
   ctx.stroke();
   ctx.stroke(); // (twice: one pass of a shadow is too faint to read on the dark ground)
   ctx.stroke();
@@ -304,8 +330,7 @@ function haloTexture(w: number, h: number, margin: number): CanvasTexture {
   ctx.shadowBlur = 0;
   ctx.shadowOffsetX = 0;
   ctx.globalCompositeOperation = "destination-out";
-  ctx.beginPath();
-  ctx.rect(margin * k, margin * k, (w - 2 * margin) * k, (h - 2 * margin) * k);
+  outline(margin * k, margin * k);
   ctx.fill();
   return new CanvasTexture(c);
 }
@@ -401,6 +426,7 @@ export class Renderer3D {
   private edge: EdgeMode = "cut";
   private forest: ForestStyle | null = null;
   private forestScene: Forest | null = null;
+  private leafMask: CanvasTexture | null = null;
   private groundMesh!: Mesh;
   private catcherMesh!: Mesh;
   private leavesMesh!: Mesh;
@@ -465,6 +491,7 @@ export class Renderer3D {
         focusRect: { value: new Vector4(0, 0, 0, 0) },
         focusAmt: { value: 0 },
         pure: { value: 0 },
+        golden: { value: 0 },
         voidCol: { value: new Color(VOID) },
       },
       depthTest: false,
@@ -485,6 +512,7 @@ export class Renderer3D {
 
     this.dapple = dappleTexture();
     this.forest = forestParam();
+    this.quad.uniforms.golden.value = this.forest ? 1 : 0;
     this.buildScene();
     const q = typeof location !== "undefined" ? new URLSearchParams(location.search).get("edge") : null;
     // (the forest's floor runs right up to the yard, so the board's side and the fade have no place in it)
@@ -494,11 +522,14 @@ export class Renderer3D {
   private buildScene() {
     const { scene, world, mapSize } = this;
 
-    // low warm sun from the front-left (long soft shadows toward the back-right) plus a cool sky fill
-    scene.add(new HemisphereLight("#d8e4ff", "#8d826f", 0.95));
+    // low warm sun from the front-left (long soft shadows toward the back-right) plus a cool sky fill. In the forest preview it
+    // is late afternoon: the sun is lower (24 degrees, not 28: the shadow map's bounds below hold at that, they only grow looser),
+    // deeper in color, and a little stronger, as the lower it is the less it lights what faces up.
+    const late = !!this.forest;
+    scene.add(new HemisphereLight(late ? "#c9d4ef" : "#d8e4ff", late ? "#8a7757" : "#8d826f", late ? 0.85 : 0.95));
     scene.add(new AmbientLight("#ffffff", 0.22));
-    const sun = (this.sun = new DirectionalLight("#ffd9a6", 2.4));
-    sun.position.set(mapSize / 2 - 420, 300, mapSize / 2 + 380);
+    const sun = (this.sun = new DirectionalLight(late ? "#ffb878" : "#ffd9a6", late ? 2.7 : 2.4));
+    sun.position.set(mapSize / 2 - 420, late ? 252 : 300, mapSize / 2 + 380);
     sun.target.position.copy(this.center);
     sun.castShadow = true;
     sun.shadow.radius = 4;
@@ -552,6 +583,8 @@ export class Renderer3D {
     const leafGeo = new PlaneGeometry(leafSize, leafSize);
     if (this.forest) {
       const uv = leafGeo.attributes.uv;
+      // (the plane's own 0..1 coordinates are kept as a second set, for the mask that says where the shade is: see below)
+      leafGeo.setAttribute("uv1", uv.clone());
       for (let i = 0; i < uv.count; i++) {
         const x = this.center.x + leafGeo.attributes.position.getX(i);
         const z = this.center.z - leafGeo.attributes.position.getY(i);
@@ -642,7 +675,14 @@ export class Renderer3D {
       const a = zone.scene.area;
       const glow = new Mesh(
         new PlaneGeometry(a.w - 2, a.h - 2),
-        new MeshBasicMaterial({ color: "#fff3d6", transparent: true, opacity: 0, depthWrite: false })
+        new MeshBasicMaterial({
+          color: "#fff3d6",
+          // (in the forest the glow has soft round edges)
+          map: this.forest ? softPadTexture(a.w - 2, a.h - 2, 16) : null,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+        })
       );
       glow.rotation.x = -Math.PI / 2;
       glow.position.set(a.x + a.w / 2, 0.12, a.y + a.h / 2);
@@ -661,7 +701,7 @@ export class Renderer3D {
       const h = a.h + 2 * margin;
       const mesh = new Mesh(
         new PlaneGeometry(w, h),
-        new MeshBasicMaterial({ map: haloTexture(w, h, margin), transparent: true, opacity: 0, depthWrite: false })
+        new MeshBasicMaterial({ map: haloTexture(w, h, margin, this.forest ? 22 : 0), transparent: true, opacity: 0, depthWrite: false })
       );
       mesh.rotation.x = -Math.PI / 2;
       mesh.position.set(a.x + a.w / 2, 0.13, a.y + a.h / 2);
@@ -715,9 +755,12 @@ export class Renderer3D {
       this.forestScene = buildForest(
         mapSize,
         this.forest,
-        world.zones.map((z) => ({ kind: z.kind, area: z.scene.area }))
+        world.zones.map((z) => ({ kind: z.kind, area: z.scene.area })),
+        sun.position.clone().sub(this.center).normalize()
       );
       map.add(this.forestScene.group);
+      // the leaf shade is mostly under the trees: a mask thins it out toward the middle of the clearing
+      this.leafMask = this.forestScene.canopyMask(leafSize);
     }
   }
 
@@ -764,7 +807,7 @@ export class Renderer3D {
     this.groundTex.offset.setScalar(fade ? 0 : GROUND_MARGIN / total);
     for (const m of [this.groundMesh, this.leavesMesh]) {
       const mat = m.material as MeshBasicMaterial;
-      mat.alphaMap = fade ? this.edgeMask : null;
+      mat.alphaMap = fade ? this.edgeMask : m === this.leavesMesh ? this.leafMask : null;
       mat.transparent = fade || m === this.leavesMesh || !!this.forest; // (the forest's ground sheet is clear where nothing is painted)
       mat.needsUpdate = true;
     }
