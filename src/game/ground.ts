@@ -1,4 +1,4 @@
-import { GROUND } from "./palette";
+import { GROUND, MEADOW } from "./palette";
 import { TILE, Terrain } from "./world";
 import type { Decal, World } from "./world";
 
@@ -110,8 +110,11 @@ function drawDecal(ctx: CanvasRenderingContext2D, d: Decal, accent: string) {
   }
 }
 
-/** The flat floor of the whole map as one texture: asphalt tiles, lane lines, area outlines, decals. */
-export function buildGroundLayer(world: World): HTMLCanvasElement {
+/**
+ * The flat floor of the whole map as one texture: asphalt tiles, lane lines, area outlines, decals. With `meadow` the plain
+ * yard is grass instead of asphalt (the forest preview's `?forest=grass`); what is painted on it stays.
+ */
+export function buildGroundLayer(world: World, meadow = false): HTMLCanvasElement {
   const c = document.createElement("canvas");
   c.width = world.w * TILE + 2 * GROUND_MARGIN;
   c.height = world.h * TILE + 2 * GROUND_MARGIN;
@@ -129,14 +132,21 @@ export function buildGroundLayer(world: World): HTMLCanvasElement {
       const y = ty * TILE;
       const alt = (tx + ty) & 1;
       const concrete = t === Terrain.Concrete;
-      ctx.fillStyle = (concrete ? GROUND.concrete : GROUND.asphalt)[alt];
+      const grass = meadow && !concrete;
+      ctx.fillStyle = grass ? MEADOW.tiles[alt] : (concrete ? GROUND.concrete : GROUND.asphalt)[alt];
       ctx.fillRect(x, y, TILE, TILE);
-      const speck = concrete ? GROUND.concreteSpeck : GROUND.asphaltSpeck;
+      const speck = grass ? MEADOW.speck : concrete ? GROUND.concreteSpeck : GROUND.asphaltSpeck;
       for (let i = 0; i < 7; i++) {
         ctx.fillStyle = speck[hash(tx, ty, i + 11) < 0.5 ? 0 : 1];
         ctx.fillRect(x + Math.floor(hash(tx, ty, i) * TILE), y + Math.floor(hash(tx, ty, i + 40) * TILE), 1, 1);
       }
-      if (concrete) {
+      if (grass) {
+        // a few wildflowers
+        if (hash(tx, ty, 123) < 0.12) {
+          ctx.fillStyle = MEADOW.flower[hash(tx, ty, 124) < 0.5 ? 0 : 1];
+          ctx.fillRect(x + Math.floor(hash(tx, ty, 125) * (TILE - 1)), y + Math.floor(hash(tx, ty, 126) * (TILE - 1)), 1, 1);
+        }
+      } else if (concrete) {
         ctx.fillStyle = GROUND.concreteJoint;
         ctx.fillRect(x, y + TILE - 1, TILE, 1);
         ctx.fillRect(x + TILE - 1, y, 1, TILE);
