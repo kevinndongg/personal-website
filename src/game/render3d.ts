@@ -181,11 +181,12 @@ const SLAB_H = 28; // thickness of the board in "slab" mode
 const VOID = "#1d1e24"; // the dark surface the map sits on
 
 /**
- * Preview: the scene in a forest, the yard a clearing in it (`?forest`, or `?forest=grass` for a meadow instead of asphalt).
+ * Preview: the projects living in a forest, with no square yard under them (`?forest`, or `?forest=grass` for a lawn clearing
+ * instead of packed earth).
  * Off unless asked for. The camera backs off by `FOREST_PAD` to take the first trees in, whose tops reach `FOREST_TOP`: the big
  * trees are taller than that, and their tops run off the top and sides of the screen on purpose.
  */
-const FOREST_PAD = 4 * TILE;
+const FOREST_PAD = 3 * TILE;
 const FOREST_TOP = 70;
 function forestParam(): ForestStyle | null {
   if (typeof location === "undefined") return null;
@@ -526,13 +527,15 @@ export class Renderer3D {
 
     // ground: the 2D floor drawing as a smooth texture, a shadow-catching overlay and drifting leaf-shade
     // (the texture also holds a margin of plain asphalt past the map, which only "fade" mode reveals)
-    const tex = new CanvasTexture(buildGroundLayer(world, this.forest === "grass"));
+    // (in the forest preview it holds only what is painted on the ground, on a clear sheet over the forest floor: see setEdge)
+    const tex = new CanvasTexture(buildGroundLayer(world, !!this.forest));
     tex.minFilter = LinearMipmapLinearFilter;
     tex.magFilter = LinearFilter;
     tex.generateMipmaps = true;
     tex.anisotropy = 8;
+    tex.premultiplyAlpha = !!this.forest; // (so the clear parts do not darken the edges of what is painted)
     this.groundTex = tex;
-    const ground = new Mesh(new PlaneGeometry(mapSize, mapSize), new MeshBasicMaterial({ map: tex }));
+    const ground = new Mesh(new PlaneGeometry(mapSize, mapSize), new MeshBasicMaterial({ map: tex, premultipliedAlpha: !!this.forest }));
     ground.rotation.x = -Math.PI / 2;
     ground.position.copy(this.center);
     ground.renderOrder = -1;
@@ -544,10 +547,18 @@ export class Renderer3D {
     shadowCatcher.receiveShadow = true;
     map.add(shadowCatcher);
     this.catcherMesh = shadowCatcher;
-    const leaves = new Mesh(
-      new PlaneGeometry(mapSize, mapSize),
-      new MeshBasicMaterial({ map: this.dapple, transparent: true, opacity: 0.34, depthWrite: false })
-    );
+    // (in the forest the leaf shade is not a square: it reaches past the map, with the same blobs in the same places as on the map)
+    const leafSize = this.forest ? mapSize + 2 * FOREST_PAD * 2 : mapSize;
+    const leafGeo = new PlaneGeometry(leafSize, leafSize);
+    if (this.forest) {
+      const uv = leafGeo.attributes.uv;
+      for (let i = 0; i < uv.count; i++) {
+        const x = this.center.x + leafGeo.attributes.position.getX(i);
+        const z = this.center.z - leafGeo.attributes.position.getY(i);
+        uv.setXY(i, x / mapSize, 1 - z / mapSize);
+      }
+    }
+    const leaves = new Mesh(leafGeo, new MeshBasicMaterial({ map: this.dapple, transparent: true, opacity: 0.34, depthWrite: false }));
     leaves.rotation.x = -Math.PI / 2;
     leaves.position.set(this.center.x, 0.08, this.center.z);
     leaves.renderOrder = 0.5;
@@ -660,8 +671,8 @@ export class Renderer3D {
       this.invite = { mesh, on: false, amount: 0 };
     }
 
-    // yard tire piles
-    for (const item of world.items) {
+    // yard tire piles (not in the forest, where there is no yard)
+    for (const item of this.forest ? [] : world.items) {
       const t = tireModel();
       t.position.set(item.tx * TILE + TILE / 2, 0, item.ty * TILE + TILE / 2);
       map.add(t);
@@ -704,7 +715,7 @@ export class Renderer3D {
       this.forestScene = buildForest(
         mapSize,
         this.forest,
-        world.zones.map((z) => z.scene.area)
+        world.zones.map((z) => ({ kind: z.kind, area: z.scene.area }))
       );
       map.add(this.forestScene.group);
     }
@@ -754,11 +765,11 @@ export class Renderer3D {
     for (const m of [this.groundMesh, this.leavesMesh]) {
       const mat = m.material as MeshBasicMaterial;
       mat.alphaMap = fade ? this.edgeMask : null;
-      mat.transparent = fade || m === this.leavesMesh;
+      mat.transparent = fade || m === this.leavesMesh || !!this.forest; // (the forest's ground sheet is clear where nothing is painted)
       mat.needsUpdate = true;
     }
 
-    this.edgeShadow.visible = !fade;
+    this.edgeShadow.visible = !fade && !this.forest; // (a square drop shadow would show the map's corners)
     // the light is front-left, so the shadow falls a little toward the back-right
     this.edgeShadow.position.set(this.center.x + 7, mode === "slab" ? -SLAB_H - 0.1 : -0.2, this.center.z - 7);
     this.slab.visible = mode === "slab";

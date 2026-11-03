@@ -1,4 +1,4 @@
-import { GROUND, MEADOW } from "./palette";
+import { GROUND } from "./palette";
 import { TILE, Terrain } from "./world";
 import type { Decal, World } from "./world";
 
@@ -111,10 +111,11 @@ function drawDecal(ctx: CanvasRenderingContext2D, d: Decal, accent: string) {
 }
 
 /**
- * The flat floor of the whole map as one texture: asphalt tiles, lane lines, area outlines, decals. With `meadow` the plain
- * yard is grass instead of asphalt (the forest preview's `?forest=grass`); what is painted on it stays.
+ * The flat floor of the whole map as one texture: asphalt tiles, lane lines, area outlines, decals. With `bare` there are no
+ * tiles and no outlines, only the decals on a transparent sheet (the forest preview: the projects stand on the forest floor,
+ * which is drawn under this one).
  */
-export function buildGroundLayer(world: World, meadow = false): HTMLCanvasElement {
+export function buildGroundLayer(world: World, bare = false): HTMLCanvasElement {
   const c = document.createElement("canvas");
   c.width = world.w * TILE + 2 * GROUND_MARGIN;
   c.height = world.h * TILE + 2 * GROUND_MARGIN;
@@ -123,8 +124,8 @@ export function buildGroundLayer(world: World, meadow = false): HTMLCanvasElemen
   // from here on, coordinates are map coordinates; the margin sits at negative values
   ctx.translate(GROUND_MARGIN, GROUND_MARGIN);
 
-  const mt = GROUND_MARGIN / TILE;
-  for (let ty = -mt; ty < world.h + mt; ty++) {
+  const mt = bare ? 0 : GROUND_MARGIN / TILE;
+  for (let ty = -mt; ty < (bare ? 0 : world.h + mt); ty++) {
     for (let tx = -mt; tx < world.w + mt; tx++) {
       const inside = tx >= 0 && ty >= 0 && tx < world.w && ty < world.h;
       const t = inside ? world.terrain[ty * world.w + tx] : Terrain.Asphalt;
@@ -132,21 +133,14 @@ export function buildGroundLayer(world: World, meadow = false): HTMLCanvasElemen
       const y = ty * TILE;
       const alt = (tx + ty) & 1;
       const concrete = t === Terrain.Concrete;
-      const grass = meadow && !concrete;
-      ctx.fillStyle = grass ? MEADOW.tiles[alt] : (concrete ? GROUND.concrete : GROUND.asphalt)[alt];
+      ctx.fillStyle = (concrete ? GROUND.concrete : GROUND.asphalt)[alt];
       ctx.fillRect(x, y, TILE, TILE);
-      const speck = grass ? MEADOW.speck : concrete ? GROUND.concreteSpeck : GROUND.asphaltSpeck;
+      const speck = concrete ? GROUND.concreteSpeck : GROUND.asphaltSpeck;
       for (let i = 0; i < 7; i++) {
         ctx.fillStyle = speck[hash(tx, ty, i + 11) < 0.5 ? 0 : 1];
         ctx.fillRect(x + Math.floor(hash(tx, ty, i) * TILE), y + Math.floor(hash(tx, ty, i + 40) * TILE), 1, 1);
       }
-      if (grass) {
-        // a few wildflowers
-        if (hash(tx, ty, 123) < 0.12) {
-          ctx.fillStyle = MEADOW.flower[hash(tx, ty, 124) < 0.5 ? 0 : 1];
-          ctx.fillRect(x + Math.floor(hash(tx, ty, 125) * (TILE - 1)), y + Math.floor(hash(tx, ty, 126) * (TILE - 1)), 1, 1);
-        }
-      } else if (concrete) {
+      if (concrete) {
         ctx.fillStyle = GROUND.concreteJoint;
         ctx.fillRect(x, y + TILE - 1, TILE, 1);
         ctx.fillRect(x + TILE - 1, y, 1, TILE);
@@ -161,7 +155,7 @@ export function buildGroundLayer(world: World, meadow = false): HTMLCanvasElemen
   // thin black border around each project area (a contact button is no area to look into: it stands on the plain yard)
   ctx.fillStyle = "#16161d";
   for (const z of world.zones) {
-    if (z.kind === "link" || z.kind === "about") continue; // (no black box round a slab or the name)
+    if (bare || z.kind === "link" || z.kind === "about") continue; // (no black box round a slab or the name)
     const a = z.scene.area;
     ctx.fillRect(a.x, a.y, a.w, 2);
     ctx.fillRect(a.x, a.y + a.h - 2, a.w, 2);
