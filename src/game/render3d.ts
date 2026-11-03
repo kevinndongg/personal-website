@@ -40,7 +40,7 @@ import { attachErrand } from "./errand";
 import { attachPowerPlay } from "./ppcycle";
 import { attachCycle } from "./robotcycle";
 import { buildForest } from "./forest";
-import type { ForestStyle } from "./forest";
+import type { Forest, ForestStyle } from "./forest";
 import { GROUND_MARGIN, buildGroundLayer } from "./ground";
 import { createModel, tireModel, woodTexture } from "./models";
 import type { AnimCtx } from "./models";
@@ -182,10 +182,11 @@ const VOID = "#1d1e24"; // the dark surface the map sits on
 
 /**
  * Preview: the scene in a forest, the yard a clearing in it (`?forest`, or `?forest=grass` for a meadow instead of asphalt).
- * Off unless asked for. The camera backs off by `FOREST_PAD` to take the first trees in, whose tops reach `FOREST_TOP`.
+ * Off unless asked for. The camera backs off by `FOREST_PAD` to take the first trees in, whose tops reach `FOREST_TOP`: the big
+ * trees are taller than that, and their tops run off the top and sides of the screen on purpose.
  */
-const FOREST_PAD = 5 * TILE;
-const FOREST_TOP = 60;
+const FOREST_PAD = 4 * TILE;
+const FOREST_TOP = 70;
 function forestParam(): ForestStyle | null {
   if (typeof location === "undefined") return null;
   const q = new URLSearchParams(location.search);
@@ -398,6 +399,7 @@ export class Renderer3D {
   private mapSize: number;
   private edge: EdgeMode = "cut";
   private forest: ForestStyle | null = null;
+  private forestScene: Forest | null = null;
   private groundMesh!: Mesh;
   private catcherMesh!: Mesh;
   private leavesMesh!: Mesh;
@@ -698,7 +700,14 @@ export class Renderer3D {
     this.edgeMask = fadeMaskTexture(mapSize + 2 * GROUND_MARGIN, mapSize);
 
     // the preview forest goes in last, after the shadow flags above: it casts none and takes none
-    if (this.forest) map.add(buildForest(mapSize, this.forest));
+    if (this.forest) {
+      this.forestScene = buildForest(
+        mapSize,
+        this.forest,
+        world.zones.map((z) => z.scene.area)
+      );
+      map.add(this.forestScene.group);
+    }
   }
 
   /**
@@ -1160,6 +1169,9 @@ export class Renderer3D {
       this.dapple.offset.set((time * 0.004) % 1, (time * 0.0022) % 1);
     }
 
+    // (the forest preview's campfire; it holds still when motion is reduced)
+    this.forestScene?.update(this.reduceMotion ? 0 : time);
+
     // how far into each project the camera is, per project (so one that is being left eases back while another opens)
     for (const zone of this.world.zones) {
       const cur = this.zoneFocus.get(zone.id) ?? 0;
@@ -1325,6 +1337,7 @@ export class Renderer3D {
         material.dispose();
       }
     });
+    this.forestScene?.dispose();
     for (const texture of [this.groundTex, this.edgeMask, this.dapple]) texture.dispose();
     this.sun.shadow.map?.dispose();
     this.quad.dispose();
