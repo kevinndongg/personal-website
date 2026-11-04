@@ -66,6 +66,12 @@ export interface ForestZone {
 
 /** How far past the projects the trees (and the floor texture) reach, in world px. Past it the floor is dark, but not black. */
 export const FOREST_REACH = 280;
+
+/** How far past the map the trees and floor go on each axis (the camera shows more sideways on a wide screen, more up and down on a tall one). */
+export interface ForestReach {
+  x: number;
+  z: number;
+}
 const TAU = Math.PI * 2;
 /** The margin of bare ground round a project. */
 const CLEARING_MARGIN = 22;
@@ -361,8 +367,7 @@ function planTrails(mapSize: number, zones: ForestZone[]): Plan {
  * How far a point is beyond the edge of the nearest trail (negative on one), 999 where none is near. Drawn once on a grid, each
  * trail only where it reaches, so that the many points the floor and the trees ask about each cost little.
  */
-function trailField(mapSize: number, trails: Trail[]) {
-  const pad = FOREST_REACH + 4;
+function trailField(mapSize: number, trails: Trail[], pad: number) {
   const step = 2;
   const n = Math.ceil((mapSize + 2 * pad) / step) + 1;
   const grid = new Float32Array(n * n).fill(999);
@@ -414,8 +419,7 @@ function trailField(mapSize: number, trails: Trail[]) {
  * their corners, and the camp, with the edge made ragged. The floor texture and the tree placement both read this, so the trees
  * keep to the line the floor draws. The smooth part is worked out once on a coarse grid.
  */
-function clearingField(mapSize: number, zones: ForestZone[], camp: Pt) {
-  const pad = FOREST_REACH + 4;
+function clearingField(mapSize: number, zones: ForestZone[], camp: Pt, pad: number) {
   const step = 4;
   const n = Math.ceil((mapSize + 2 * pad) / step) + 1;
   const grid = new Float32Array(n * n);
@@ -453,7 +457,7 @@ const PATH: RGB = [0x8a, 0x76, 0x56];
 const GRASS: RGB = [0x44, 0x70, 0x3a];
 const MOSS: RGB = [0x27, 0x44, 0x2a];
 const DEEP: RGB = [0x1b, 0x31, 0x24];
-const DARK: RGB = [0x13, 0x22, 0x1a];
+const DARK: RGB = [0x18, 0x2a, 0x20];
 const LITTER: RGB = [0x5e, 0x42, 0x28];
 const CAMP_DIRT: RGB = [0x5c, 0x4a, 0x34];
 const ASH: RGB = [0x2a, 0x22, 0x1c];
@@ -470,28 +474,32 @@ function floorTexture(
   camp: Pt,
   field: (x: number, z: number) => number,
   trail: (x: number, z: number) => number,
-  style: ForestStyle
+  style: ForestStyle,
+  padX: number,
+  padZ: number
 ): CanvasTexture {
-  const pad = FOREST_REACH + 4;
-  const size = Math.ceil(mapSize + 2 * pad);
+  const w = Math.ceil(mapSize + 2 * padX);
+  const h = Math.ceil(mapSize + 2 * padZ);
+  const size = w;
   const c = document.createElement("canvas");
-  c.width = c.height = size;
+  c.width = w;
+  c.height = h;
   const ctx = c.getContext("2d")!;
-  const img = ctx.createImageData(size, size);
+  const img = ctx.createImageData(w, h);
   const data = img.data;
   const col: RGB = [0, 0, 0];
   const tmp: RGB = [0, 0, 0];
   const pathCol: RGB = [0, 0, 0];
-  for (let py = 0; py < size; py++) {
-    for (let px = 0; px < size; px++) {
-      const x = px - pad;
-      const z = py - pad;
+  for (let py = 0; py < h; py++) {
+    for (let px = 0; px < w; px++) {
+      const x = px - padX;
+      const z = py - padZ;
       const d = field(x, z);
       const n = vnoise(x / 14, z / 14, 8);
       // grass beyond the clearing, moss under the first trees, then deepening slowly into the dusk
       mix(col, GRASS, MOSS, smooth(d, 10, 70));
-      mix(col, col, DEEP, smooth(d, 60, 190));
-      mix(col, col, DARK, smooth(d, 170, FOREST_REACH));
+      mix(col, col, DEEP, smooth(d, 60, 220));
+      mix(col, col, DARK, smooth(d, 200, 360));
       if (style === "yard") {
         // packed earth where the projects stand, worn through the grass; ragged at the edge, with tufts coming through
         const e = 1 - smooth(d + (n - 0.5) * 8, -3, 6);
@@ -796,8 +804,17 @@ function disks(mat: Material, spots: { x: number; y: number; z: number; r: numbe
  *
  * `toSun` is the unit vector from the map to the sun (for the shafts of light).
  */
-export function buildForest(mapSize: number, style: ForestStyle, zones: ForestZone[], toSun: Vector3, seed = 11): Forest {
+export function buildForest(
+  mapSize: number,
+  style: ForestStyle,
+  zones: ForestZone[],
+  toSun: Vector3,
+  reach: ForestReach = { x: FOREST_REACH, z: FOREST_REACH },
+  seed = 11
+): Forest {
   const rand = rng(seed);
+  const padX = reach.x + 4;
+  const padZ = reach.z + 4;
   const group = new Group();
   group.name = "forest";
   const areas = zones.map((z) => z.area);
@@ -813,12 +830,17 @@ export function buildForest(mapSize: number, style: ForestStyle, zones: ForestZo
     const stop = { x: camp.x + ((from.x - camp.x) / len) * 18, z: camp.z + ((from.z - camp.z) / len) * 18 };
     trails.push({ pts: curve(from, stop, 14), w0: 3.4, w1: 2.8 });
   }
-  const trail = trailField(mapSize, trails);
-  const field = clearingField(mapSize, zones, camp);
+  const trail = trailField(mapSize, trails, Math.max(padX, padZ));
+  const field = clearingField(mapSize, zones, camp, Math.max(padX, padZ));
 
-  // the floor under it all, and a dark plane past its end for wide and tall screens
-  const total = mapSize + 2 * (FOREST_REACH + 4);
-  const floor = new Mesh(new PlaneGeometry(total, total), new MeshBasicMaterial({ map: floorTexture(mapSize, camp, field, trail, style) }));
+  // the floor under it all, and a dark plane past its end for wider screens still
+  const totalX = mapSize + 2 * padX;
+  const totalZ = mapSize + 2 * padZ;
+  const total = Math.max(totalX, totalZ);
+  const floor = new Mesh(
+    new PlaneGeometry(totalX, totalZ),
+    new MeshBasicMaterial({ map: floorTexture(mapSize, camp, field, trail, style, padX, padZ) })
+  );
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(mapSize / 2, -0.4, mapSize / 2);
   floor.renderOrder = -3;
@@ -850,8 +872,8 @@ export function buildForest(mapSize: number, style: ForestStyle, zones: ForestZo
     const kind = pine ? "pine" : r5 < 0.13 ? "autumn" : r5 < 0.4 ? "round" : "broad";
     const l = 0.85 + r3 * 0.3;
     // far trees are darker and bluer, as if seen through the dusk
-    const haze = smooth(d, 80, 250);
-    const k = l * lerp(1, 0.5, haze);
+    const haze = smooth(d, 80, 330);
+    const k = l * lerp(1, 0.6, haze);
     const tint = kind === "autumn" ? new Color(k, k, k) : new Color(k * (pine ? 0.92 : 0.95), k, k * lerp(pine ? 1.04 : 0.95, 1.15, haze));
     const baseR = kind === "pine" ? 13 : kind === "round" ? 16 : 26;
     const baseH = kind === "pine" ? 48 : 52;
@@ -895,8 +917,8 @@ export function buildForest(mapSize: number, style: ForestStyle, zones: ForestZo
   }
   // and further out, closer together and bigger, running off the edge of the screen and into the dark
   const FAR = 58;
-  for (let gz = -FOREST_REACH; gz < mapSize + FOREST_REACH; gz += FAR) {
-    for (let gx = -FOREST_REACH; gx < mapSize + FOREST_REACH; gx += FAR) {
+  for (let gz = -reach.z; gz < mapSize + reach.z; gz += FAR) {
+    for (let gx = -reach.x; gx < mapSize + reach.x; gx += FAR) {
       const jx = rand();
       const jz = rand();
       const r1 = rand();
@@ -907,9 +929,11 @@ export function buildForest(mapSize: number, style: ForestStyle, zones: ForestZo
       const x = gx + (jx - 0.5) * FAR * 0.8;
       const z = gz + (jz - 0.5) * FAR * 0.8;
       const d = field(x, z);
-      if (d < 110 || d > FOREST_REACH) continue;
-      // (nearly every spot takes a tree out here: the outskirts are a wall, with only the odd gap)
-      if (r1 > 0.93 * (0.9 + 0.2 * vnoise(x / 100, z / 100, 12))) continue;
+      if (d < 110) continue;
+      // (nearly every spot takes a tree out here: the outskirts are a wall, with only the odd gap. Right at the end of the reach
+      // they thin out, so that a screen wider than expected fades into the dark floor instead of ending at a hard line)
+      const edge = Math.min(x + reach.x, mapSize + reach.x - x, z + reach.z, mapSize + reach.z - z);
+      if (r1 > 0.93 * (0.9 + 0.2 * vnoise(x / 100, z / 100, 12)) * smooth(edge, 0, 110)) continue;
       plant(x, z, d, lerp(2.0, 3.4, smooth(d, 110, 230)) * (0.85 + r2 * 0.3), r2, r3, r4, r5);
     }
   }
@@ -1053,23 +1077,28 @@ export function buildForest(mapSize: number, style: ForestStyle, zones: ForestZo
   // shadow at this sun would be about twice the tree's height and cover the projects; this is a little under one height.
   const shadeMat = new MeshBasicMaterial({
     map: radialTexture([
-      [0, "rgba(0,10,5,0.5)"],
-      [0.55, "rgba(0,10,5,0.3)"],
+      [0, "rgba(0,10,5,0.58)"],
+      [0.55, "rgba(0,10,5,0.36)"],
       [1, "rgba(0,10,5,0)"],
     ]),
     transparent: true,
     depthWrite: false,
   });
-  const SHADE_X = Math.SQRT1_2;
-  const SHADE_Z = -Math.SQRT1_2;
+  // (away from the real sun, so it moves with it; a true shadow is `h / tan(elevation)` long, and the far trees, where no project
+  // is in the way, get most of that: a wall of trees in the dusk all throw their shade the same way, or they look pasted on)
+  const away = Math.hypot(toSun.x, toSun.z) || 1;
+  const SHADE_X = -toSun.x / away;
+  const SHADE_Z = -toSun.z / away;
+  const SHADE_YAW = Math.atan2(-SHADE_Z, SHADE_X);
+  const trueLen = away / Math.max(0.2, toSun.y);
   const shade = disks(
     shadeMat,
     [...pines, ...broads, ...autumns, ...rounds, ...heroes].map((t) => {
       const r = t.r ?? 20;
-      const len = 0.8 * (t.h ?? 50);
+      const len = lerp(0.8, Math.min(1.7, 0.8 * trueLen), smooth(field(t.x, t.z), 30, 130)) * (t.h ?? 50);
       const along = 0.42 * len + 0.1 * r; // (where the middle of the patch is)
       const short = 0.8 * r;
-      return { x: t.x + SHADE_X * along, y: -0.3, z: t.z + SHADE_Z * along, r: short, stretch: (0.5 * len + 0.7 * r) / short, yaw: Math.PI / 4 };
+      return { x: t.x + SHADE_X * along, y: -0.3, z: t.z + SHADE_Z * along, r: short, stretch: (0.5 * len + 0.7 * r) / short, yaw: SHADE_YAW };
     })
   );
   if (shade) {
