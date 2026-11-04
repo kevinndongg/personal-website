@@ -1,4 +1,5 @@
 import {
+  AdditiveBlending,
   AmbientLight,
   BoxGeometry,
   CanvasTexture,
@@ -281,23 +282,37 @@ function blurredRectTexture(total: number, inner: number, blur: number): CanvasT
   return new CanvasTexture(c);
 }
 
-/** A white rectangle with rounded, feathered edges, `w` x `h` units (the forest preview's hover glow, in place of a hard-edged square). */
-function softPadTexture(w: number, h: number, feather: number): CanvasTexture {
-  const k = 256 / Math.max(w, h);
-  const cw = Math.max(2, Math.round(w * k));
-  const ch = Math.max(2, Math.round(h * k));
+/**
+ * A pool of warm light with no edge to speak of (the forest preview's glow: a ring round a rectangle needs a border to sit on,
+ * and on the lawn there is none). Brightest in the middle, fading out well before the texture's edge, in a rounded-square shape
+ * that follows a project's box without showing its corners. `peak` is how bright it is at its middle (0..1).
+ */
+function spotlightTexture(peak: number): CanvasTexture {
+  const S = 256;
   const c = document.createElement("canvas");
-  c.width = cw;
-  c.height = ch;
+  c.width = c.height = S;
   const ctx = c.getContext("2d")!;
-  // as in blurredRectTexture: only the shadow is wanted, so the rectangle is drawn far off-canvas and its shadow cast back in
-  const far = cw * 4;
-  ctx.shadowColor = "#fff";
-  ctx.shadowBlur = feather * k;
-  ctx.shadowOffsetX = far;
-  const inset = feather * k * 0.9;
-  ctx.fillRect(inset - far, inset, cw - 2 * inset, ch - 2 * inset);
-  return new CanvasTexture(c);
+  const img = ctx.createImageData(S, S);
+  const P = 2.6; // 2 is an ellipse, higher is squarer
+  for (let j = 0; j < S; j++) {
+    for (let i = 0; i < S; i++) {
+      const u = Math.abs(((i + 0.5) / S) * 2 - 1);
+      const v = Math.abs(((j + 0.5) / S) * 2 - 1);
+      const r = Math.pow(Math.pow(u, P) + Math.pow(v, P), 1 / P);
+      const t = Math.min(1, Math.max(0, (r - 0.25) / 0.75));
+      const a = peak * (1 - t * t * (3 - 2 * t));
+      const o = (j * S + i) * 4;
+      img.data[o] = 255;
+      img.data[o + 1] = 226;
+      img.data[o + 2] = 168;
+      img.data[o + 3] = Math.round(255 * a);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const t = new CanvasTexture(c);
+  t.minFilter = t.magFilter = LinearFilter;
+  t.generateMipmaps = false;
+  return t;
 }
 
 /** A soft warm halo just outside a rectangle (the glow that invites a click): `w` x `h` units, the rectangle `margin` in from each edge. */
@@ -673,12 +688,13 @@ export class Renderer3D {
     // hover glow: one brightening overlay per project box, hidden until hovered
     for (const zone of world.zones) {
       const a = zone.scene.area;
+      // (in the forest the glow is a soft pool of light that reaches a little past the box, with no edge: see `spotlightTexture`)
       const glow = new Mesh(
-        new PlaneGeometry(a.w - 2, a.h - 2),
+        this.forest ? new PlaneGeometry(a.w * 1.3, a.h * 1.3) : new PlaneGeometry(a.w - 2, a.h - 2),
         new MeshBasicMaterial({
-          color: "#fff3d6",
-          // (in the forest the glow has soft round edges)
-          map: this.forest ? softPadTexture(a.w - 2, a.h - 2, 16) : null,
+          color: this.forest ? "#ffffff" : "#fff3d6",
+          map: this.forest ? spotlightTexture(1) : null,
+          ...(this.forest ? { blending: AdditiveBlending } : {}),
           transparent: true,
           opacity: 0,
           depthWrite: false,
@@ -697,11 +713,14 @@ export class Renderer3D {
     if (racing) {
       const a = racing.scene.area;
       const margin = TILE;
-      const w = a.w + 2 * margin;
-      const h = a.h + 2 * margin;
+      // (in the forest: a pool of light spreading well past the box instead of a ring along its edge, which has nothing to sit on)
+      const w = this.forest ? a.w * 1.5 : a.w + 2 * margin;
+      const h = this.forest ? a.h * 1.5 : a.h + 2 * margin;
       const mesh = new Mesh(
         new PlaneGeometry(w, h),
-        new MeshBasicMaterial({ map: haloTexture(w, h, margin, this.forest ? 22 : 0), transparent: true, opacity: 0, depthWrite: false })
+        this.forest
+          ? new MeshBasicMaterial({ map: spotlightTexture(0.55), blending: AdditiveBlending, transparent: true, opacity: 0, depthWrite: false })
+          : new MeshBasicMaterial({ map: haloTexture(w, h, margin, 0), transparent: true, opacity: 0, depthWrite: false })
       );
       mesh.rotation.x = -Math.PI / 2;
       mesh.position.set(a.x + a.w / 2, 0.13, a.y + a.h / 2);
