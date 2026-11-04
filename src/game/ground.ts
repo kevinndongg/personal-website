@@ -197,6 +197,9 @@ export interface Lot {
   hw: number;
   hh: number;
   r: number;
+  /** The colour of its edge when it has risen, and how far inside the outline that edge stands (px). */
+  wall: string;
+  inset: number;
 }
 
 export function buildLot(props: Prop[]): Lot | null {
@@ -292,7 +295,69 @@ export function buildLot(props: Prop[]): Lot | null {
     }
   }
   octx.putImageData(img, 0, 0);
-  return { canvas: out, x: ox, y: oy, w: W, h: H, cx, cy, hw, hh, r: R };
+  return { canvas: out, x: ox, y: oy, w: W, h: H, cx, cy, hw, hh, r: R, wall: "#3a3b42", inset: 1.2 };
+}
+
+/**
+ * A patch of packed gravel on the map (the forest preview: the ground under the FTC project's stacks and driver station, which
+ * stand on the lawn beside the field). Like the lot, a sheet of its own that rises with its project; `r` is the map-px rectangle.
+ * Tan-grey, in the trails' tones, with stones and an uneven, crumbling edge.
+ */
+export function buildApron(r: { x: number; y: number; w: number; h: number }): Lot {
+  const M = 4;
+  const ox = Math.floor(r.x) - M;
+  const oy = Math.floor(r.y) - M;
+  const W = Math.ceil(r.w) + 2 * M;
+  const H = Math.ceil(r.h) + 2 * M;
+  const cx = r.x + r.w / 2;
+  const cy = r.y + r.h / 2;
+  const hw = r.w / 2;
+  const hh = r.h / 2;
+  const R = 12;
+  const sdf = (x: number, y: number) => {
+    const qx = Math.abs(x - cx) - (hw - R);
+    const qy = Math.abs(y - cy) - (hh - R);
+    return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - R;
+  };
+  const out = document.createElement("canvas");
+  out.width = W;
+  out.height = H;
+  const octx = out.getContext("2d")!;
+  const img = octx.createImageData(W, H);
+  const body = rgb("#7b6f58");
+  const dark = rgb("#5f5441");
+  const stones = ["#9a8f78", "#6a604d", "#a39a85"].map(rgb);
+  for (let j = 0; j < H; j++) {
+    for (let i = 0; i < W; i++) {
+      const x = i + ox;
+      const y = j + oy;
+      // (a ragged edge: it wanders a couple of px, and the last few are scattered stones, not a line)
+      const d = sdf(x + 0.5, y + 0.5) + (valueNoise(x / 8, y / 8, 51) - 0.5) * 4 + (valueNoise(x / 2.5, y / 2.5, 52) - 0.5) * 1.6;
+      if (d > 1.5) continue;
+      const edge = Math.min(1, Math.max(0, (d + 3) / 3)); // 0 well inside .. 1 at the edge
+      if (d > -1 && hash(x, y, 53) < 0.55 * edge) continue;
+      let k = 1 + (valueNoise(x / 20, y / 20, 54) - 0.5) * 0.2 + (valueNoise(x / 4, y / 4, 55) - 0.5) * 0.08;
+      let c = body;
+      if (valueNoise(x / 12, y / 12, 56) > 0.66) c = dark; // damper, darker patches
+      let rr = c.r * k;
+      let gg = c.g * k;
+      let bb = c.b * k;
+      const h = hash(x, y, 57);
+      if (h < 0.07) {
+        const s = stones[Math.floor(hash(x, y, 58) * 3)];
+        rr = s.r;
+        gg = s.g;
+        bb = s.b;
+      }
+      const o = (j * W + i) * 4;
+      img.data[o] = Math.round(255 * Math.min(1, rr));
+      img.data[o + 1] = Math.round(255 * Math.min(1, gg));
+      img.data[o + 2] = Math.round(255 * Math.min(1, bb));
+      img.data[o + 3] = 255;
+    }
+  }
+  octx.putImageData(img, 0, 0);
+  return { canvas: out, x: ox, y: oy, w: W, h: H, cx, cy, hw, hh, r: R, wall: "#4f4535", inset: 3 };
 }
 
 /** A hex colour as plain 0..1 channels (as the rest of this file paints it: no colour management). */
