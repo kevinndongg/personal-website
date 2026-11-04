@@ -1,4 +1,7 @@
+import { Vector3 } from "three";
+import { lapCurve } from "./drive";
 import { GROUND } from "./palette";
+import type { Prop } from "./scenes";
 import { TILE, Terrain } from "./world";
 import type { Decal, World } from "./world";
 
@@ -163,6 +166,64 @@ export function buildGroundLayer(world: World, bare = false): HTMLCanvasElement 
     ctx.fillRect(a.x + a.w - 2, a.y, 2, a.h);
   }
 
+  if (bare) for (const z of world.zones) paintRoad(ctx, z.scene.props);
+
   for (const z of world.zones) for (const d of z.scene.decals) drawDecal(ctx, d, z.accent);
   return c;
+}
+
+/**
+ * The road a project's car drives on (the forest preview, where there are no asphalt tiles): wide where the cones stand, narrower
+ * on the way back, so it never runs into the tent. Painted pixel by pixel like the decals, a dark edge first and then the fill.
+ */
+function paintRoad(ctx: CanvasRenderingContext2D, props: Prop[]) {
+  const car = props.find((p) => p.drive);
+  if (!car?.drive) return;
+  const cones = props.filter((p) => p.sprite === "cone-b" || p.sprite === "cone-y");
+  const curve = lapCurve(car.drive);
+  const len = curve.getLength();
+  // (the first point is inside the garage: start at the mouth of the bay, the second)
+  const from = new Vector3(car.drive[1].x, 0, car.drive[1].y);
+  let u0 = 0;
+  for (let u = 0, best = Infinity; u <= 0.2; u += 0.002) {
+    const d = curve.getPointAt(u).distanceTo(from);
+    if (d < best) {
+      best = d;
+      u0 = u;
+    }
+  }
+  const samples: { x: number; y: number; hw: number }[] = [];
+  for (let s = u0 * len; s <= len; s += 1) {
+    const p = curve.getPointAt(s / len);
+    let near = Infinity;
+    for (const k of cones) near = Math.min(near, Math.hypot(k.x - p.x, k.y - p.z));
+    const t = 1 - Math.min(1, Math.max(0, (near - 24) / 30));
+    samples.push({ x: p.x, y: p.z, hw: 11 + 9 * t * t * (3 - 2 * t) });
+  }
+  const road = new Set<number>();
+  const key = (x: number, y: number) => (y + 4096) * 16384 + (x + 4096);
+  const stamp = (r: number, paint: (x: number, y: number) => void) => {
+    for (const s of samples) {
+      const rr = r === 0 ? s.hw : s.hw + r;
+      for (let py = Math.floor(s.y - rr); py <= Math.ceil(s.y + rr); py++)
+        for (let px = Math.floor(s.x - rr); px <= Math.ceil(s.x + rr); px++)
+          if (Math.hypot(px + 0.5 - s.x, py + 0.5 - s.y) <= rr) paint(px, py);
+    }
+  };
+  ctx.fillStyle = GROUND.roadEdge;
+  stamp(1.5, (x, y) => ctx.fillRect(x, y, 1, 1));
+  ctx.fillStyle = GROUND.asphalt[0];
+  stamp(0, (x, y) => {
+    if (road.has(key(x, y))) return;
+    road.add(key(x, y));
+    ctx.fillRect(x, y, 1, 1);
+  });
+  for (const k of road) {
+    const x = (k % 16384) - 4096;
+    const y = Math.floor(k / 16384) - 4096;
+    if (hash(x, y, 71) < 0.04) {
+      ctx.fillStyle = GROUND.asphaltSpeck[hash(x, y, 72) < 0.5 ? 0 : 1];
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
 }

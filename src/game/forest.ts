@@ -3,6 +3,7 @@ import {
   BoxGeometry,
   BufferGeometry,
   CanvasTexture,
+  CatmullRomCurve3,
   Color,
   ConeGeometry,
   CylinderGeometry,
@@ -59,6 +60,8 @@ export interface Forest {
 export interface ForestZone {
   kind: string;
   area: Rect;
+  /** A road the project brings (the racing car's lap, in map px): the trail to it lands on the road instead of at its edge. */
+  route?: { x: number; z: number }[];
 }
 
 /** How far past the projects the trees (and the floor texture) reach, in world px. Past it the floor is dark, but not black. */
@@ -123,11 +126,12 @@ interface Pt {
   z: number;
 }
 
-/** A trail: a line of points and its half-width at the first and at the last. */
+/** A trail: a line of points and its half-width at the first and at the last (or, with `widths`, at every point). */
 interface Trail {
   pts: Pt[];
   w0: number;
   w1: number;
+  widths?: number[];
 }
 
 /** The trail in from the front of the map to the ring round the name. */
@@ -166,16 +170,18 @@ function curve(a: Pt, b: Pt, bend: number, steps = 10): Pt[] {
   return pts;
 }
 
-/** A rounded, slightly uneven ring: a squared-off ellipse round `c`. */
+/** A rounded, lumpy ring: a squared-off ellipse round `c`, its radius swelling and shrinking with a few slow waves (it must not read as a track). */
 function ringPoints(c: Pt, rx: number, rz: number, steps = 72): Pt[] {
   const pts: Pt[] = [];
   for (let i = 0; i <= steps; i++) {
     const a = (i / steps) * TAU;
     const cs = Math.cos(a);
     const sn = Math.sin(a);
+    // (the last point meets the first: every wave has a whole number of turns)
+    const lump = 1 + 0.05 * Math.sin(2 * a + 0.9) + 0.035 * Math.sin(3 * a + 1.3) + 0.025 * Math.sin(5 * a + 2.1);
     pts.push({
-      x: c.x + rx * Math.sign(cs) * Math.sqrt(Math.abs(cs)) * (1 + 0.035 * Math.sin(3 * a + 1.3)),
-      z: c.z + rz * Math.sign(sn) * Math.sqrt(Math.abs(sn)) * (1 + 0.05 * Math.sin(2 * a + 0.4)),
+      x: c.x + rx * Math.sign(cs) * Math.sqrt(Math.abs(cs)) * lump * (1 + 0.04 * cs),
+      z: c.z + rz * Math.sign(sn) * Math.sqrt(Math.abs(sn)) * lump,
     });
   }
   return pts;
@@ -185,8 +191,17 @@ function ringPoints(c: Pt, rx: number, rz: number, steps = 72): Pt[] {
 function doorOf(a: Rect, c: Pt): Pt {
   const rx = (c.x - (a.x + a.w / 2)) / (a.w / 2);
   const rz = (c.z - (a.y + a.h / 2)) / (a.h / 2);
-  if (Math.abs(rx) > Math.abs(rz)) return { x: rx > 0 ? a.x + a.w : a.x, z: clamp(c.z, a.y + 20, a.y + a.h - 20) };
-  return { x: clamp(c.x, a.x + 20, a.x + a.w - 20), z: rz > 0 ? a.y + a.h : a.y };
+  const mx = Math.min(36, a.w / 2 - 1);
+  const mz = Math.min(36, a.h / 2 - 1);
+  if (Math.abs(rx) > Math.abs(rz)) return { x: rx > 0 ? a.x + a.w : a.x, z: clamp(c.z, a.y + mz, a.y + a.h - mz) };
+  return { x: clamp(c.x, a.x + mx, a.x + a.w - mx), z: rz > 0 ? a.y + a.h : a.y };
+}
+
+/** The way into the area from a door on its edge: a unit vector. */
+function inward(a: Rect, door: Pt): Pt {
+  if (door.x <= a.x + 0.5) return { x: 1, z: 0 };
+  if (door.x >= a.x + a.w - 0.5) return { x: -1, z: 0 };
+  return door.z <= a.y + 0.5 ? { x: 0, z: 1 } : { x: 0, z: -1 };
 }
 
 function nearestOn(pts: Pt[], p: Pt): Pt {
@@ -236,14 +251,15 @@ function planTrails(mapSize: number, zones: ForestZone[]): Plan {
   const others = zones.filter((z) => z.kind !== "about");
 
   // the biggest ring that clears every project
-  let margin = 40;
+  let margin = 52;
   let ring = ringPoints(c, name.w / 2 + margin, name.h / 2 + margin * 0.8);
-  for (const m of [40, 32, 26, 20]) {
+  for (const m of [52, 44, 38, 32, 26, 20]) {
     margin = m;
     ring = ringPoints(c, name.w / 2 + m, name.h / 2 + m * 0.8);
     if (ring.every((p) => others.every((o) => rectSdf(p.x, p.z, o.area) > 12))) break;
   }
-  const hub: Pt = { x: c.x, z: c.z + name.h / 2 + margin * 0.8 };
+  // (the way in leaves from the ring's south side, wherever the lumps put it)
+  const hub: Pt = ring[Math.round((ring.length - 1) * 0.25)];
 
   // the widest gap between the projects of the front row, where the way in passes through them
   const row = zones.map((z) => z.area).filter((a) => a.y + a.h > mapSize - 110);
@@ -257,18 +273,66 @@ function planTrails(mapSize: number, zones: ForestZone[]): Plan {
   if (mapSize - 40 - cursor > best.w) best = { w: mapSize - 40 - cursor, c: (mapSize - 40 + cursor) / 2 };
   const path: PathLayout = { mapSize, hub, gapX: best.c, rowTop: row.length ? Math.min(...row.map((a) => a.y)) : mapSize - 150 };
 
+  // the way in: one long curve from the ring down to the gap (no sideways shuffle), then on south with a little wander
   const entrance: Pt[] = [];
-  for (let z = hub.z; z <= mapSize + 250; z += 14) entrance.push({ x: pathCenter(path, z), z });
+  const bend = path.rowTop - 10 - hub.z;
+  let zNext = hub.z;
+  if (bend > 60) {
+    const dx = path.gapX - hub.x;
+    const spline = new CatmullRomCurve3(
+      [
+        new Vector3(hub.x, 0, hub.z),
+        new Vector3(hub.x + 0.04 * dx, 0, hub.z + 0.22 * bend),
+        new Vector3(hub.x + 0.4 * dx, 0, hub.z + 0.55 * bend),
+        new Vector3(hub.x + 0.9 * dx, 0, hub.z + 0.88 * bend),
+        new Vector3(path.gapX, 0, path.rowTop - 10),
+      ],
+      false,
+      "centripetal"
+    );
+    for (const p of spline.getSpacedPoints(Math.max(4, Math.round(spline.getLength() / 14)))) entrance.push({ x: p.x, z: p.z });
+    zNext = path.rowTop - 10 + 14;
+  }
+  for (let z = zNext; z <= mapSize + 250; z += 14) entrance.push({ x: pathCenter(path, z), z });
 
+  // the ring swells and thins as it goes
+  const ringWidths = ring.map((p) => 3.4 + 2.0 * smooth(vnoise(p.x / 45, p.z / 45, 17), 0.25, 0.75));
   const trails: Trail[] = [
-    { pts: ring, w0: 4.6, w1: 4.6 },
-    { pts: entrance, w0: 8, w1: 5 },
+    { pts: ring, w0: 4.4, w1: 4.4, widths: ringWidths },
+    { pts: entrance, w0: 6.5, w1: 4.5 },
   ];
+  const joins = [...ring, ...entrance];
   others.forEach((o, i) => {
     if (o.kind === "link") return;
+    const bend = (hash(i, 3, 5) - 0.5) * 26;
+    if (o.route && o.route.length > 3) {
+      // a project with a road of its own: the trail runs onto the road (the part the cones stand on), at the point nearest the ring
+      const road = o.route.slice(2, Math.ceil(o.route.length * 0.5));
+      let door = road[0];
+      let best = Infinity;
+      for (const p of road) {
+        const d = distToPoints(ring, p.x, p.z);
+        if (d < best) {
+          best = d;
+          door = p;
+        }
+      }
+      trails.push({ pts: curve(nearestOn(joins, door), door, bend), w0: 3.4, w1: 2.6 });
+      return;
+    }
     const door = doorOf(o.area, c);
-    const from = nearestOn(ring, door);
-    trails.push({ pts: curve(from, door, (hash(i, 3, 5) - 0.5) * 26), w0: 4.4, w1: 3.4 });
+    // (from the ring or from the way in, whichever is nearer: a fork, not two trails side by side)
+    trails.push({ pts: curve(nearestOn(joins, door), door, bend), w0: 3.4, w1: 2.4 });
+    // and a short wide stub across the edge, a doorstep
+    const inn = inward(o.area, door);
+    trails.push({
+      pts: [
+        { x: door.x - inn.x * 8, z: door.z - inn.z * 8 },
+        { x: door.x + inn.x * 6, z: door.z + inn.z * 6 },
+      ],
+      w0: 6,
+      w1: 6,
+    });
   });
 
   // the camp: room to spare round it (a tent, a fire, seats), and the nearest such place to the ring
@@ -307,8 +371,8 @@ function trailField(mapSize: number, trails: Trail[]) {
     for (let s = 0; s < m; s++) {
       const a = tr.pts[s];
       const b = tr.pts[s + 1];
-      const hwA = lerp(tr.w0, tr.w1, s / m);
-      const hwB = lerp(tr.w0, tr.w1, (s + 1) / m);
+      const hwA = tr.widths ? tr.widths[s] : lerp(tr.w0, tr.w1, s / m);
+      const hwB = tr.widths ? tr.widths[s + 1] : lerp(tr.w0, tr.w1, (s + 1) / m);
       const reach = Math.max(hwA, hwB) + 22;
       const i0 = Math.max(0, Math.floor((Math.min(a.x, b.x) - reach + pad) / step));
       const i1 = Math.min(n - 1, Math.ceil((Math.max(a.x, b.x) + reach + pad) / step));
@@ -385,7 +449,7 @@ function clearingField(mapSize: number, zones: ForestZone[], camp: Pt) {
 
 type RGB = [number, number, number];
 const EARTH: RGB = [0x6c, 0x59, 0x3f];
-const PATH: RGB = [0x9a, 0x82, 0x5c];
+const PATH: RGB = [0x8a, 0x76, 0x56];
 const GRASS: RGB = [0x44, 0x70, 0x3a];
 const MOSS: RGB = [0x27, 0x44, 0x2a];
 const DEEP: RGB = [0x1b, 0x31, 0x24];
@@ -644,7 +708,18 @@ function tentGeometry(): BufferGeometry {
   const flap = new ShapeGeometry(door);
   flap.rotateY(-Math.PI / 2); // (facing west)
   flap.translate(-len / 2 - 0.15, 0, 0);
-  return mergeGeometries([painted(body, "#b39a68"), painted(flap, "#241b13")])!;
+  // (the two roof slopes face different ways: one catches the light, the other is in shade; the ends in between)
+  const canvas = painted(body, "#a08857");
+  const nor = canvas.attributes.normal;
+  const rgb = canvas.attributes.color;
+  const lit = new Color("#c9b27c");
+  const shade = new Color("#7d6a42");
+  for (let i = 0; i < rgb.count; i++) {
+    const nz = nor.getZ(i);
+    const c = nz > 0.3 ? lit : nz < -0.3 ? shade : null;
+    if (c) rgb.setXYZ(i, c.r, c.g, c.b);
+  }
+  return mergeGeometries([canvas, painted(flap, "#241b13")])!;
 }
 
 function foliageMaterial(): MeshToonMaterial {
@@ -736,7 +811,7 @@ export function buildForest(mapSize: number, style: ForestStyle, zones: ForestZo
     const from = nearestOn(plan.ring, camp);
     const len = Math.hypot(camp.x - from.x, camp.z - from.z) || 1;
     const stop = { x: camp.x + ((from.x - camp.x) / len) * 18, z: camp.z + ((from.z - camp.z) / len) * 18 };
-    trails.push({ pts: curve(from, stop, 14), w0: 4.2, w1: 3.6 });
+    trails.push({ pts: curve(from, stop, 14), w0: 3.4, w1: 2.8 });
   }
   const trail = trailField(mapSize, trails);
   const field = clearingField(mapSize, zones, camp);
@@ -887,7 +962,7 @@ export function buildForest(mapSize: number, style: ForestStyle, zones: ForestZo
       const l = 0.85 + r3 * 0.3;
       const under = nearTree(x, z) < 1.3;
       const pBush = 0.012 + (under ? 0.3 * smooth(clump, 0.35, 0.75) : 0);
-      if (pg < 11 && r1 < 0.34 * smooth(clump, 0.25, 0.65)) {
+      if (pg < 11 && r1 < 0.5 * smooth(clump, 0.25, 0.65)) {
         // tall grass along the trail's edge
         const s = 0.8 + r2 * 0.6;
         tufts.push({ x, z, yaw: r3 * TAU, sx: s, sy: s, tint: new Color(l, l, l) });

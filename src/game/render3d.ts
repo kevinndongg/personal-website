@@ -755,7 +755,11 @@ export class Renderer3D {
       this.forestScene = buildForest(
         mapSize,
         this.forest,
-        world.zones.map((z) => ({ kind: z.kind, area: z.scene.area })),
+        world.zones.map((z) => ({
+          kind: z.kind,
+          area: z.scene.area,
+          route: z.scene.props.find((p) => p.drive)?.drive?.map((p) => ({ x: p.x, z: p.y })),
+        })),
         sun.position.clone().sub(this.center).normalize()
       );
       map.add(this.forestScene.group);

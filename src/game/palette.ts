@@ -26,6 +26,7 @@ export const GROUND = {
   concreteJoint: "#5a5d66",
   concreteSpeck: ["#62656e", "#8a8d97"],
   oil: "#25262c",
+  roadEdge: "#2a2b31",
   laneLine: "#c9a921",
   shadow: "rgba(10, 10, 16, 0.35)",
   pathDot: "#f4f4f4",
