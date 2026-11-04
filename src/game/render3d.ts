@@ -44,7 +44,8 @@ import { attachPowerPlay } from "./ppcycle";
 import { attachCycle } from "./robotcycle";
 import { FOREST_REACH, buildForest } from "./forest";
 import type { Forest, ForestReach, ForestStyle } from "./forest";
-import { GROUND_MARGIN, buildGroundLayer, buildLot } from "./ground";
+import { FTC_APRON } from "./ftc";
+import { GROUND_MARGIN, buildApron, buildGroundLayer, buildLot } from "./ground";
 import type { Lot } from "./ground";
 import { createModel, tireModel, woodTexture } from "./models";
 import type { AnimCtx } from "./models";
@@ -687,8 +688,18 @@ export class Renderer3D {
         list.push(model);
       }
       // (the forest: a project with a car stands on a paved lot, which rises with it on hover)
-      const lot = this.forest ? buildLot(zone.scene.props) : null;
-      if (lot) {
+      // (and the FTC project's stacks and driver station on a patch of gravel under them, the field itself on the grass)
+      const lots: Lot[] = [];
+      const carLot = this.forest ? buildLot(zone.scene.props) : null;
+      if (carLot) {
+        lots.push(carLot);
+        this.lotZones.add(zone.id); // (its glows ride up with it)
+      }
+      if (this.forest && zone.variant === "ftc") {
+        const a = zone.scene.area;
+        lots.push(buildApron({ x: a.x + FTC_APRON.x, y: a.y + FTC_APRON.y, w: FTC_APRON.w, h: FTC_APRON.h }));
+      }
+      for (const lot of lots) {
         const model = this.lotModel(lot);
         model.userData.baseY = 0;
         model.userData.zoneId = zone.id;
@@ -696,7 +707,6 @@ export class Renderer3D {
         let list = this.zoneModels.get(zone.id);
         if (!list) this.zoneModels.set(zone.id, (list = []));
         list.push(model);
-        this.lotZones.add(zone.id);
       }
       if (still.length) {
         const joined = joinAcross(still);
@@ -850,7 +860,7 @@ export class Renderer3D {
 
   /**
    * The paved lot of the forest preview as an object that rises with its project: a sheet of its own (see `buildLot`) lying over
-   * all the ground's layers, with its own shadow catcher (see `addLiftOverlay`; the leaf shade is left off, the clearing has
+   * all the ground's layers (the car's lot, or the FTC project's gravel), with its own shadow catcher (see `addLiftOverlay`; the leaf shade is left off, the clearing has
    * hardly any) and a thin dark wall under it that only shows once the lot has risen, so that it reads as a slab. The sheet is cut
    * out at its edge (not blended), so that it hides the ground's layers under the lot and only there.
    */
@@ -869,9 +879,9 @@ export class Renderer3D {
     g.add(sheet);
 
     // the wall: the lot's outline, a little inside it, 6 deep (it is under the floor at rest)
-    const hw = lot.hw - 1.2;
-    const hh = lot.hh - 1.2;
-    const r = lot.r - 1.2;
+    const hw = lot.hw - lot.inset;
+    const hh = lot.hh - lot.inset;
+    const r = lot.r - lot.inset;
     const outline = new Shape();
     outline.moveTo(-hw + r, -hh);
     outline.lineTo(hw - r, -hh);
@@ -884,7 +894,7 @@ export class Renderer3D {
     outline.absarc(-hw + r, -hh + r, r, Math.PI, Math.PI * 1.5, false);
     const geo = new ExtrudeGeometry(outline, { depth: 6, bevelEnabled: false, curveSegments: 10 });
     geo.rotateX(Math.PI / 2); // (the outline's y becomes the map's z, and the depth runs down)
-    const wall = new Mesh(geo, new MeshBasicMaterial({ color: "#3a3b42" }));
+    const wall = new Mesh(geo, new MeshBasicMaterial({ color: lot.wall }));
     wall.position.set(lot.cx - (lot.x + lot.w / 2), LOT_Y - 0.03, lot.cy - (lot.y + lot.h / 2));
     wall.castShadow = false;
     g.add(wall);
