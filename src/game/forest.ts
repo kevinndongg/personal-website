@@ -62,6 +62,8 @@ export interface ForestZone {
   area: Rect;
   /** A road the project brings (the racing car's lap, in map px): the trail to it lands on the road instead of at its edge. */
   route?: { x: number; z: number }[];
+  /** The part of the project the trail should lead to, when that is smaller than its area (the FTC field inside its yard). */
+  door?: Rect;
 }
 
 /** How far past the projects the trees (and the floor texture) reach, in world px. Past it the floor is dark, but not black. */
@@ -326,11 +328,12 @@ function planTrails(mapSize: number, zones: ForestZone[]): Plan {
       trails.push({ pts: curve(nearestOn(joins, door), door, bend), w0: 3.4, w1: 2.6 });
       return;
     }
-    const door = doorOf(o.area, c);
+    const target = o.door ?? o.area;
+    const door = doorOf(target, c);
     // (from the ring or from the way in, whichever is nearer: a fork, not two trails side by side)
     trails.push({ pts: curve(nearestOn(joins, door), door, bend), w0: 3.4, w1: 2.4 });
     // and a short wide stub across the edge, a doorstep
-    const inn = inward(o.area, door);
+    const inn = inward(target, door);
     trails.push({
       pts: [
         { x: door.x - inn.x * 8, z: door.z - inn.z * 8 },

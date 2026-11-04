@@ -807,6 +807,7 @@ export class Renderer3D {
           kind: z.kind,
           area: z.scene.area,
           route: z.scene.props.find((p) => p.drive)?.drive?.map((p) => ({ x: p.x, z: p.y })),
+          door: z.variant === "ftc" ? z.scene.building : undefined,
         })),
         sun.position.clone().sub(this.center).normalize(),
         this.forestReach(mapSize)
