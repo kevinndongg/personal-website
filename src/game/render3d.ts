@@ -190,6 +190,8 @@ const VOID = "#1d1e24"; // the dark surface the map sits on
  * trees are taller than that, and their tops run off the top and sides of the screen on purpose.
  */
 const FOREST_PAD = 3 * TILE;
+/** How far past the map the shadow-catching sheet reaches in the forest: the longest shadow (a crane about 80 high at a 24 degree sun) is about 190. */
+const FOREST_SHADOW_PAD = 260;
 const FOREST_TOP = 70;
 function forestParam(): ForestStyle | null {
   if (typeof location === "undefined") return null;
@@ -587,7 +589,11 @@ export class Renderer3D {
     ground.renderOrder = -1;
     map.add(ground);
     this.groundMesh = ground;
-    const shadowCatcher = new Mesh(new PlaneGeometry(mapSize, mapSize), new ShadowMaterial({ color: "#0b1220", opacity: 0.4 }));
+    // (in the forest the catcher reaches well past the map, to the north and east where the shadows of the cranes and the garage
+    // fall, which are the way the sun throws them: over the forest floor, not off the edge of a square. The shadow map already
+    // covers that ground: see the frustum above)
+    const catcherSize = this.forest ? mapSize + 2 * FOREST_SHADOW_PAD : mapSize;
+    const shadowCatcher = new Mesh(new PlaneGeometry(catcherSize, catcherSize), new ShadowMaterial({ color: "#0b1220", opacity: 0.4 }));
     shadowCatcher.rotation.x = -Math.PI / 2;
     shadowCatcher.position.set(this.center.x, 0.05, this.center.z);
     shadowCatcher.receiveShadow = true;
