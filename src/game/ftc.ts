@@ -14,6 +14,9 @@ import type { Decal, Footprint, Prop, Scene } from "./scenes";
 export const W = 168;
 export const H = 204;
 
+/** The ground under the stacks, the driver station and the pit, just below the field's south wall (area-local; the forest preview's gravel). */
+export const FTC_APRON = { x: 1, y: 143, w: 140, h: 56 };
+
 /** The field's top-left corner (area-local) and side. */
 const FIELD = { x: 8, y: 22, size: 120 };
 
