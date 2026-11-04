@@ -6,6 +6,7 @@ import {
   Color,
   ColorManagement,
   DirectionalLight,
+  ExtrudeGeometry,
   Group,
   HalfFloatType,
   HemisphereLight,
@@ -25,6 +26,7 @@ import {
   RepeatWrapping,
   Scene,
   ShaderMaterial,
+  Shape,
   ShadowMaterial,
   Texture,
   UnsignedByteType,
@@ -42,7 +44,8 @@ import { attachPowerPlay } from "./ppcycle";
 import { attachCycle } from "./robotcycle";
 import { FOREST_REACH, buildForest } from "./forest";
 import type { Forest, ForestReach, ForestStyle } from "./forest";
-import { GROUND_MARGIN, buildGroundLayer } from "./ground";
+import { GROUND_MARGIN, buildGroundLayer, buildLot } from "./ground";
+import type { Lot } from "./ground";
 import { createModel, tireModel, woodTexture } from "./models";
 import type { AnimCtx } from "./models";
 import { sceneryModel } from "./scenery";
@@ -192,6 +195,9 @@ const VOID = "#1d1e24"; // the dark surface the map sits on
 const FOREST_PAD = 3 * TILE;
 /** How far past the map the shadow-catching sheet reaches in the forest: the longest shadow (a crane about 80 high at a 24 degree sun) is about 190. */
 const FOREST_SHADOW_PAD = 260;
+/** The paved lot's sheet lies at this height (over the ground's layers, which reach 0.13); its glow lies this much above it. */
+const LOT_Y = 0.14;
+const LOT_GLOW_LIFT = 0.25;
 const FOREST_TOP = 70;
 function forestParam(): ForestStyle | null {
   if (typeof location === "undefined") return null;
@@ -393,6 +399,9 @@ export class Renderer3D {
   private center: Vector3;
   private pickables: Object3D[] = [];
   private zoneModels = new Map<string, Object3D[]>();
+  /** The projects that stand on a lifting lot (the forest preview), and the one the invitation glow belongs to. */
+  private lotZones = new Set<string>();
+  private inviteZone = "";
   private zoneGlow = new Map<string, Mesh>();
   /** The pulsing halo round the racing area that says "start here" (`on` until the viewer opens something). */
   private invite: { mesh: Mesh; on: boolean; amount: number } | null = null;
@@ -677,6 +686,18 @@ export class Renderer3D {
         if (!list) this.zoneModels.set(zone.id, (list = []));
         list.push(model);
       }
+      // (the forest: a project with a car stands on a paved lot, which rises with it on hover)
+      const lot = this.forest ? buildLot(zone.scene.props) : null;
+      if (lot) {
+        const model = this.lotModel(lot);
+        model.userData.baseY = 0;
+        model.userData.zoneId = zone.id;
+        map.add(model);
+        let list = this.zoneModels.get(zone.id);
+        if (!list) this.zoneModels.set(zone.id, (list = []));
+        list.push(model);
+        this.lotZones.add(zone.id);
+      }
       if (still.length) {
         const joined = joinAcross(still);
         this.merged.to += joined.to - stillMeshes;
@@ -707,7 +728,7 @@ export class Renderer3D {
         })
       );
       glow.rotation.x = -Math.PI / 2;
-      glow.position.set(a.x + a.w / 2, 0.12, a.y + a.h / 2);
+      glow.position.set(a.x + a.w / 2, 0.12 + (this.lotZones.has(zone.id) ? LOT_GLOW_LIFT : 0), a.y + a.h / 2);
       glow.renderOrder = 1;
       glow.visible = false;
       map.add(glow);
@@ -734,6 +755,8 @@ export class Renderer3D {
       mesh.visible = false;
       map.add(mesh);
       this.invite = { mesh, on: false, amount: 0 };
+      this.inviteZone = racing.id;
+      if (this.lotZones.has(racing.id)) mesh.position.y += LOT_GLOW_LIFT; // (over the lot, which sits above the ground's layers)
     }
 
     // yard tire piles (not in the forest, where there is no yard)
@@ -802,7 +825,7 @@ export class Renderer3D {
    * 0.12 too), which can then never show through, and carries a catcher and a leaf shade of its own, covering the same patch
    * of the map, at every height. They sit just above the sheet, so shadows and dapple stay on it, rising or at rest.
    */
-  private addLiftOverlay(model: Object3D, { w, d, y }: { w: number; d: number; y: number }) {
+  private addLiftOverlay(model: Object3D, { w, d, y }: { w: number; d: number; y: number }, withLeaves = true) {
     const { mapSize } = this;
     const catcher = new Mesh(new PlaneGeometry(w, d), new ShadowMaterial({ color: "#0b1220", opacity: 0.4 }));
     catcher.rotation.x = -Math.PI / 2;
@@ -820,7 +843,53 @@ export class Renderer3D {
     leaves.rotation.x = -Math.PI / 2;
     leaves.position.y = y + 0.05;
     leaves.renderOrder = 0.5;
-    model.add(catcher, leaves);
+    model.add(catcher);
+    if (withLeaves) model.add(leaves);
+  }
+
+  /**
+   * The paved lot of the forest preview as an object that rises with its project: a sheet of its own (see `buildLot`) lying over
+   * all the ground's layers, with its own shadow catcher (see `addLiftOverlay`; the leaf shade is left off, the clearing has
+   * hardly any) and a thin dark wall under it that only shows once the lot has risen, so that it reads as a slab. The sheet is cut
+   * out at its edge (not blended), so that it hides the ground's layers under the lot and only there.
+   */
+  private lotModel(lot: Lot) {
+    const g = new Group();
+    g.position.set(lot.x + lot.w / 2, 0, lot.y + lot.h / 2);
+    const tex = new CanvasTexture(lot.canvas);
+    tex.minFilter = LinearMipmapLinearFilter;
+    tex.magFilter = LinearFilter;
+    tex.generateMipmaps = true;
+    tex.anisotropy = 8;
+    const sheet = new Mesh(new PlaneGeometry(lot.w, lot.h), new MeshBasicMaterial({ map: tex, alphaTest: 0.4 }));
+    sheet.rotation.x = -Math.PI / 2;
+    sheet.position.y = LOT_Y;
+    sheet.castShadow = false;
+    g.add(sheet);
+
+    // the wall: the lot's outline, a little inside it, 6 deep (it is under the floor at rest)
+    const hw = lot.hw - 1.2;
+    const hh = lot.hh - 1.2;
+    const r = lot.r - 1.2;
+    const outline = new Shape();
+    outline.moveTo(-hw + r, -hh);
+    outline.lineTo(hw - r, -hh);
+    outline.absarc(hw - r, -hh + r, r, -Math.PI / 2, 0, false);
+    outline.lineTo(hw, hh - r);
+    outline.absarc(hw - r, hh - r, r, 0, Math.PI / 2, false);
+    outline.lineTo(-hw + r, hh);
+    outline.absarc(-hw + r, hh - r, r, Math.PI / 2, Math.PI, false);
+    outline.lineTo(-hw, -hh + r);
+    outline.absarc(-hw + r, -hh + r, r, Math.PI, Math.PI * 1.5, false);
+    const geo = new ExtrudeGeometry(outline, { depth: 6, bevelEnabled: false, curveSegments: 10 });
+    geo.rotateX(Math.PI / 2); // (the outline's y becomes the map's z, and the depth runs down)
+    const wall = new Mesh(geo, new MeshBasicMaterial({ color: "#3a3b42" }));
+    wall.position.set(lot.cx - (lot.x + lot.w / 2), LOT_Y - 0.03, lot.cy - (lot.y + lot.h / 2));
+    wall.castShadow = false;
+    g.add(wall);
+
+    this.addLiftOverlay(g, { w: lot.w, d: lot.h, y: LOT_Y }, false);
+    return g;
   }
 
   /** Switch how the map ends (see EdgeMode). Safe to call at any time. */
@@ -1127,7 +1196,11 @@ export class Renderer3D {
       if (m.userData.flat) continue; // a mat lying on the ground does not rise with the rest
       m.position.y = (m.userData.baseY ?? 0) + amount * lift;
     }
+    // (what stands on a lifting lot has its glow ride up with it, or the lot would hide it)
+    const onLot = this.lotZones.has(zoneId);
     const glow = this.zoneGlow.get(zoneId);
+    if (glow && onLot) glow.position.y = 0.12 + LOT_GLOW_LIFT + amount * lift;
+    if (onLot && this.invite && zoneId === this.inviteZone) this.invite.mesh.position.y = 0.13 + LOT_GLOW_LIFT + amount * lift;
     if (glow) {
       glow.visible = amount > 0.001;
       (glow.material as MeshBasicMaterial).opacity = amount * (cfg?.glow ?? GLOW);
