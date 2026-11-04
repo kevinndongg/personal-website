@@ -145,7 +145,7 @@ const POST_FS = `
     c = mix(vec3(l), c, 0.86);
     c += vec3(0.010, 0.030, 0.026) * (1.0 - l);        // shadows lean green/teal
     c *= mix(vec3(1.0), vec3(1.07, 1.02, 0.90), l);     // highlights lean warm
-    c = mix(c, c * vec3(1.09, 0.985, 0.84), golden);    // late afternoon (the forest preview): the whole picture a little amber
+    c = mix(c, c * vec3(1.05, 0.99, 0.91), golden);     // late afternoon (the forest preview): the whole picture a touch amber
     c = (c - 0.5) * 1.05 + 0.5;
     c *= 1.14; // a little exposure: the scene is lit low and warm, keep it from going muddy
 
@@ -526,9 +526,9 @@ export class Renderer3D {
     // is late afternoon: the sun is lower (24 degrees, not 28: the shadow map's bounds below hold at that, they only grow looser),
     // deeper in color, and a little stronger, as the lower it is the less it lights what faces up.
     const late = !!this.forest;
-    scene.add(new HemisphereLight(late ? "#c9d4ef" : "#d8e4ff", late ? "#8a7757" : "#8d826f", late ? 0.85 : 0.95));
+    scene.add(new HemisphereLight(late ? "#c9d4ef" : "#d8e4ff", late ? "#807660" : "#8d826f", late ? 0.85 : 0.95));
     scene.add(new AmbientLight("#ffffff", 0.22));
-    const sun = (this.sun = new DirectionalLight(late ? "#ffb878" : "#ffd9a6", late ? 2.7 : 2.4));
+    const sun = (this.sun = new DirectionalLight(late ? "#ffc994" : "#ffd9a6", late ? 2.7 : 2.4));
     sun.position.set(mapSize / 2 - 420, late ? 252 : 300, mapSize / 2 + 380);
     sun.target.position.copy(this.center);
     sun.castShadow = true;
