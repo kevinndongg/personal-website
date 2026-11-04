@@ -13,18 +13,24 @@ export const carWatch = { driving: false, x: 0, z: 0 };
 const between =([a, b]: number[]) => a + Math.random() * (b - a);
 const smooth = (u: number) => u * u * (3 - 2 * u);
 
-/**
- * Makes `model` follow `path` (world px; its first and last points are where it is parked) on its own every so often.
- * `model.userData.drive()` starts a lap on demand, and returns whether it did (false while one is already under way).
- * Only x, z and the heading are touched: the hover lift owns the model's height.
- */
-export function attachLap(model: Group, path: { x: number; y: number }[]) {
+/** The smooth curve a lap follows through `path` (world px, y being the world's z). Shared with the forest's road. */
+export function lapCurve(path: { x: number; y: number }[]) {
   const curve = new CatmullRomCurve3(
     path.map((p) => new Vector3(p.x, 0, p.y)),
     false,
     "centripetal"
   );
   curve.arcLengthDivisions = 1500;
+  return curve;
+}
+
+/**
+ * Makes `model` follow `path` (world px; its first and last points are where it is parked) on its own every so often.
+ * `model.userData.drive()` starts a lap on demand, and returns whether it did (false while one is already under way).
+ * Only x, z and the heading are touched: the hover lift owns the model's height.
+ */
+export function attachLap(model: Group, path: { x: number; y: number }[]) {
+  const curve = lapCurve(path);
   const duration = curve.getLength() / SPEED;
   const home = { x: model.position.x, z: model.position.z, ry: model.rotation.y };
 
