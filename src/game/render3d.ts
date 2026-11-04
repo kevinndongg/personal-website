@@ -860,7 +860,7 @@ export class Renderer3D {
 
   /**
    * The paved lot of the forest preview as an object that rises with its project: a sheet of its own (see `buildLot`) lying over
-   * all the ground's layers (the car's lot, or the FTC project's gravel), with its own shadow catcher (see `addLiftOverlay`; the leaf shade is left off, the clearing has
+   * all the ground's layers (the car's lot, or the FTC project's carpet), with its own shadow catcher (see `addLiftOverlay`; the leaf shade is left off, the clearing has
    * hardly any) and a thin dark wall under it that only shows once the lot has risen, so that it reads as a slab. The sheet is cut
    * out at its edge (not blended), so that it hides the ground's layers under the lot and only there.
    */
