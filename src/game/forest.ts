@@ -885,7 +885,7 @@ export function buildForest(mapSize: number, style: ForestStyle, zones: ForestZo
       const x = gx + (jx - 0.5) * CELL * 0.75;
       const z = gz + (jz - 0.5) * CELL * 0.75;
       const d = field(x, z);
-      if (d < 14 || d > 125) continue;
+      if (d < 14 || d > 110) continue;
       const keep = lerp(0.6, 0.9, smooth(d, 30, 80)) * (0.75 + 0.5 * vnoise(x / 120, z / 120, 9));
       if (r1 > keep) continue;
       if (trail(x, z) < 16 || campDist(x, z) < 70) continue;
@@ -894,7 +894,7 @@ export function buildForest(mapSize: number, style: ForestStyle, zones: ForestZo
     }
   }
   // and further out, closer together and bigger, running off the edge of the screen and into the dark
-  const FAR = 76;
+  const FAR = 58;
   for (let gz = -FOREST_REACH; gz < mapSize + FOREST_REACH; gz += FAR) {
     for (let gx = -FOREST_REACH; gx < mapSize + FOREST_REACH; gx += FAR) {
       const jx = rand();
@@ -907,9 +907,10 @@ export function buildForest(mapSize: number, style: ForestStyle, zones: ForestZo
       const x = gx + (jx - 0.5) * FAR * 0.8;
       const z = gz + (jz - 0.5) * FAR * 0.8;
       const d = field(x, z);
-      if (d < 125 || d > FOREST_REACH) continue;
-      if (r1 > 0.78 * (0.75 + 0.5 * vnoise(x / 100, z / 100, 12))) continue;
-      plant(x, z, d, lerp(2.1, 3.4, smooth(d, 125, 230)) * (0.85 + r2 * 0.3), r2, r3, r4, r5);
+      if (d < 110 || d > FOREST_REACH) continue;
+      // (nearly every spot takes a tree out here: the outskirts are a wall, with only the odd gap)
+      if (r1 > 0.93 * (0.9 + 0.2 * vnoise(x / 100, z / 100, 12))) continue;
+      plant(x, z, d, lerp(2.0, 3.4, smooth(d, 110, 230)) * (0.85 + r2 * 0.3), r2, r3, r4, r5);
     }
   }
 
