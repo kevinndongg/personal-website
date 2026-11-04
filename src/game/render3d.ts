@@ -39,8 +39,8 @@ import { attachLap } from "./drive";
 import { attachErrand } from "./errand";
 import { attachPowerPlay } from "./ppcycle";
 import { attachCycle } from "./robotcycle";
-import { buildForest } from "./forest";
-import type { Forest, ForestStyle } from "./forest";
+import { FOREST_REACH, buildForest } from "./forest";
+import type { Forest, ForestReach, ForestStyle } from "./forest";
 import { GROUND_MARGIN, buildGroundLayer } from "./ground";
 import { createModel, tireModel, woodTexture } from "./models";
 import type { AnimCtx } from "./models";
@@ -760,7 +760,8 @@ export class Renderer3D {
           area: z.scene.area,
           route: z.scene.props.find((p) => p.drive)?.drive?.map((p) => ({ x: p.x, z: p.y })),
         })),
-        sun.position.clone().sub(this.center).normalize()
+        sun.position.clone().sub(this.center).normalize(),
+        this.forestReach(mapSize)
       );
       map.add(this.forestScene.group);
       // the leaf shade is mostly under the trees: a mask thins it out toward the middle of the clearing
@@ -837,6 +838,27 @@ export class Renderer3D {
     this.quad.uniforms.res.value.set(this.width, this.height);
     this.tall = this.width < this.height * 0.9;
     this.fitCamera();
+  }
+
+  /**
+   * How far past the map the forest has to go to fill this window: the camera fits the map in the window (see `fitCamera`) and
+   * shows whatever is left over, sideways on a wide screen and up and down on a tall one. Worked out from the window as it is now
+   * (at least a 16:9 one, so that a window made wider later still has trees); the trees thin out at the very end of it.
+   */
+  private forestReach(mapSize: number): ForestReach {
+    const aspect = Math.min(3.2, Math.max(16 / 9, typeof window === "undefined" ? 2 : window.innerWidth / Math.max(1, window.innerHeight)));
+    const portrait = typeof window !== "undefined" && window.innerWidth < window.innerHeight;
+    const a = portrait ? window.innerWidth / Math.max(1, window.innerHeight) : aspect;
+    // what the fit takes in on each axis, in view px (the map's depth is foreshortened by the tilt, its trees stand up)
+    const w0 = (mapSize + 2 * FOREST_PAD) / 0.98;
+    const h0 = ((mapSize + 2 * FOREST_PAD) * Math.sin(TILT) + FOREST_TOP * Math.cos(TILT)) / 0.98;
+    const viewW = Math.max(w0, h0 * a);
+    const viewH = viewW / a;
+    const margin = 130; // (the end of the reach thins out over its last 110, and the camera also swings a little)
+    return {
+      x: Math.min(640, Math.max(FOREST_REACH, (viewW - mapSize) / 2 + margin)),
+      z: Math.min(640, Math.max(FOREST_REACH, (viewH / Math.sin(TILT) - mapSize) / 2 + margin)),
+    };
   }
 
   /** Orthographic camera at a fixed tilt, scaled so the whole map fits and centered on it. */
