@@ -165,8 +165,6 @@ export function buildGroundLayer(world: World, bare = false): HTMLCanvasElement 
     ctx.fillRect(a.x + a.w - 2, a.y, 2, a.h);
   }
 
-  if (bare) for (const z of world.zones) paintLot(ctx, z.scene.props);
-
   for (const z of world.zones) for (const d of z.scene.decals) drawDecal(ctx, d, z.accent);
   return c;
 }
@@ -176,10 +174,29 @@ export function buildGroundLayer(world: World, bare = false): HTMLCanvasElement 
  * by the cones, so the pavement draws no route: it is an open lot with a plain shape of its own, a rounded rectangle like the other
  * projects' pads, big enough for the whole course and for the car's way back. Lighter, weathered grey, with a worn kerb, a few oil
  * stains and cracks.
+ *
+ * It is drawn on a sheet of its own (not on the ground's), which the renderer lifts with the project: the cones and the garage
+ * rise on hover, and so must what they stand on, or their shadows slide off them. Where it lies, and its outline, are returned
+ * so the renderer can give the sheet a thin edge to show when it has risen.
  */
-function paintLot(ctx: CanvasRenderingContext2D, props: Prop[]) {
+export interface Lot {
+  canvas: HTMLCanvasElement;
+  /** The sheet's top-left corner and size on the map, in px. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** The rounded rectangle: its centre, half sizes and corner radius. */
+  cx: number;
+  cy: number;
+  hw: number;
+  hh: number;
+  r: number;
+}
+
+export function buildLot(props: Prop[]): Lot | null {
   const car = props.find((p) => p.drive);
-  if (!car?.drive) return;
+  if (!car?.drive) return null;
   let x0 = Infinity;
   let y0 = Infinity;
   let x1 = -Infinity;
@@ -209,7 +226,7 @@ function paintLot(ctx: CanvasRenderingContext2D, props: Prop[]) {
     return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - R;
   };
 
-  const M = 6;
+  const M = 3; // (little: the sheet's own shadow-catcher covers it all, and the ground's is under it)
   const ox = Math.floor(x0) - M;
   const oy = Math.floor(y0) - M;
   const W = Math.ceil(x1) + M - ox;
@@ -270,7 +287,7 @@ function paintLot(ctx: CanvasRenderingContext2D, props: Prop[]) {
     }
   }
   octx.putImageData(img, 0, 0);
-  ctx.drawImage(out, ox, oy);
+  return { canvas: out, x: ox, y: oy, w: W, h: H, cx, cy, hw, hh, r: R };
 }
 
 /** A hex colour as plain 0..1 channels (as the rest of this file paints it: no colour management). */
