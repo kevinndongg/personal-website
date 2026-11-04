@@ -165,7 +165,12 @@ export function buildGroundLayer(world: World, bare = false): HTMLCanvasElement 
     ctx.fillRect(a.x + a.w - 2, a.y, 2, a.h);
   }
 
-  for (const z of world.zones) for (const d of z.scene.decals) drawDecal(ctx, d, z.accent);
+  for (const z of world.zones)
+    for (const d of z.scene.decals) {
+      // (the forest: the field stands on the grass, so the dark carpet the yard laid under it is left out)
+      if (bare && z.variant === "ftc" && d.kind === "pool") continue;
+      drawDecal(ctx, d, z.accent);
+    }
   return c;
 }
 
