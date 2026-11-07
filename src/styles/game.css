@@ -1020,6 +1020,7 @@ html:has(.game) body {
   font-size: calc(15.5px * var(--card-scale, 1));
   line-height: 1.55;
   color: var(--ink);
+  white-space: pre-line; /* a blank line between paragraphs, from the project's markdown */
 }
 
 /* the results: the part a recruiter actually wants */
