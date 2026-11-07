@@ -14,7 +14,7 @@ animation: "temple-allen-flight-path"
 order: 3
 ---
 
-At Temple Allen, I worked on robotics software development and tooling in ROS 2
+At Temple Allen, I worked on robotics software development and tooling in ROS 2.
 
 I built internal tools for computer vision parameter tuning and camera calibration, replacing slow, manual processes. 
 
