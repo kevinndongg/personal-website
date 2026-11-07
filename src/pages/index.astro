@@ -79,17 +79,28 @@ const introPhotos = await Promise.all(
   reel.slice(0, INTRO_PHOTOS).map(async (p) => ({ ...p, thumb: await thumbnails(fileOf.get(p.src)) }))
 );
 
-/** The project's markdown body: the lead sentence(s), and the bullet list that carries the results. */
+/**
+ * The project's markdown body: the lead paragraph(s), and the bullet list that carries the results. A paragraph's lines are
+ * joined into one; paragraphs are kept apart by a blank line (the card shows it: `white-space: pre-line` on `.summary`).
+ */
 function parseBody(body = "") {
-  const lines = body
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  const isBullet = (l: string) => /^[-*]\s+/.test(l);
-  return {
-    lead: lines.filter((l) => !isBullet(l)).join(" "),
-    bullets: lines.filter(isBullet).map((l) => l.replace(/^[-*]\s+/, "")),
+  const paragraphs: string[] = [];
+  const bullets: string[] = [];
+  let current: string[] = [];
+  const endParagraph = () => {
+    if (current.length) paragraphs.push(current.join(" "));
+    current = [];
   };
+  for (const raw of body.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) endParagraph();
+    else if (/^[-*]\s+/.test(line)) {
+      endParagraph();
+      bullets.push(line.replace(/^[-*]\s+/, ""));
+    } else current.push(line);
+  }
+  endParagraph();
+  return { lead: paragraphs.join("\n\n"), bullets };
 }
 
 /** A project's `media` as the card shows it: images optimized (the card is up to about 1000px wide on a big screen, and 580px at its base size, so this is enough for sharp ones), paths made final. */
