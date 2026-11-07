@@ -15,8 +15,8 @@ animation: "auton-lab-bounding-boxes"
 order: 1
 ---
 
-Conducted research on vision models at Carnegie Mellon's Auton Lab, working on model development and evaluation for computer vision tasks.
+I research how well vision transformers can triage casualties from images, and got our DINOv3 model running inside the triage pipeline as a Docker inference server.
 
-- Benchmarked a vision transformer (DINOv3) against a VLM (Cosmos) on accuracy and latency for live triage, and containerized a REST-based DINOv3 inference server for integration into the triage pipeline
-- Diagnosed a casualty-classification model relying on background shortcuts instead of real injury features using attention visualization, revealing a 12-point accuracy drop caused by an improperly grouped train/test split
-- Prototyped a probabilistic model (Bayesian network) in Python that fused multiple observations into injury estimates, validated via Monte Carlo simulation to outperform standalone model output by 13%
+- Benchmarked DINOv3 against a VLM (Cosmos) on triage classification, then tried cropped, blurred, and full images centered on a casualty. Cropping with a little margin around the casualty beat the full image by 13%
+- Used attention maps to catch a model leaning on background shortcuts instead of actual injury features, which traced back to a badly grouped train/test split behind a 12-point accuracy drop
+- Prototyped a Bayesian network in Python that combines multiple observations into an injury estimate. In Monte Carlo sims it beat the standalone model by 13%
