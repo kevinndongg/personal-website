@@ -158,44 +158,42 @@ export function heldBase(tilt: number, twist: number): [number, number, number] 
  */
 export const PIXEL_SIZE = { across: 3 / 1.2, corner: 3 / 1.2 / Math.cos(Math.PI / 6), thick: 0.5 / 1.2, hole: 0.45 } as const;
 
-/** How the pixels lie on the backdrop's face: rows of hexagons, seven across and six across in turn (the six sit between the sevens). */
+/**
+ * How the pixels lie on the backdrop's face: rows of hexagons, six across and seven across in turn, the bottom row being the six
+ * (each row sits in the gaps of the one below, and the sevens reach the board's sides).
+ */
 export const BACKDROP_GRID = {
   cols: 7,
   rows: 8,
-  rowPitch: PIXEL_SIZE.corner * 0.75, // each row sits in the gaps of the one below
+  rowPitch: PIXEL_SIZE.corner * 0.75,
   margin: 0.45, // from the board's bottom edge to the lowest hexagon's lowest point
 } as const;
 
+/** How many pixels fit in `row` (0 is the bottom one). */
+export const backdropRowSize = (row: number) => (row % 2 === 0 ? BACKDROP_GRID.cols - 1 : BACKDROP_GRID.cols);
+
 /** The centre of the pixel at `row` (0 is the bottom one) and `col` on the face: `u` across from its middle, `v` up from its bottom edge. */
 export function backdropCell(row: number, col: number): { u: number; v: number } {
-  const odd = row % 2 === 1;
   return {
-    u: (col - (BACKDROP_GRID.cols - 1) / 2 + (odd ? 0.5 : 0)) * PIXEL_SIZE.across,
+    u: (col - (backdropRowSize(row) - 1) / 2) * PIXEL_SIZE.across,
     v: BACKDROP_GRID.margin + PIXEL_SIZE.corner / 2 + row * BACKDROP_GRID.rowPitch,
   };
 }
 
 /**
- * The pixels already on the backdrop. Pixels slide down the board, so they lie in a heap from the bottom up: every one rests on
- * the two beneath it (the ones at the edges of a seven-wide row lean on the board's side), none floats over a gap. `cols` lists the
- * columns filled in each row, from the bottom row up; the colours are the same on every load.
+ * The pixels on the backdrop to start with: a few that have slid down into the bottom right corner, each resting on the two beneath it
+ * (the one at the board's right edge on one and the side). Bottom row six across, then seven, then six; `color` is white (w), yellow
+ * (y), purple (p) or green (g).
  */
-export const BACKDROP_PILE: { row: number; col: number; color: "y" | "p" | "w" | "g" }[] = (() => {
-  const cols: number[][] = [
-    [0, 1, 2, 3, 4, 5, 6],
-    [0, 1, 2, 3, 4, 5],
-    [1, 2, 3, 4, 5],
-    [1, 2, 3],
-    [2, 3],
-    [2],
-  ];
-  const rand = seeded(2024);
-  const out: { row: number; col: number; color: "y" | "p" | "w" | "g" }[] = [];
-  cols.forEach((list, row) =>
-    list.forEach((col) => {
-      const r = rand();
-      out.push({ row, col, color: r < 0.45 ? "w" : r < 0.65 ? "y" : r < 0.85 ? "p" : "g" });
-    })
-  );
-  return out;
-})();
+export const BACKDROP_PILE: { row: number; col: number; color: "y" | "p" | "w" | "g" }[] = [
+  { row: 0, col: 1, color: "w" },
+  { row: 0, col: 2, color: "g" },
+  { row: 0, col: 3, color: "g" },
+  { row: 0, col: 4, color: "w" },
+  { row: 0, col: 5, color: "w" },
+  { row: 1, col: 3, color: "g" },
+  { row: 1, col: 4, color: "w" },
+  { row: 1, col: 5, color: "w" },
+  { row: 2, col: 4, color: "p" },
+  { row: 2, col: 5, color: "g" },
+];

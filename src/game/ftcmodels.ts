@@ -18,7 +18,7 @@ import {
 } from "three";
 import { FLOOR } from "./ftc";
 import { markMoving } from "./bake";
-import { BACKDROP_GRID, BACKDROP_PILE, PIXEL_SIZE, PP, PP_HEIGHT, TAKEN, backdropCell, ftcField, poleTop, submersibleSamples } from "./ftcfield";
+import { BACKDROP_GRID, BACKDROP_PILE, PIXEL_SIZE, PP, PP_HEIGHT, TAKEN, backdropCell, backdropRowSize, ftcField, poleTop, submersibleSamples } from "./ftcfield";
 import { robotModel } from "./ftcrobot";
 import { ppCone, ppRobotModel } from "./ftcpprobot";
 import { centred, pixelText } from "./ftctext";
@@ -228,8 +228,8 @@ function samplePile(color: string, layers = 6): Group {
 // ---- Center Stage: the backdrop, the truss, the drone and the pixels
 
 /**
- * The face of the backdrop: a lattice of hexagonal recesses, rows of seven and six in turn, with the pixels that have already slid down
- * into a heap at the bottom (ftcfield.ts has the layout, shared with the robot that adds to it). `w` x `len` px, at 8 texels a px.
+ * The face of the backdrop: a lattice of hexagonal recesses, rows of six and seven in turn, with the pixels that have already slid down
+ * into the bottom right corner (ftcfield.ts has the layout, shared with the robot that adds to it). `w` x `len` px, at 8 texels a px.
  */
 function backdropTexture(w: number, len: number): CanvasTexture {
   const D = 8;
@@ -252,9 +252,22 @@ function backdropTexture(w: number, len: number): CanvasTexture {
     }
     ctx.closePath();
   };
+  // the bottom edge of the face follows the points of the lowest row's hexagons, a zigzag; below it is the bare board
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  for (let col = -3; col <= BACKDROP_GRID.cols + 1; col++) {
+    const u = (col - (backdropRowSize(0) - 1) / 2) * PIXEL_SIZE.across;
+    ctx.lineTo(W / 2 + (u - PIXEL_SIZE.across / 2) * D, H - (BACKDROP_GRID.margin + PIXEL_SIZE.corner / 4) * D);
+    ctx.lineTo(W / 2 + u * D, H - BACKDROP_GRID.margin * D);
+    ctx.lineTo(W / 2 + (u + PIXEL_SIZE.across / 2) * D, H - (BACKDROP_GRID.margin + PIXEL_SIZE.corner / 4) * D);
+  }
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  ctx.fillStyle = "#1b1d26";
+  ctx.fill();
   const filled = new Set(BACKDROP_PILE.map((p) => `${p.row},${p.col}`));
   for (let row = 0; row < BACKDROP_GRID.rows; row++) {
-    const n = row % 2 ? BACKDROP_GRID.cols - 1 : BACKDROP_GRID.cols;
+    const n = backdropRowSize(row);
     for (let col = 0; col < n; col++) {
       if (filled.has(`${row},${col}`)) continue;
       const { u, v } = backdropCell(row, col);
@@ -309,7 +322,7 @@ function backdropTexture(w: number, len: number): CanvasTexture {
 
 /**
  * The backdrop: a board tilted back against the wall on a platform a whole tile wide, its face a heap of pixels at the bottom and
- * empty recesses above. Pixels are 3 in across, so seven fit across (the tile is 24 in wide).
+ * empty recesses above. Pixels are 3 in across, so six or seven fit across (the tile is 24 in wide).
  */
 function backdropModel(w: number, d: number): Group {
   const g = new Group();
