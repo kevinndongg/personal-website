@@ -159,18 +159,18 @@ export function heldBase(tilt: number, twist: number): [number, number, number] 
 export const PIXEL_SIZE = { across: 3 / 1.2, corner: 3 / 1.2 / Math.cos(Math.PI / 6), thick: 0.5 / 1.2, hole: 0.45 } as const;
 
 /**
- * How the pixels lie on the backdrop's face: rows of hexagons, six across and seven across in turn, the bottom row being the six
- * (each row sits in the gaps of the one below, and the sevens reach the board's sides).
+ * How the pixels lie on the backdrop's face: rows of hexagons, six across and five across in turn, the bottom row being the six
+ * (each row sits in the gaps of the one below, so the fives leave half a pixel of space at each side).
  */
 export const BACKDROP_GRID = {
-  cols: 7,
+  cols: 6,
   rows: 8,
   rowPitch: PIXEL_SIZE.corner * 0.75,
   margin: 0.45, // from the board's bottom edge to the lowest hexagon's lowest point
 } as const;
 
 /** How many pixels fit in `row` (0 is the bottom one). */
-export const backdropRowSize = (row: number) => (row % 2 === 0 ? BACKDROP_GRID.cols - 1 : BACKDROP_GRID.cols);
+export const backdropRowSize = (row: number) => (row % 2 === 0 ? BACKDROP_GRID.cols : BACKDROP_GRID.cols - 1);
 
 /** The centre of the pixel at `row` (0 is the bottom one) and `col` on the face: `u` across from its middle, `v` up from its bottom edge. */
 export function backdropCell(row: number, col: number): { u: number; v: number } {
@@ -182,7 +182,7 @@ export function backdropCell(row: number, col: number): { u: number; v: number }
 
 /**
  * The pixels on the backdrop to start with: a few that have slid down into the bottom right corner, each resting on the two beneath it
- * (the one at the board's right edge on one and the side). Bottom row six across, then seven, then six; `color` is white (w), yellow
+ * (the one at the board's right edge on one and the side). Bottom row six across, then five, then six; `color` is white (w), yellow
  * (y), purple (p) or green (g).
  */
 export const BACKDROP_PILE: { row: number; col: number; color: "y" | "p" | "w" | "g" }[] = [
@@ -191,9 +191,9 @@ export const BACKDROP_PILE: { row: number; col: number; color: "y" | "p" | "w" |
   { row: 0, col: 3, color: "g" },
   { row: 0, col: 4, color: "w" },
   { row: 0, col: 5, color: "w" },
-  { row: 1, col: 3, color: "g" },
+  { row: 1, col: 2, color: "g" },
+  { row: 1, col: 3, color: "w" },
   { row: 1, col: 4, color: "w" },
-  { row: 1, col: 5, color: "w" },
   { row: 2, col: 4, color: "p" },
   { row: 2, col: 5, color: "g" },
 ];

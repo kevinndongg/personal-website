@@ -228,7 +228,7 @@ function samplePile(color: string, layers = 6): Group {
 // ---- Center Stage: the backdrop, the truss, the drone and the pixels
 
 /**
- * The face of the backdrop: a lattice of hexagonal recesses, rows of six and seven in turn, with the pixels that have already slid down
+ * The face of the backdrop: a lattice of hexagonal recesses, rows of six and five in turn, with the pixels that have already slid down
  * into the bottom right corner (ftcfield.ts has the layout, shared with the robot that adds to it). `w` x `len` px, at 8 texels a px.
  */
 function backdropTexture(w: number, len: number): CanvasTexture {
@@ -322,7 +322,7 @@ function backdropTexture(w: number, len: number): CanvasTexture {
 
 /**
  * The backdrop: a board tilted back against the wall on a platform a whole tile wide, its face a heap of pixels at the bottom and
- * empty recesses above. Pixels are 3 in across, so six or seven fit across (the tile is 24 in wide).
+ * empty recesses above. Pixels are 3 in across, so six fit across (the tile is 24 in wide).
  */
 function backdropModel(w: number, d: number): Group {
   const g = new Group();
