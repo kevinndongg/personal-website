@@ -4,7 +4,7 @@ image: "./temple-allen-internship.jpg"
 cardLogo: false
 alt: "Temple Allen Industries logo"
 summary: "Robotics Software development and tooling."
-role: "Intern — Software Engineering Intern"
+role: "Robotics Software Intern"
 dateRange: "Internship"
 organization: "Temple Allen Industries"
 location: "Rockville, MD"
@@ -14,9 +14,8 @@ animation: "temple-allen-flight-path"
 order: 3
 ---
 
-Interned at Temple, Allen Industries, working on UAV and aerospace-related engineering projects in an industry setting.
+At Temple Allen, I worked on robotics software development and tooling in ROS 2.
 
-- Reduced thread wake-ups by 30% during initialization by restructuring condition variables and optimizing multithreaded synchronization
-- Built a custom rqt plugin for real-time computer vision parameter tuning, decreasing configuration time by 50%
-- Redesigned state machine architecture, speeding up new-state development by 40%
-- Created an automated calibration pipeline across 5 cameras to compute relative transforms for end-effector tracking, improving accuracy and reducing setup time versus manual calibration
+I built internal tools for computer vision parameter tuning and camera calibration, replacing slow, manual processes. 
+
+I also redesigned the state machine architecture to speed up development and iteration, and improved multithreaded synchronization to cut unnecessary thread wake-ups.

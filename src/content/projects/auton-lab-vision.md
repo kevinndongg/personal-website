@@ -7,7 +7,7 @@ role: "Research Intern"
 dateRange: "CMU Auton Lab"
 organization: "Auton Lab, Carnegie Mellon University"
 cardBrand: "DARPA Triage Challenge"
-cardTitle: "Auton Lab"
+cardTitle: ""
 location: "Pittsburgh, PA"
 period: "Jan. 2026 – Present"
 techStack: ["Python", "PyTorch", "Hugging Face", "Docker"]
@@ -15,8 +15,6 @@ animation: "auton-lab-bounding-boxes"
 order: 1
 ---
 
-Conducted research on vision models at Carnegie Mellon's Auton Lab, working on model development and evaluation for computer vision tasks.
+I research how well vision transformers can triage casualties from UAV images, and got our DINOv3 model running inside the triage pipeline as a Docker inference server. 
 
-- Benchmarked a vision transformer (DINOv3) against a VLM (Cosmos) on accuracy and latency for live triage, and containerized a REST-based DINOv3 inference server for integration into the triage pipeline
-- Diagnosed a casualty-classification model relying on background shortcuts instead of real injury features using attention visualization, revealing a 12-point accuracy drop caused by an improperly grouped train/test split
-- Prototyped a probabilistic model (Bayesian network) in Python that fused multiple observations into injury estimates, validated via Monte Carlo simulation to outperform standalone model output by 13%
+I also prototyped a Bayesian network that fuses multiple observations into an injury estimate. An influence diagram then picks the decisions that maximize the competition score. In Monte Carlo sims, this beat the standalone model by 13%.
