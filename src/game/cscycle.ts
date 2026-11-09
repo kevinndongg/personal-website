@@ -3,9 +3,9 @@
 // It stands facing east with the intake arm down, takes the yellow pixel in (the roller pulls it in and up the ramp into the bucket's upper
 // place), creeps forward and takes the white one in behind it (the lower place), then backs off west with the arm coming up, spins to face
 // south and reverses north under the Stage Door to the backdrop, rear first. Once its front is clear of the door the slides rise; at the
-// backdrop the arm swings back (parallel to the backdrop), the turret turns and the gate opens: the white pixel drops in the second row,
-// just left of the green one. The yellow slides down to the lower place and the gate holds it; the slides rise, the turret turns the other way
-// and the gate opens: the yellow one drops on the purple and the green, a mosaic. Then it retracts (slides up a little and the turret
+// backdrop the arm swings back (parallel to the backdrop), the turret turns and the lock lets go: the white pixel drops in the second row,
+// just left of the green one. The yellow slides down to the lower place and the lock holds it; the slides rise, the turret turns the other way
+// and the lock lets go: the yellow one drops on the purple and the green, a mosaic. Then it retracts (slides up a little and the turret
 // centres, the arm folds, the slides go down) while it drives forward again, and back round to the wall.
 //
 // The game pieces are persistent. The two pixels at the wall shrink away as the roller takes them and fresh ones grow back once the robot
@@ -27,6 +27,8 @@ const SPIN = 10; // the roller's speed (rad/s)
 const DOOR_CLEAR = CS.reachUp + 0.8; // the robot's centre has to be this far past the Stage Door for the raised intake to be clear of it
 const FOLD_AT = 4; // how far (px) it has driven back off the backdrop before the arm folds,
 const DOWN_AT = 8; // and before the slides go down
+const BK0 = 0; // when, as a fraction of the arm's swing, the bucket turns through its 60 degrees (see `csWrist`)
+const BK1 = 0.7;
 const APPROACH = 3; // how far (px) short of the backdrop's stand it stops to raise the slides and swing the arm, before creeping in
 
 const smooth = (k: number) => {
@@ -131,7 +133,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   const S: Arm = { ...CS_WAIT, intake: 1 }; // intake down, everything else stowed: the arm folded, the bucket flat inside the robot
   const driving: Arm = { ...S, intake: 0 };
   const lifted: Arm = { ...driving, slide: dW.e }; // the slides up for the white pixel
-  const armBack: Arm = { ...lifted, arm: 0, tilt: 0 }; // the arm unfolds, swinging back, and the bucket pivots back to hang parallel to the backdrop
+  const armBack: Arm = { ...lifted, arm: 0, bucket: 1 }; // the arm swings back up and over the slide, and the bucket turns through 60 degrees to hang parallel to the backdrop
   const lined: Arm = { ...armBack, turret: phiW };
   const open: Arm = { ...lined, gate: 1 };
   const lowered: Arm = { ...open, yellowLow: 1, gate: 0 }; // the yellow slid down to the lower place and held there
@@ -160,9 +162,9 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   const north = leg([{ x: lane.x, y: lane.y }, approach], SOUTH, SOUTH, 4.4, 0, 0);
   const uClear = firstU(north, (p) => p.y < cfg.door.y - DOOR_CLEAR);
   loop.push({ ...north, arm: [driving, lifted], when: { slide: [uClear, Math.min(1, uClear + 0.3)] } });
-  loop.push({ dur: 0.9, at: approach, arm: [lifted, armBack], when: { tilt: [0, 0.7] } }); // the bucket straightens ahead of the arm, so it stays clear of the slide as it goes over
+  loop.push({ dur: 0.9, at: approach, arm: [lifted, armBack], when: { bucket: [BK0, BK1] } });
   loop.push({ ...leg([approach, stand], SOUTH, SOUTH, 1.0, 0, 0), arm: [armBack, lined], when: { turret: [0.1, 0.95] } });
-  // the white pixel: the gate opens and it drops; the yellow slides down and is held; then the slides, the turret and the gate for the yellow one
+  // the white pixel: the lock draws back and it drops; the yellow slides down and is held; then the slides, the turret and the lock for the yellow one
   loop.push({ dur: 0.6, at: stand, arm: [lined, open], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 0, offset: 0.3, turn: -phiW }] });
   loop.push({ dur: 0.9, at: stand, arm: [open, lowered], when: { yellowLow: [0, 0.6], gate: [0.6, 1] } });
   loop.push({ dur: 1.8, at: stand, arm: [lowered, raised], when: { slide: [0, 0.5], turret: [0.5, 1] } });
@@ -177,7 +179,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   loop.push({
     ...exit,
     arm: [clear1, driving],
-    when: { arm: [uFold, uFold + 0.12], tilt: [uFold + 0.04, uFold + 0.12], slide: [uDown, Math.min(1, uDown + 0.2)] },
+    when: { arm: [uFold, uFold + 0.12], bucket: [uFold + 0.12 * (1 - BK1), uFold + 0.12 * (1 - BK0)], slide: [uDown, Math.min(1, uDown + 0.2)] },
     marks: [
       { what: "clear", index: 0, offset: farOffset(exit, stand, GONE) },
       { what: "clear", index: 1, offset: farOffset(exit, stand, GONE) + 0.2 },
@@ -222,7 +224,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   /** Where a pixel taken in at `pick` and let go at `drop` is on the robot at `tl`: not on it (-1), on its way in (0..1), or in the bucket (1). */
   const aboard = (tl: number, pick: number, drop: number) => (tl < pick || tl >= drop ? -1 : Math.min(1, (tl - pick) / FEED));
 
-  const channels: Channel[] = ["intake", "slide", "arm", "tilt", "turret", "gate", "yellowLow"];
+  const channels: Channel[] = ["intake", "slide", "arm", "bucket", "turret", "gate", "yellowLow"];
 
   model.userData.animate = ({ t }: AnimCtx) => {
     if (t <= 0) return; // reduced motion: standing at the wall, every pixel where it was
