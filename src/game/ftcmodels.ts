@@ -14,7 +14,7 @@ import {
 } from "three";
 import { FLOOR } from "./ftc";
 import { markMoving } from "./bake";
-import { PP, PP_HEIGHT, TAKEN, ftcField, poleTop, submersibleSamples } from "./ftcfield";
+import { BACKDROP_GRID, BACKDROP_PILE, PIXEL_SIZE, PP, PP_HEIGHT, TAKEN, backdropCell, ftcField, poleTop, submersibleSamples } from "./ftcfield";
 import { robotModel } from "./ftcrobot";
 import { ppCone, ppRobotModel } from "./ftcpprobot";
 import { centred, pixelText } from "./ftctext";
@@ -223,41 +223,73 @@ function samplePile(color: string, layers = 6): Group {
 
 // ---- Center Stage: the backdrop, the truss, the drone and the pixels
 
-/** The mosaic on the face of the backdrop: a lattice of pixels, some in place, the rest empty. */
+/**
+ * The face of the backdrop: a lattice of hexagonal recesses, rows of seven and six in turn, with the pixels that have already slid down
+ * into a heap at the bottom (ftcfield.ts has the layout, shared with the robot that adds to it). `w` x `len` px, at 8 texels a px.
+ */
 function backdropTexture(w: number, len: number): CanvasTexture {
-  const W = Math.round(w * 2);
-  const H = Math.round(len * 2);
+  const D = 8;
+  const W = Math.round(w * D);
+  const H = Math.round(len * D);
   const [c, ctx] = canvasOf(W, H);
   fillRect(ctx, 0, 0, W, H, "#2b2e38");
-  const palette = [PIXEL.y, PIXEL.p, PIXEL.w, PIXEL.g, "#3a3e4a", "#3a3e4a"];
-  const cols = Math.floor((W - 7) / 6);
-  const rows = Math.floor((H - 5) / 5);
-  for (let r = 0; r < rows; r++)
-    for (let q = 0; q < cols; q++) {
-      const x = 4 + q * 6 + (r % 2) * 3;
-      const y = 3 + r * 5;
-      ctx.fillStyle = palette[(q * 7 + r * 13 + ((q * r) % 5)) % palette.length];
-      ctx.fillRect(x + 1, y, 2, 4); // a hexagon, as much as four texels allow
-      ctx.fillRect(x, y + 1, 4, 2);
+  const hexagon = (u: number, v: number, shrink: number) => {
+    // a hexagon with two upright sides: points up and down
+    const cx = W / 2 + u * D;
+    const cy = H - v * D;
+    const r = (PIXEL_SIZE.corner / 2 - shrink) * D;
+    ctx.beginPath();
+    for (let k = 0; k < 6; k++) {
+      const a = Math.PI / 6 + (k * Math.PI) / 3;
+      const x = cx + Math.cos(a) * r;
+      const y = cy + Math.sin(a) * r;
+      if (k) ctx.lineTo(x, y);
+      else ctx.moveTo(x, y);
     }
+    ctx.closePath();
+  };
+  const filled = new Set(BACKDROP_PILE.map((p) => `${p.row},${p.col}`));
+  for (let row = 0; row < BACKDROP_GRID.rows; row++) {
+    const n = row % 2 ? BACKDROP_GRID.cols - 1 : BACKDROP_GRID.cols;
+    for (let col = 0; col < n; col++) {
+      if (filled.has(`${row},${col}`)) continue;
+      const { u, v } = backdropCell(row, col);
+      hexagon(u, v, 0.08);
+      ctx.fillStyle = "#333745"; // a recess nothing has come to rest in
+      ctx.fill();
+    }
+  }
+  for (const p of BACKDROP_PILE) {
+    const { u, v } = backdropCell(p.row, p.col);
+    hexagon(u, v, 0.05);
+    ctx.fillStyle = PIXEL[p.color];
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx.stroke();
+  }
   return nearestTexture(c);
 }
 
+/**
+ * The backdrop: a board tilted back against the wall on a platform a whole tile wide, its face a heap of pixels at the bottom and
+ * empty recesses above. Pixels are 3 in across, so seven fit across (the tile is 24 in wide).
+ */
 function backdropModel(w: number, d: number): Group {
   const g = new Group();
   g.add(box(w, 1.5, d, DARK, 0, 0, 0)); // the platform
-  const len = 14; // a narrow board, taller than it is wide
+  const len = 20; // taller than it is wide: eight rows of pixels
   const tilt = 1.08; // 62 degrees: the top leans back to the wall
   const board = new Group();
   board.position.set(0, 1.5 + (len * Math.sin(tilt)) / 2, 0);
   board.rotation.x = tilt;
-  board.add(box(w - 2, 0.8, len, "#1b1d26", 0, -0.4, 0));
-  const face = new Mesh(new PlaneGeometry(w - 2.6, len - 0.8), new MeshBasicMaterial({ map: backdropTexture(w - 2.6, len - 0.8) }));
+  board.add(box(w - 1, 0.8, len, "#1b1d26", 0, -0.4, 0));
+  const face = new Mesh(new PlaneGeometry(w - 1.6, len - 0.8), new MeshBasicMaterial({ map: backdropTexture(w - 1.6, len - 0.8) }));
   face.rotation.x = -Math.PI / 2;
   face.position.y = 0.45;
   board.add(face);
   g.add(board);
-  for (const sx of [-1, 1]) g.add(box(1, 10, 1, STEEL, sx * (w / 2 - 2.5), 1.5, -3.2)); // props behind
+  for (const sx of [-1, 1]) g.add(box(1, 12, 1, STEEL, sx * (w / 2 - 2.5), 1.5, -d / 2 + 1)); // props behind
   return g;
 }
 
@@ -305,13 +337,10 @@ function droneModel(): Group {
   return g;
 }
 
-/** A hexagonal pixel, two stacked and a little askew. */
+/** A pixel lying flat: a hexagon 3 in across and half an inch thick (ftcfield.ts), two of its sides facing east and west. */
 function pixelModel(color: string): Group {
   const g = new Group();
-  g.add(cyl(2.6, 2.6, 0.9, color, 0, 0, 0, 6));
-  const top = cyl(2.6, 2.6, 0.9, color, 0.4, 0.9, 0.2, 6);
-  top.rotation.y = 0.5;
-  g.add(top);
+  g.add(cyl(PIXEL_SIZE.corner / 2, PIXEL_SIZE.corner / 2, PIXEL_SIZE.thick, color, 0, SHEET_Y, 0, 6)); // on the floor sheet
   return g;
 }
 

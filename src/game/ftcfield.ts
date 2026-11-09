@@ -148,3 +148,53 @@ export function heldBase(tilt: number, twist: number): [number, number, number] 
   const c = clawToArm([0, -PP.hold, 0], tilt, twist);
   return [PP.arm + c[0], c[1], c[2]];
 }
+
+// ---------------------------------------------------------------- Center Stage
+
+/**
+ * A Center Stage pixel to scale: 3 in across (flat to flat) and 0.5 in thick, at the field's 1.2 in per px. `across` is the
+ * hexagon's width between two parallel sides; `corner` is its height from point to point with those sides upright.
+ */
+export const PIXEL_SIZE = { across: 2.5, corner: 2.5 / Math.cos(Math.PI / 6), thick: 0.5 } as const;
+
+/** How the pixels lie on the backdrop's face: rows of hexagons, seven across and six across in turn (the six sit between the sevens). */
+export const BACKDROP_GRID = {
+  cols: 7,
+  rows: 8,
+  rowPitch: PIXEL_SIZE.corner * 0.75, // each row sits in the gaps of the one below
+  margin: 0.45, // from the board's bottom edge to the lowest hexagon's lowest point
+} as const;
+
+/** The centre of the pixel at `row` (0 is the bottom one) and `col` on the face: `u` across from its middle, `v` up from its bottom edge. */
+export function backdropCell(row: number, col: number): { u: number; v: number } {
+  const odd = row % 2 === 1;
+  return {
+    u: (col - (BACKDROP_GRID.cols - 1) / 2 + (odd ? 0.5 : 0)) * PIXEL_SIZE.across,
+    v: BACKDROP_GRID.margin + PIXEL_SIZE.corner / 2 + row * BACKDROP_GRID.rowPitch,
+  };
+}
+
+/**
+ * The pixels already on the backdrop. Pixels slide down the board, so they lie in a heap from the bottom up: every one rests on
+ * the two beneath it (the ones at the edges of a seven-wide row lean on the board's side), none floats over a gap. `cols` lists the
+ * columns filled in each row, from the bottom row up; the colours are the same on every load.
+ */
+export const BACKDROP_PILE: { row: number; col: number; color: "y" | "p" | "w" | "g" }[] = (() => {
+  const cols: number[][] = [
+    [0, 1, 2, 3, 4, 5, 6],
+    [0, 1, 2, 3, 4, 5],
+    [1, 2, 3, 4, 5],
+    [1, 2, 3],
+    [2, 3],
+    [2],
+  ];
+  const rand = seeded(2024);
+  const out: { row: number; col: number; color: "y" | "p" | "w" | "g" }[] = [];
+  cols.forEach((list, row) =>
+    list.forEach((col) => {
+      const r = rand();
+      out.push({ row, col, color: r < 0.45 ? "w" : r < 0.65 ? "y" : r < 0.85 ? "p" : "g" });
+    })
+  );
+  return out;
+})();
