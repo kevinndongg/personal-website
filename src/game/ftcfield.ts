@@ -74,6 +74,12 @@ export const ftcField = {
     [0, 1, 0],
     [0, 1, 0],
   ],
+  /** Center Stage: the two pixels at the east wall, yellow then white (1 there, 0 taken), ... */
+  wall: [1, 1],
+  /** ...and the two the robot puts on the backdrop, white then yellow (0 not there, 0..1 let go and settling, 1..2 shrinking away). */
+  px: [0, 0],
+  /** How far each of those was turned (radians) as it was let go: it settles square to the board as it lands. */
+  pxTurn: [0, 0],
 };
 
 // ---------------------------------------------------------------- Power Play
@@ -200,3 +206,86 @@ export const BACKDROP_PILE: { row: number; col: number; color: "y" | "p" | "w" |
 
 /** How long the Stage Door's span is: from the post on the tape line to the truss's near A-frame, about two tiles (about 46 in in the manual). */
 export const STAGE_DOOR_LEN = 40.9;
+
+/** The backdrop board: its lean (60 degrees from the floor, 30 from vertical as in the manual's C-2), its length, and the platform it stands on. */
+export const BACKDROP = { tilt: Math.PI / 3, len: 20, platform: 1.5, depth: 10, faceInset: 0.45 } as const;
+
+/**
+ * Where the face's point (`u` across from the middle, `v` up the face from its bottom edge) is relative to the backdrop's centre on the
+ * floor: `z` south of it and `h` above the floor.
+ */
+export function backdropFace(u: number, v: number, lift = 0): { x: number; z: number; h: number } {
+  const t = BACKDROP.tilt;
+  const zf = (BACKDROP.len - 0.8) / 2 - v; // along the board, the bottom end being +
+  const y = BACKDROP.faceInset + lift; // out of the face
+  return { x: u, z: y * Math.sin(t) + zf * Math.cos(t), h: BACKDROP.platform + (BACKDROP.len * Math.sin(t)) / 2 + y * Math.cos(t) - zf * Math.sin(t) };
+}
+
+/** The two pixels the Center Stage robot places, white then yellow: where on the lattice (see `backdropCell`). The white goes just left of the green in the second row, the yellow on the purple and the green in the third. */
+export const BACKDROP_PLACE: { row: number; col: number; color: "w" | "y" }[] = [
+  { row: 1, col: 1, color: "w" },
+  { row: 3, col: 4, color: "y" },
+];
+
+/**
+ * Team 6417's Center Stage robot (px; 1 px = 1.2 in): 17 in square, a clear box with an intake arm on the front that pivots down to take
+ * pixels in, and at the back a slide leaning back 30 degrees (parallel to the backdrop) with an arm, a turret and a bucket holding two pixels
+ * one above the other. Robot frame: x forward, y up, z to its right; the robot deposits backwards, its rear to the backdrop.
+ */
+export const CS = {
+  half: 17 / 2 / 1.2,
+  reach: 4.3, // how far the intake's fingertips reach past the front when it is down
+  ahead: 3, // how far past the front a pixel lies, centre, when the roller takes it
+  reachUp: 13.4, // how far the intake sticks out ahead of the robot's centre when it is raised for driving
+  lean: Math.PI / 6, // the slide's lean from vertical
+  slide: { x: -4.2, y: 1, len: 6.6, travel: 9.5 }, // its foot, the length of each stage and how far it extends at most (three stages)
+  arm: { along: 2.4, out: 1.7, swing: Math.PI / 6 }, // the arm from the top of the slide to the turret: along the slide and out towards the backdrop; how far it swings back
+  bucket: { low: 5.8, high: 2.9 }, // how far below the turret's axis the pixel nearer the opening and the one above it sit
+  turret: Math.PI / 3, // the turret's range, each way
+  gap: 1.7, // how far in front of the board the pixels' plane is held when it deposits (the bucket's front, 0.6 nearer, clears pixels already placed)
+  height: 7.4, // the chassis's height, under the Stage Door's 12.6 px rail with the slide down
+} as const;
+
+/** How the robot waits: intake up, slide down, arm retracted, turret straight, gate shut, nothing in it. */
+export const CS_WAIT = { intake: 0, spin: 0, slide: 0, arm: CS.arm.swing, turret: 0, gate: 0, yellow: -1, white: -1, yellowLow: 0 } as const;
+
+const D = [-Math.sin(CS.lean), Math.cos(CS.lean)] as const; // up the slide, in the (x, y) plane of the robot
+const OUT = [-Math.cos(CS.lean), -Math.sin(CS.lean)] as const; // towards the backdrop, square to the slide
+const rot2 = (v: readonly [number, number], a: number): [number, number] => [v[0] * Math.cos(a) - v[1] * Math.sin(a), v[0] * Math.sin(a) + v[1] * Math.cos(a)];
+
+/**
+ * The top of the slide, extended `e` px, and the arm and turret on it, swung back by `beta` (0 = lying along the slide, parallel to the
+ * backdrop; `CS.arm.swing` = swung forward to the retracted position, the bucket upright): the hinge, the turret's axis, and the bucket's
+ * up and out directions, in the robot's (x, y) plane.
+ */
+export function csArm(e: number, beta: number) {
+  const hinge: [number, number] = [CS.slide.x + (CS.slide.len + e) * D[0], CS.slide.y + (CS.slide.len + e) * D[1]];
+  const l = rot2([CS.arm.along * D[0] + CS.arm.out * OUT[0], CS.arm.along * D[1] + CS.arm.out * OUT[1]], -beta);
+  return { hinge, axis: [hinge[0] + l[0], hinge[1] + l[1]] as [number, number], up: rot2(D, -beta), out: rot2(OUT, -beta) };
+}
+
+/** The centre of a pixel in the bucket, `dist` below the turret's axis along the bucket, with the turret turned `phi` (positive towards the robot's right), in the robot's frame. */
+export function csPixel(e: number, beta: number, phi: number, dist: number): [number, number, number] {
+  const a = csArm(e, beta);
+  return [a.axis[0] - Math.cos(phi) * dist * a.up[0], a.axis[1] - Math.cos(phi) * dist * a.up[1], Math.sin(phi) * dist];
+}
+
+/**
+ * How the robot stands at the backdrop (heading south, its middle on the backdrop's): where, south of the backdrop's centre (`z`), so that the
+ * pixels' plane is `CS.gap` in front of the face, and, for a pixel to land at (`u`, `v`) on the face, the turret's angle and the slide's extension.
+ */
+export function csDeposit(u: number, v: number) {
+  const t = BACKDROP.tilt;
+  const b = backdropFace(0, 0, 0); // the face's lower edge
+  const a0 = csArm(0, 0);
+  const ct = Math.cos(t);
+  const st = Math.sin(t);
+  const z = b.z - a0.axis[0] + (CS.gap - ct * (a0.axis[1] - b.h)) / st; // where the robot's middle is, south of the backdrop's centre
+  const vOf = (e: number) => {
+    const p = csArm(e, 0).axis;
+    return (z + p[0] - b.z) * -ct + (p[1] - b.h) * st; // how far up the face the turret's axis is
+  };
+  const phi = Math.asin(Math.max(-1, Math.min(1, -u / CS.bucket.low))); // the middle of the robot is across from the face's middle
+  const e = v + CS.bucket.low * Math.cos(phi) - vOf(0);
+  return { z, phi, e, ok: Math.abs(phi) <= CS.turret + 1e-6 && e >= 0 && e <= CS.slide.travel + 1e-6 };
+}

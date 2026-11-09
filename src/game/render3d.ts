@@ -38,6 +38,7 @@ import { bakeStatic, canJoinAcross, joinAcross } from "./bake";
 import { attachLap } from "./drive";
 import { attachErrand } from "./errand";
 import { attachPowerPlay } from "./ppcycle";
+import { attachCenterStage } from "./cscycle";
 import { attachCycle } from "./robotcycle";
 import { GROUND_MARGIN, buildGroundLayer } from "./ground";
 import { createModel, tireModel, woodTexture } from "./models";
@@ -557,7 +558,7 @@ export class Renderer3D {
         model.scale.setScalar(VISUAL_SCALE[p.sprite.split("-")[0]] ?? 1);
         // a prop that never changes, and is not moved by anything else, is not added on its own: its meshes are joined with those of
         // the others of its zone (they rise together on hover, so one group does for all)
-        if (!p.focus && !p.drive && !p.errand && !p.cycle && !p.ppCycle && canJoinAcross(model)) {
+        if (!p.focus && !p.drive && !p.errand && !p.cycle && !p.ppCycle && !p.csCycle && canJoinAcross(model)) {
           model.updateMatrix();
           still.push({ model, matrix: model.matrix.clone() });
           stillMeshes += baked.to;
@@ -582,6 +583,7 @@ export class Renderer3D {
         if (p.errand) attachErrand(model, p.errand, Math.PI / 2); // (he stops facing south, toward the grill)
         if (p.cycle) attachCycle(model, p.cycle);
         if (p.ppCycle) attachPowerPlay(model, p.ppCycle);
+        if (p.csCycle) attachCenterStage(model, p.csCycle);
         model.traverse((o) => {
           if (typeof o.userData.animate === "function") {
             this.animators.push({ fn: o.userData.animate, zoneId: zone.id, pauseOnHover: !!zone.scene.animation?.pauseOnHover });

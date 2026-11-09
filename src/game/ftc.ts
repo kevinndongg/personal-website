@@ -1,4 +1,4 @@
-import { PIXEL_SIZE, PP, SAMPLE_COLORS, STAGE_DOOR_LEN, TAKEN, submersibleSamples } from "./ftcfield";
+import { CS, PIXEL_SIZE, PP, SAMPLE_COLORS, STAGE_DOOR_LEN, TAKEN, submersibleSamples } from "./ftcfield";
 import type { Decal, Footprint, Prop, Scene } from "./scenes";
 
 // The FTC area: one square competition field split into three wedges, one per season, with the duck mascot, the driver
@@ -142,9 +142,15 @@ export function ftcScene(ox: number, oy: number): Scene {
     pixel("ftc-pixel-p", f(14, -42), 1.1),
     pixel("ftc-pixel-w", f(6, -34), 0.7),
     pixel("ftc-pixel-g", f(46, -54), 0.2),
-    pixel("ftc-pixel-w", f(HALF - PIXEL_HALF, 10)),
-    pixel("ftc-pixel-y", f(HALF - 3 * PIXEL_HALF, 10))
+    pixel("ftc-wall-pixel-w", f(HALF - PIXEL_HALF, 10)), // these two the Center Stage robot takes (cscycle.ts)
+    pixel("ftc-wall-pixel-y", f(HALF - 3 * PIXEL_HALF, 10))
   );
+  // the Center Stage robot: from the wall, under the Stage Door's gap in the lane at the backdrop's x, to the backdrop; it starts at the wall
+  // with the yellow pixel straight ahead (where its loop starts)
+  props.push({
+    ...turned("ftc-robot-cs", f(HALF - 3 * PIXEL_HALF - (CS.half + CS.ahead), 10), 0, 6),
+    csCycle: { yellow: f(HALF - 3 * PIXEL_HALF, 10), white: f(HALF - PIXEL_HALF, 10), backdrop: f(30, -55), door: f(30, -10) },
+  });
 
   // ---- Into the Deep (front wedge): the submersible in the middle of the fifth tile row (counting from the back), and a basket in
   // each front corner. The floor in front of it is left clear: the robot drives along it.

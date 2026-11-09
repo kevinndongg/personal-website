@@ -3,24 +3,22 @@ import {
   CanvasTexture,
   CylinderGeometry,
   DoubleSide,
-  ExtrudeGeometry,
   FrontSide,
   Group,
   LinearFilter,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
-  Path,
   PlaneGeometry,
-  Shape,
-  Vector2,
   Vector3,
 } from "three";
 import { FLOOR } from "./ftc";
 import { markMoving } from "./bake";
-import { BACKDROP_GRID, BACKDROP_PILE, PIXEL_SIZE, PP, PP_HEIGHT, STAGE_DOOR_LEN, TAKEN, backdropCell, backdropRowSize, ftcField, poleTop, submersibleSamples } from "./ftcfield";
+import { BACKDROP, BACKDROP_GRID, BACKDROP_PILE, BACKDROP_PLACE, CS, PIXEL_SIZE, PP, PP_HEIGHT, STAGE_DOOR_LEN, TAKEN, backdropCell, backdropRowSize, ftcField, poleTop, submersibleSamples } from "./ftcfield";
 import { robotModel } from "./ftcrobot";
+import { csRobotModel } from "./ftccsrobot";
 import { ppCone, ppRobotModel } from "./ftcpprobot";
+import { pixelMesh } from "./ftcpixel";
 import { centred, pixelText } from "./ftctext";
 import { box, canvasOf, cyl, fillRect, mesh, nearestTexture, toon } from "./models";
 import type { AnimCtx } from "./models";
@@ -283,6 +281,9 @@ function backdropTexture(w: number, len: number): CanvasTexture {
   return tex;
 }
 
+/** How far in front of the face the robot's bucket holds a pixel when it lets it go (the same as the robot's own gap, ftcfield.ts). */
+const BACKDROP_GAP = CS.gap - PIXEL_SIZE.thick / 2 - 0.01;
+
 /**
  * The backdrop: a board tilted back against the wall on a platform a whole tile wide, its face with a few pixels at the bottom and
  * empty recesses above. Pixels are 3 in across, so six fit across (the tile is 24 in wide); each one is the same 3D ring as on the floor.
@@ -290,10 +291,10 @@ function backdropTexture(w: number, len: number): CanvasTexture {
 function backdropModel(w: number, d: number): Group {
   const g = new Group();
   g.add(box(w, 1.5, d, DARK, 0, 0, 0)); // the platform
-  const len = 20; // taller than it is wide: eight rows of pixels
-  const tilt = 1.08; // 62 degrees: the top leans back to the wall
+  const len = BACKDROP.len; // taller than it is wide: eight rows of pixels
+  const tilt = BACKDROP.tilt; // 60 degrees from the floor, as in the manual: the top leans back to the wall
   const board = new Group();
-  board.position.set(0, 1.5 + (len * Math.sin(tilt)) / 2, 0);
+  board.position.set(0, BACKDROP.platform + (len * Math.sin(tilt)) / 2, 0);
   board.rotation.x = tilt;
   board.add(box(w - 1, 0.8, len, "#1b1d26", 0, -0.4, 0));
   const face = new Mesh(new PlaneGeometry(w - 1.6, len - 0.8), new MeshBasicMaterial({ map: backdropTexture(w - 1.6, len - 0.8) }));
@@ -309,6 +310,30 @@ function backdropModel(w: number, d: number): Group {
     px.position.z = faceLen / 2 - v;
     board.add(px);
   }
+  // the two the Center Stage robot puts on it (`ftcField.px`): let go a little in front of the board, turned the way the bucket was, and
+  // they drop onto the face and settle square; later they shrink away
+  const placed = BACKDROP_PLACE.map((spot, i) => {
+    const { u, v } = backdropCell(spot.row, spot.col);
+    const px = new Group();
+    px.add(pixelMesh(PIXEL[spot.color], 0));
+    px.position.set(u, 0.46, faceLen / 2 - v);
+    px.visible = false;
+    board.add(px);
+    return { px, i };
+  });
+  g.userData.animate = () => {
+    for (const { px, i } of placed) {
+      const p = ftcField.px[i];
+      px.visible = p > 0 && p < 1.999;
+      if (!px.visible) continue;
+      const fall = Math.min(1, p);
+      const ease = fall * fall * (3 - 2 * fall);
+      px.position.y = 0.46 + (1 - fall * fall) * BACKDROP_GAP; // it drops onto the face from where the bucket let go...
+      px.rotation.y = ftcField.pxTurn[i] * (1 - ease); // ...settling square to it
+      px.scale.setScalar(Math.max(0.001, p > 1 ? 2 - p : 1));
+    }
+  };
+  markMoving(g, ...placed.map((q) => q.px));
   g.add(board);
   for (const sx of [-1, 1]) g.add(box(1, 12, 1, STEEL, sx * (w / 2 - 2.5), 1.5, -d / 2 + 1)); // props behind
   return g;
@@ -369,23 +394,18 @@ function doorPostModel(): Group {
   return g;
 }
 
-let pixelGeo: ExtrudeGeometry | null = null;
-
-/** One pixel's ring, shared: a hexagon 3 in across with a hexagonal hole, half an inch thick (ftcfield.ts), the extrusion going up (+y). */
-function pixelRing(): ExtrudeGeometry {
-  if (!pixelGeo) {
-    const hex = (r: number) => Array.from({ length: 6 }, (_, k) => new Vector2(Math.cos(Math.PI / 6 + (k * Math.PI) / 3) * r, Math.sin(Math.PI / 6 + (k * Math.PI) / 3) * r));
-    const outline = new Shape(hex(PIXEL_SIZE.corner / 2));
-    outline.holes.push(new Path(hex((PIXEL_SIZE.corner / 2) * PIXEL_SIZE.hole)));
-    pixelGeo = new ExtrudeGeometry(outline, { depth: PIXEL_SIZE.thick, bevelEnabled: false });
-    pixelGeo.rotateX(-Math.PI / 2); // lie flat: the extrusion goes up
-  }
-  return pixelGeo;
-}
-
-/** A pixel lying flat with its underside `y` above the origin, two of its sides facing east and west. It catches the light on its thickness and the hole's walls. */
-function pixelMesh(color: string, y = 0): Mesh {
-  return mesh(pixelRing(), toon(color), 0, y, 0);
+/** One of the two pixels at the east wall that the Center Stage robot takes (`ftcField.wall[index]`): taken, then a fresh one appears. */
+function wallPixel(color: string, index: number): Group {
+  const g = new Group();
+  const px = pixelMesh(color, SHEET_Y);
+  g.add(px);
+  g.userData.animate = () => {
+    const p = ftcField.wall[index];
+    px.visible = p > 0.02;
+    px.scale.setScalar(Math.max(0.001, p));
+  };
+  markMoving(g, px);
+  return g;
 }
 
 /** A pixel lying on the floor sheet. */
@@ -786,6 +806,12 @@ export function ftcModel(id: string, w: number, d: number): Group | null {
       return stageDoorModel();
     case "door-post":
       return doorPostModel();
+    case "wall-pixel-y":
+      return wallPixel(PIXEL.y, 0);
+    case "wall-pixel-w":
+      return wallPixel(PIXEL.w, 1);
+    case "robot-cs":
+      return csRobotModel();
     case "pixel-y":
       return pixelModel(PIXEL.y);
     case "pixel-p":
