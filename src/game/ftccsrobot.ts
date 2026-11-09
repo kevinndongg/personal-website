@@ -186,22 +186,21 @@ export function csRobotModel(): Group {
   const roller = new Group();
   roller.position.set(L, 0, 0);
   intake.add(roller);
-  const drum = cyl(0.7, 0.7, 8.6, TEAL, 0, 0, 0, 10);
+  const drum = cyl(0.5, 0.5, 8.6, TEAL, 0, 0, 0, 10);
   drum.rotation.x = Math.PI / 2;
   drum.position.set(0, 0, 0);
   roller.add(drum);
-  for (let k = 0; k < 5; k++) {
-    const finger = new Group();
-    finger.rotation.z = (k * 2 * Math.PI) / 5;
-    part(finger, 1.1, 0.35, 8.2, YELLOW, 1.1, 0, 0); // a finger reaches out along the roller's whole length, curling over at its tip
-    part(finger, 0.4, 0.8, 8.2, YELLOW, 1.55, -0.25, 0);
-    roller.add(finger);
+  // four yellow flippers on the roller, the same shape as the five on the bottom bar and standing between them (z = +-0.9, +-2.7 against their
+  // 0, +-1.8, +-3.6): a short paddle out from the drum with its tip curled over
+  for (const z of [-2.7, -0.9, 0.9, 2.7]) {
+    part(roller, 1.1, 0.35, 0.45, YELLOW, 0.8, 0, z);
+    part(roller, 0.35, 0.8, 0.45, YELLOW, 1.4, -0.3, z);
   }
   for (const s of [-1, 1]) part(intake, L - 1, 0.12, 0.12, BLACK, L / 2, 0.2, s * 2.2); // the black cords across the arms
-  // the lower bar: five yellow fingers on a fixed bar low at the front, curling up, under the roller
+  // the lower bar: five yellow flippers on the axle low at the front, short, with their tips curling up
   for (let k = -2; k <= 2; k++) {
-    part(g, HALF + 1.3 - PIVOT.x, 0.3, 0.45, YELLOW, (PIVOT.x + HALF + 1.3) / 2, 0.4, k * 1.8);
-    part(g, 0.4, 1.1, 0.45, YELLOW, HALF + 1.4, 0.8, k * 1.8);
+    part(g, HALF + 0.3 - PIVOT.x, 0.3, 0.45, YELLOW, (PIVOT.x + HALF + 0.3) / 2, 0.4, k * 1.8);
+    part(g, 0.35, 0.9, 0.45, YELLOW, HALF + 0.4, 0.75, k * 1.8);
   }
   part(g, 0.5, 0.5, 10, BLUE, PIVOT.x, 0.5, 0);
 
