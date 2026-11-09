@@ -3,13 +3,17 @@ import {
   CanvasTexture,
   CylinderGeometry,
   DoubleSide,
+  ExtrudeGeometry,
   FrontSide,
   Group,
   LinearFilter,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
+  Path,
   PlaneGeometry,
+  Shape,
+  Vector2,
   Vector3,
 } from "three";
 import { FLOOR } from "./ftc";
@@ -259,14 +263,46 @@ function backdropTexture(w: number, len: number): CanvasTexture {
       ctx.fill();
     }
   }
+  // the pixels: hexagonal rings, lit from the top left, so each one reads as a thick ring with a hole through it (the board shows
+  // through the hole, in shadow along its top and left walls)
+  const ring = (u: number, v: number, shrink: number, hole: number) => {
+    const cx = W / 2 + u * D;
+    const cy = H - v * D;
+    const corners = (r: number) => Array.from({ length: 6 }, (_, k) => [cx + Math.cos(Math.PI / 6 + (k * Math.PI) / 3) * r, cy + Math.sin(Math.PI / 6 + (k * Math.PI) / 3) * r] as const);
+    return { outer: corners((PIXEL_SIZE.corner / 2 - shrink) * D), inner: corners(((PIXEL_SIZE.corner / 2 - shrink) * hole) * D) };
+  };
+  const trace = (pts: readonly (readonly [number, number])[]) => {
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (const q of pts.slice(1)) ctx.lineTo(q[0], q[1]);
+    ctx.closePath();
+  };
   for (const p of BACKDROP_PILE) {
     const { u, v } = backdropCell(p.row, p.col);
-    hexagon(u, v, 0.05);
+    const { outer, inner } = ring(u, v, 0.05, PIXEL_SIZE.hole);
+    ctx.beginPath();
+    trace(outer);
+    trace(inner);
     ctx.fillStyle = PIXEL[p.color];
+    ctx.fill("evenodd");
+    ctx.beginPath();
+    trace(inner);
+    ctx.fillStyle = "#1c1f29"; // the board through the hole
     ctx.fill();
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = "rgba(0,0,0,0.35)";
-    ctx.stroke();
+    // the edges, lit from the top left: the outer ones facing up and left are light, those facing down and right dark; the hole's walls are the other way round
+    ctx.lineWidth = 1.4;
+    for (let k = 0; k < 6; k++) {
+      const a = Math.PI / 6 + ((k + 0.5) * Math.PI) / 3; // the direction this edge faces
+      const lit = -Math.cos(a) * 0.6 - Math.sin(a) * 0.8; // 1 facing the light (up and left), -1 away
+      for (const [pts, sign] of [[outer, 1], [inner, -1]] as const) {
+        const [p0, p1] = [pts[k], pts[(k + 1) % 6]];
+        const t = lit * sign;
+        ctx.strokeStyle = t > 0.2 ? "rgba(255,255,255,0.55)" : t < -0.2 ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0.18)";
+        ctx.beginPath();
+        ctx.moveTo(p0[0], p0[1]);
+        ctx.lineTo(p1[0], p1[1]);
+        ctx.stroke();
+      }
+    }
   }
   return nearestTexture(c);
 }
@@ -337,10 +373,18 @@ function droneModel(): Group {
   return g;
 }
 
-/** A pixel lying flat: a hexagon 3 in across and half an inch thick (ftcfield.ts), two of its sides facing east and west. */
+/**
+ * A pixel lying flat: a hexagonal ring 3 in across and half an inch thick with a hexagonal hole through it (ftcfield.ts), two of its
+ * sides facing east and west. It is an extruded outline with a hole, so its thickness and the walls of the hole catch the light.
+ */
 function pixelModel(color: string): Group {
   const g = new Group();
-  g.add(cyl(PIXEL_SIZE.corner / 2, PIXEL_SIZE.corner / 2, PIXEL_SIZE.thick, color, 0, SHEET_Y, 0, 6)); // on the floor sheet
+  const hex = (r: number) => Array.from({ length: 6 }, (_, k) => new Vector2(Math.cos(Math.PI / 6 + (k * Math.PI) / 3) * r, Math.sin(Math.PI / 6 + (k * Math.PI) / 3) * r));
+  const outline = new Shape(hex(PIXEL_SIZE.corner / 2));
+  outline.holes.push(new Path(hex((PIXEL_SIZE.corner / 2) * PIXEL_SIZE.hole)));
+  const geo = new ExtrudeGeometry(outline, { depth: PIXEL_SIZE.thick, bevelEnabled: false });
+  geo.rotateX(-Math.PI / 2); // lie flat: the extrusion goes up
+  g.add(mesh(geo, toon(color), 0, SHEET_Y, 0)); // on the floor sheet
   return g;
 }
 

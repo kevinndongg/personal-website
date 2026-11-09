@@ -152,10 +152,11 @@ export function heldBase(tilt: number, twist: number): [number, number, number] 
 // ---------------------------------------------------------------- Center Stage
 
 /**
- * A Center Stage pixel to scale: 3 in across (flat to flat) and 0.5 in thick, at the field's 1.2 in per px. `across` is the
- * hexagon's width between two parallel sides; `corner` is its height from point to point with those sides upright.
+ * A Center Stage pixel to scale. The game manual gives its size as a hexagon 3 in across and 0.5 in thick, at the field's 1.2 in per px;
+ * `across` is the hexagon's width between two parallel sides and `corner` its height from point to point with those sides upright.
+ * It is a ring: the manual's drawings (appendix C) show a hexagonal hole through the middle, which I read as about 0.6 of the width.
  */
-export const PIXEL_SIZE = { across: 2.5, corner: 2.5 / Math.cos(Math.PI / 6), thick: 0.5 } as const;
+export const PIXEL_SIZE = { across: 3 / 1.2, corner: 3 / 1.2 / Math.cos(Math.PI / 6), thick: 0.5 / 1.2, hole: 0.6 } as const;
 
 /** How the pixels lie on the backdrop's face: rows of hexagons, seven across and six across in turn (the six sit between the sevens). */
 export const BACKDROP_GRID = {
