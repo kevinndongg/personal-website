@@ -18,7 +18,7 @@ import {
 } from "three";
 import { FLOOR } from "./ftc";
 import { markMoving } from "./bake";
-import { BACKDROP_GRID, BACKDROP_PILE, PIXEL_SIZE, PP, PP_HEIGHT, TAKEN, backdropCell, backdropRowSize, ftcField, poleTop, submersibleSamples } from "./ftcfield";
+import { BACKDROP_GRID, BACKDROP_PILE, PIXEL_SIZE, PP, PP_HEIGHT, STAGE_DOOR_LEN, TAKEN, backdropCell, backdropRowSize, ftcField, poleTop, submersibleSamples } from "./ftcfield";
 import { robotModel } from "./ftcrobot";
 import { ppCone, ppRobotModel } from "./ftcpprobot";
 import { centred, pixelText } from "./ftctext";
@@ -330,12 +330,45 @@ function trussModel(): Group {
     }
     g.add(box(2 * BASE, 0.8, 0.8, STEEL, 0, 0.6, s * R)); // the tie across its base
   }
-  g.add(box(1.2, 1.2, 2 * R + 1.4, STEEL, 0, TOP - 0.6, 0)); // the bar along the top
+  g.add(box(1.2, 1.2, 2 * R + 1.4, BLUE, 0, TOP - 0.6, 0)); // the bar along the top, in the alliance's colour
   for (const sx of [-1, 1]) g.add(box(0.8, 0.8, 2 * R, STEEL, sx * BASE, 0.6, 0)); // runners along the base
   // the hang bars: 60% up, which on a leg is 40% of the way in from the foot
   const hangY = 22 * 0.6;
   const hangX = BASE * 0.4;
   for (const sx of [-1, 1]) g.add(box(0.9, 0.9, 2 * R + 1, GOLD, sx * hangX, hangY - 0.45, 0));
+  return g;
+}
+
+/**
+ * The Stage Door: the yellow barrier that spans the gap between the trusses, seen from the side of the field the robots start on. It is a
+ * frame of pipes hung from a top rail (a lower rail, and uprights at its ends and thirds), with a pole above it, and clamps at the joints;
+ * a robot shorter than its lower rail drives under it. Its length runs along x, centred.
+ */
+function stageDoorModel(): Group {
+  const g = new Group();
+  const L = STAGE_DOOR_LEN;
+  const TOP = 19.1; // the hinged rail's centre
+  const LOW = 12.6; // the lower rail's: a robot taller than this does not fit under it
+  const POLE_Y = 21.4; // the pole above, level with the truss's apex bar
+  g.add(box(L, 0.9, 0.9, GOLD, 0, TOP - 0.45, 0));
+  g.add(box(L, 0.9, 0.9, GOLD, 0, LOW - 0.45, 0));
+  g.add(box(L, 1.1, 1.1, BLUE, 0, POLE_Y - 0.55, 0));
+  for (const x of [-L / 2 + 0.45, -L / 4, 0, L / 4, L / 2 - 0.45]) {
+    g.add(box(0.9, TOP - LOW, 0.9, GOLD, x, LOW, 0)); // the uprights of the frame
+    g.add(box(1.3, 1.3, 1.3, DARK, x, TOP - 0.65, 0)); // a clamp at each joint with the top rail
+    g.add(box(1.3, 1.3, 1.3, DARK, x, LOW - 0.65, 0));
+  }
+  for (const x of [-L / 2 + 0.55, L / 2 - 0.55]) g.add(box(0.9, POLE_Y - TOP, 0.9, STEEL, x, TOP, 0)); // the pole is held up at its ends
+  return g;
+}
+
+/** The post at the free end of the Stage Door: a foot, a pipe up to the height of the truss's top bar, and a blue cap. */
+function doorPostModel(): Group {
+  const g = new Group();
+  g.add(box(3, 0.6, 3, DARK, 0, 0, 0));
+  g.add(box(1.2, 21, 1.2, STEEL, 0, 0.6, 0));
+  g.add(box(1.6, 1.2, 1.6, BLUE, 0, 21.6 - 0.6, 0));
+  g.add(box(0.9, 0.9, 3.4, GOLD, 0, 12.6 - 0.45, 0)); // the stub the lower rail clamps to
   return g;
 }
 
@@ -752,6 +785,10 @@ export function ftcModel(id: string, w: number, d: number): Group | null {
       return backdropModel(w, d);
     case "truss":
       return trussModel();
+    case "stage-door":
+      return stageDoorModel();
+    case "door-post":
+      return doorPostModel();
     case "pixel-y":
       return pixelModel(PIXEL.y);
     case "pixel-p":

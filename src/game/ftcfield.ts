@@ -197,3 +197,6 @@ export const BACKDROP_PILE: { row: number; col: number; color: "y" | "p" | "w" |
   { row: 2, col: 4, color: "p" },
   { row: 2, col: 5, color: "g" },
 ];
+
+/** How long the Stage Door's span is: from the post on the tape line to the truss's near A-frame, about two tiles (about 46 in in the manual). */
+export const STAGE_DOOR_LEN = 40.9;

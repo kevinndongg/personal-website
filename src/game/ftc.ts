@@ -1,4 +1,4 @@
-import { PIXEL_SIZE, PP, SAMPLE_COLORS, TAKEN, submersibleSamples } from "./ftcfield";
+import { PIXEL_SIZE, PP, SAMPLE_COLORS, STAGE_DOOR_LEN, TAKEN, submersibleSamples } from "./ftcfield";
 import type { Decal, Footprint, Prop, Scene } from "./scenes";
 
 // The FTC area: one square competition field split into three wedges, one per season, with the duck mascot, the driver
@@ -128,6 +128,11 @@ export function ftcScene(ox: number, oy: number): Scene {
   // the truss lies across the middle of the third tile down in the right-hand column, its bars running left to right on
   // screen: the model is 12 wide and 20 long, turned a quarter so the length runs east-west
   props.push({ sprite: "ftc-truss", ...f(50, -10), angle: Math.PI / 2, solid: rect(12, 20) });
+  // the Stage Door runs on from the truss across two tiles to a post on the tape line, along the same row: a barrier for the robots to pass
+  // under (no footprint: only its post blocks anything). Its model is centred, so it stands 2 px behind the y given, like the floor's.
+  const door = f(0.6 + STAGE_DOOR_LEN / 2, -10); // from the post's east face to the truss's west A-frame (x 41.5)
+  props.push({ sprite: "ftc-stage-door", x: door.x, y: door.y + 2 });
+  props.push(round("ftc-door-post", f(0, -10), 1.5));
   // pixels lie flat on the floor, to scale (3 in across), with no footprint to block anything: loose ones about the wedge, turned this way and
   // that, and two against the east wall in the middle of the fourth tile down, side by side: the white one right up to the wall (its
   // flat side on it) and the yellow one directly to the west of it, touching, for a robot to pick up and take to the backdrop
