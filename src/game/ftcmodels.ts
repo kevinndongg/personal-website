@@ -228,11 +228,12 @@ function samplePile(color: string, layers = 6): Group {
 // ---- Center Stage: the backdrop, the truss, the drone and the pixels
 
 /**
- * The face of the backdrop: a lattice of hexagonal recesses, rows of six and five in turn, with the pixels that have already slid down
- * into the bottom right corner (ftcfield.ts has the layout, shared with the robot that adds to it). `w` x `len` px, at 8 texels a px.
+ * The face of the backdrop: the bare board with a lattice of hexagonal recesses, rows of six and five in turn, and a zigzag bottom
+ * edge following the points of the lowest row. The pixels are real 3D models lying on it (`backdropModel`). `w` x `len` px, at 16 texels
+ * a px and smoothed, so the hexagons keep clean edges.
  */
 function backdropTexture(w: number, len: number): CanvasTexture {
-  const D = 8;
+  const D = 16;
   const W = Math.round(w * D);
   const H = Math.round(len * D);
   const [c, ctx] = canvasOf(W, H);
@@ -265,64 +266,26 @@ function backdropTexture(w: number, len: number): CanvasTexture {
   ctx.closePath();
   ctx.fillStyle = "#1b1d26";
   ctx.fill();
-  const filled = new Set(BACKDROP_PILE.map((p) => `${p.row},${p.col}`));
   for (let row = 0; row < BACKDROP_GRID.rows; row++) {
-    const n = backdropRowSize(row);
-    for (let col = 0; col < n; col++) {
-      if (filled.has(`${row},${col}`)) continue;
+    for (let col = 0; col < backdropRowSize(row); col++) {
       const { u, v } = backdropCell(row, col);
-      hexagon(u, v, 0.08);
-      ctx.fillStyle = "#333745"; // a recess nothing has come to rest in
+      hexagon(u, v, 0.1);
+      ctx.fillStyle = "#333745"; // a recess, where a pixel can come to rest
       ctx.fill();
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = "rgba(0,0,0,0.3)";
+      ctx.stroke();
     }
   }
-  // the pixels: hexagonal rings, lit from the top left, so each one reads as a thick ring with a hole through it (the board shows
-  // through the hole, in shadow along its top and left walls)
-  const ring = (u: number, v: number, shrink: number, hole: number) => {
-    const cx = W / 2 + u * D;
-    const cy = H - v * D;
-    const corners = (r: number) => Array.from({ length: 6 }, (_, k) => [cx + Math.cos(Math.PI / 6 + (k * Math.PI) / 3) * r, cy + Math.sin(Math.PI / 6 + (k * Math.PI) / 3) * r] as const);
-    return { outer: corners((PIXEL_SIZE.corner / 2 - shrink) * D), inner: corners(((PIXEL_SIZE.corner / 2 - shrink) * hole) * D) };
-  };
-  const trace = (pts: readonly (readonly [number, number])[]) => {
-    ctx.moveTo(pts[0][0], pts[0][1]);
-    for (const q of pts.slice(1)) ctx.lineTo(q[0], q[1]);
-    ctx.closePath();
-  };
-  for (const p of BACKDROP_PILE) {
-    const { u, v } = backdropCell(p.row, p.col);
-    const { outer, inner } = ring(u, v, 0.05, PIXEL_SIZE.hole);
-    ctx.beginPath();
-    trace(outer);
-    trace(inner);
-    ctx.fillStyle = PIXEL[p.color];
-    ctx.fill("evenodd");
-    ctx.beginPath();
-    trace(inner);
-    ctx.fillStyle = "#1c1f29"; // the board through the hole
-    ctx.fill();
-    // the edges, lit from the top left: the outer ones facing up and left are light, those facing down and right dark; the hole's walls are the other way round
-    ctx.lineWidth = 1.4;
-    for (let k = 0; k < 6; k++) {
-      const a = Math.PI / 6 + ((k + 0.5) * Math.PI) / 3; // the direction this edge faces
-      const lit = -Math.cos(a) * 0.6 - Math.sin(a) * 0.8; // 1 facing the light (up and left), -1 away
-      for (const [pts, sign] of [[outer, 1], [inner, -1]] as const) {
-        const [p0, p1] = [pts[k], pts[(k + 1) % 6]];
-        const t = lit * sign;
-        ctx.strokeStyle = t > 0.2 ? "rgba(255,255,255,0.55)" : t < -0.2 ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0.18)";
-        ctx.beginPath();
-        ctx.moveTo(p0[0], p0[1]);
-        ctx.lineTo(p1[0], p1[1]);
-        ctx.stroke();
-      }
-    }
-  }
-  return nearestTexture(c);
+  const tex = new CanvasTexture(c);
+  tex.minFilter = LinearFilter;
+  tex.generateMipmaps = false;
+  return tex;
 }
 
 /**
- * The backdrop: a board tilted back against the wall on a platform a whole tile wide, its face a heap of pixels at the bottom and
- * empty recesses above. Pixels are 3 in across, so six fit across (the tile is 24 in wide).
+ * The backdrop: a board tilted back against the wall on a platform a whole tile wide, its face with a few pixels at the bottom and
+ * empty recesses above. Pixels are 3 in across, so six fit across (the tile is 24 in wide); each one is the same 3D ring as on the floor.
  */
 function backdropModel(w: number, d: number): Group {
   const g = new Group();
@@ -337,6 +300,15 @@ function backdropModel(w: number, d: number): Group {
   face.rotation.x = -Math.PI / 2;
   face.position.y = 0.45;
   board.add(face);
+  // the pixels that have slid down the board: real ring models lying on its face, each in its cell (the board's +z end is its bottom)
+  const faceLen = len - 0.8;
+  for (const p of BACKDROP_PILE) {
+    const { u, v } = backdropCell(p.row, p.col);
+    const px = pixelMesh(PIXEL[p.color], 0.46);
+    px.position.x = u;
+    px.position.z = faceLen / 2 - v;
+    board.add(px);
+  }
   g.add(board);
   for (const sx of [-1, 1]) g.add(box(1, 12, 1, STEEL, sx * (w / 2 - 2.5), 1.5, -d / 2 + 1)); // props behind
   return g;
@@ -386,18 +358,29 @@ function droneModel(): Group {
   return g;
 }
 
-/**
- * A pixel lying flat: a hexagonal ring 3 in across and half an inch thick with a hexagonal hole through it (ftcfield.ts), two of its
- * sides facing east and west. It is an extruded outline with a hole, so its thickness and the walls of the hole catch the light.
- */
+let pixelGeo: ExtrudeGeometry | null = null;
+
+/** One pixel's ring, shared: a hexagon 3 in across with a hexagonal hole, half an inch thick (ftcfield.ts), the extrusion going up (+y). */
+function pixelRing(): ExtrudeGeometry {
+  if (!pixelGeo) {
+    const hex = (r: number) => Array.from({ length: 6 }, (_, k) => new Vector2(Math.cos(Math.PI / 6 + (k * Math.PI) / 3) * r, Math.sin(Math.PI / 6 + (k * Math.PI) / 3) * r));
+    const outline = new Shape(hex(PIXEL_SIZE.corner / 2));
+    outline.holes.push(new Path(hex((PIXEL_SIZE.corner / 2) * PIXEL_SIZE.hole)));
+    pixelGeo = new ExtrudeGeometry(outline, { depth: PIXEL_SIZE.thick, bevelEnabled: false });
+    pixelGeo.rotateX(-Math.PI / 2); // lie flat: the extrusion goes up
+  }
+  return pixelGeo;
+}
+
+/** A pixel lying flat with its underside `y` above the origin, two of its sides facing east and west. It catches the light on its thickness and the hole's walls. */
+function pixelMesh(color: string, y = 0): Mesh {
+  return mesh(pixelRing(), toon(color), 0, y, 0);
+}
+
+/** A pixel lying on the floor sheet. */
 function pixelModel(color: string): Group {
   const g = new Group();
-  const hex = (r: number) => Array.from({ length: 6 }, (_, k) => new Vector2(Math.cos(Math.PI / 6 + (k * Math.PI) / 3) * r, Math.sin(Math.PI / 6 + (k * Math.PI) / 3) * r));
-  const outline = new Shape(hex(PIXEL_SIZE.corner / 2));
-  outline.holes.push(new Path(hex((PIXEL_SIZE.corner / 2) * PIXEL_SIZE.hole)));
-  const geo = new ExtrudeGeometry(outline, { depth: PIXEL_SIZE.thick, bevelEnabled: false });
-  geo.rotateX(-Math.PI / 2); // lie flat: the extrusion goes up
-  g.add(mesh(geo, toon(color), 0, SHEET_Y, 0)); // on the floor sheet
+  g.add(pixelMesh(color, SHEET_Y));
   return g;
 }
 
