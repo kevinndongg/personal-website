@@ -79,31 +79,11 @@ export interface Zone extends ZoneInput {
   scene: Scene;
 }
 
-export interface Item {
-  tx: number;
-  ty: number;
-}
-
-export const Terrain = { Asphalt: 0, Concrete: 1 } as const;
-
 export interface World {
-  w: number; // terrain tiles
+  w: number; // map tiles
   h: number;
-  terrain: Uint8Array;
-  items: Item[]; // loose yard tires
   zones: Zone[];
   seed: number;
-}
-
-function rng(seed: number) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 // Zones live on the edge ring. Rearrange by editing ZONE_SLOTS.
@@ -178,48 +158,7 @@ function layoutZones(inputs: ZoneInput[]): Zone[] {
 }
 
 export function generateWorld(inputs: ZoneInput[], seed = 7): World {
-  const zones = layoutZones(inputs);
-  const w = WORLD_W;
-  const h = WORLD_H;
-  const rand = rng(seed);
-  const terrain = new Uint8Array(w * h);
-  const blocked = new Uint8Array(w * h);
-  const idx = (x: number, y: number) => y * w + x;
-
-  // keep loose tires off the outermost ring so nothing sits right on the edge of the board
-  for (let x = 0; x < w; x++) {
-    for (const y of [0, h - 1]) blocked[idx(x, y)] = 1;
-  }
-  for (let y = 0; y < h; y++) {
-    for (const x of [0, w - 1]) blocked[idx(x, y)] = 1;
-  }
-
-  // keep loose yard tires out of every project box (plus a one-tile margin)
-  for (const zone of zones) {
-    const a = zone.scene.area;
-    const x0 = Math.max(1, Math.floor(a.x / TILE) - 1);
-    const y0 = Math.max(1, Math.floor(a.y / TILE) - 1);
-    const x1 = Math.min(w - 2, Math.ceil((a.x + a.w) / TILE) + 1);
-    const y1 = Math.min(h - 2, Math.ceil((a.y + a.h) / TILE) + 1);
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) blocked[idx(x, y)] = 1;
-  }
-
-  // a few worn tire piles scattered in the open yard
-  const items: Item[] = [];
-  for (let n = 0; n < 8; n++) {
-    const x0 = 1 + Math.floor(rand() * (w - 2));
-    const y0 = 1 + Math.floor(rand() * (h - 2));
-    const count = 1 + Math.floor(rand() * 3);
-    for (let k = 0; k < count; k++) {
-      const tx = x0 + (k % 2);
-      const ty = y0 + Math.floor(k / 2);
-      if (tx < 1 || ty < 1 || tx >= w - 1 || ty >= h - 1 || blocked[idx(tx, ty)]) continue;
-      blocked[idx(tx, ty)] = 1;
-      items.push({ tx, ty });
-    }
-  }
-
-  return { w, h, terrain, items, zones, seed };
+  return { w: WORLD_W, h: WORLD_H, zones: layoutZones(inputs), seed };
 }
 
 export function rectContains(r: Rect, x: number, y: number, inset = 0): boolean {

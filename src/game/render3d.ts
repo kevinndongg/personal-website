@@ -1,7 +1,6 @@
 import {
   AdditiveBlending,
   AmbientLight,
-  BoxGeometry,
   CanvasTexture,
   Color,
   ColorManagement,
@@ -16,7 +15,6 @@ import {
   Matrix4,
   Mesh,
   MeshBasicMaterial,
-  MeshLambertMaterial,
   Object3D,
   OrthographicCamera,
   PCFShadowMap,
@@ -43,11 +41,11 @@ import { attachErrand } from "./errand";
 import { attachPowerPlay } from "./ppcycle";
 import { attachCycle } from "./robotcycle";
 import { FOREST_REACH, buildForest } from "./forest";
-import type { Forest, ForestReach, ForestStyle } from "./forest";
+import type { Forest, ForestReach } from "./forest";
 import { FTC_APRON } from "./ftc";
-import { GROUND_MARGIN, buildApron, buildGroundLayer, buildLot } from "./ground";
+import { buildApron, buildGroundLayer, buildLot } from "./ground";
 import type { Lot } from "./ground";
-import { createModel, tireModel, woodTexture } from "./models";
+import { createModel } from "./models";
 import type { AnimCtx } from "./models";
 import { sceneryModel } from "./scenery";
 import type { PropFocus, Rect } from "./scenes";
@@ -119,7 +117,6 @@ const POST_FS = `
   uniform vec4 focusRect; // focused project box in screen uv (minX, minY, maxX, maxY)
   uniform float focusAmt;
   uniform float pure; // 0 the graded picture .. 1 the scene's own pixels (zoomed right into a photo)
-  uniform float golden; // 0 the usual grade .. 1 an amber cast over it (late afternoon)
   uniform vec3 voidCol;
   varying vec2 vUv;
 
@@ -150,7 +147,7 @@ const POST_FS = `
     c = mix(vec3(l), c, 0.86);
     c += vec3(0.010, 0.030, 0.026) * (1.0 - l);        // shadows lean green/teal
     c *= mix(vec3(1.0), vec3(1.07, 1.02, 0.90), l);     // highlights lean warm
-    c = mix(c, c * vec3(1.05, 0.99, 0.91), golden);     // late afternoon (the forest preview): the whole picture a touch amber
+    c *= vec3(1.05, 0.99, 0.91);                         // late afternoon: the whole picture a touch amber
     c = (c - 0.5) * 1.05 + 0.5;
     c *= 1.14; // a little exposure: the scene is lit low and warm, keep it from going muddy
 
@@ -179,19 +176,11 @@ const POST_FS = `
   }
 `;
 
-/**
- * How the map ends. "cut": a crisp straight edge with a soft shadow on the dark surface; "slab": the map is a raised
- * wooden board whose front side you can see; "fade": the ground dissolves into the grainy dark.
- */
-export type EdgeMode = "cut" | "slab" | "fade";
-const SLAB_H = 28; // thickness of the board in "slab" mode
 const VOID = "#1d1e24"; // the dark surface the map sits on
 
 /**
- * Preview: the projects living in a forest, with no square yard under them (`?forest`, or `?forest=grass` for a lawn clearing
- * instead of packed earth).
- * Off unless asked for. The camera backs off by `FOREST_PAD` to take the first trees in, whose tops reach `FOREST_TOP`: the big
- * trees are taller than that, and their tops run off the top and sides of the screen on purpose.
+ * The projects live in a forest. The camera backs off by `FOREST_PAD` to take the first trees in, whose tops reach `FOREST_TOP`:
+ * the big trees are taller than that, and their tops run off the top and sides of the screen on purpose.
  */
 const FOREST_PAD = 3 * TILE;
 /** How far past the map the shadow-catching sheet reaches in the forest: the longest shadow (a crane about 80 high at a 24 degree sun) is about 190. */
@@ -200,13 +189,6 @@ const FOREST_SHADOW_PAD = 260;
 const LOT_Y = 0.14;
 const LOT_GLOW_LIFT = 0.25;
 const FOREST_TOP = 70;
-function forestParam(): ForestStyle | null {
-  if (typeof location === "undefined") return null;
-  const q = new URLSearchParams(location.search);
-  return q.has("forest") ? (q.get("forest") === "grass" ? "grass" : "yard") : null;
-}
-const SHADOW_PAD = 3 * TILE; // how far the drop shadow's texture reaches past the map
-
 /** Defaults for the hover effect on a project box (a scene can override via `scene.hover`). */
 const LIFT = 4; // world px the props rise (scene.hover.lift is in these units now)
 const GLOW = 0.12; // how much brighter the ground gets (white overlay opacity)
@@ -274,23 +256,6 @@ function dappleTexture(): CanvasTexture {
   return t;
 }
 
-/** A soft dark blob (for a drop shadow): a blurred rectangle `inner` units wide inside a `total`-unit square. */
-function blurredRectTexture(total: number, inner: number, blur: number): CanvasTexture {
-  const size = 512;
-  const k = size / total;
-  const c = document.createElement("canvas");
-  c.width = c.height = size;
-  const ctx = c.getContext("2d")!;
-  // shadowBlur only blurs the shadow, so draw the rectangle far off-canvas and cast its shadow back in
-  const far = size * 4;
-  ctx.shadowColor = "rgba(0,0,0,0.85)";
-  ctx.shadowBlur = blur * k;
-  ctx.shadowOffsetX = far;
-  const o = ((total - inner) / 2) * k;
-  ctx.fillRect(o - far, o, inner * k, inner * k);
-  return new CanvasTexture(c);
-}
-
 /**
  * A pool of warm light with no edge to speak of (the forest preview's glow: a ring round a rectangle needs a border to sit on,
  * and on the lawn there is none). Brightest in the middle, fading out well before the texture's edge, in a rounded-square shape
@@ -320,66 +285,6 @@ function spotlightTexture(peak: number): CanvasTexture {
   ctx.putImageData(img, 0, 0);
   const t = new CanvasTexture(c);
   t.minFilter = t.magFilter = LinearFilter;
-  t.generateMipmaps = false;
-  return t;
-}
-
-/** A soft warm halo just outside a rectangle (the glow that invites a click): `w` x `h` units, the rectangle `margin` in from each edge. */
-function haloTexture(w: number, h: number, margin: number, radius = 0): CanvasTexture {
-  const size = 512;
-  const k = size / w;
-  const c = document.createElement("canvas");
-  c.width = size;
-  c.height = Math.max(2, Math.round(h * k));
-  const ctx = c.getContext("2d")!;
-  // (with a `radius` the outline's corners are rounded, which the forest preview wants: no hard square glowing in it)
-  const outline = (x: number, y: number) => {
-    ctx.beginPath();
-    if (radius > 0) ctx.roundRect(x, y, (w - 2 * margin) * k, (h - 2 * margin) * k, radius * k);
-    else ctx.rect(x, y, (w - 2 * margin) * k, (h - 2 * margin) * k);
-  };
-  // as in blurredRectTexture: only the shadow is wanted, so the outline is drawn far off-canvas and its shadow cast back in
-  const far = size * 4;
-  ctx.shadowColor = "rgb(255, 243, 214)";
-  ctx.shadowBlur = margin * 0.9 * k;
-  ctx.shadowOffsetX = far;
-  ctx.lineWidth = margin * 0.35 * k;
-  ctx.strokeStyle = "#fff";
-  outline(margin * k - far, margin * k);
-  ctx.stroke();
-  ctx.stroke(); // (twice: one pass of a shadow is too faint to read on the dark ground)
-  ctx.stroke();
-  // the glow is for the outside only: the inside of the outline is cleared, so the area itself stays as it is lit
-  ctx.shadowColor = "transparent";
-  ctx.shadowBlur = 0;
-  ctx.shadowOffsetX = 0;
-  ctx.globalCompositeOperation = "destination-out";
-  outline(margin * k, margin * k);
-  ctx.fill();
-  return new CanvasTexture(c);
-}
-
-/** Alpha mask for the "fade" mode: opaque over the map, falling to transparent across the margin around it. */
-function fadeMaskTexture(total: number, inner: number): CanvasTexture {
-  const size = 512;
-  const k = size / total;
-  const c = document.createElement("canvas");
-  c.width = c.height = size;
-  const ctx = c.getContext("2d")!;
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, size, size);
-  const far = size * 4;
-  const margin = (total - inner) / 2;
-  // a white rectangle reaching halfway into the margin, blurred so it is fully opaque over the map and gone at the end
-  const grow = margin * 0.5;
-  ctx.shadowColor = "#fff";
-  ctx.shadowBlur = margin * 0.6 * k;
-  ctx.shadowOffsetX = far;
-  const o = (margin - grow) * k;
-  const s = (inner + grow * 2) * k;
-  ctx.fillRect(o - far, o, s, s);
-  const t = new CanvasTexture(c);
-  t.minFilter = LinearFilter;
   t.generateMipmaps = false;
   return t;
 }
@@ -450,17 +355,8 @@ export class Renderer3D {
   private focusRect = new Vector4(0, 0, 0, 0);
   private dapple: CanvasTexture;
   private mapSize: number;
-  private edge: EdgeMode = "cut";
-  private forest: ForestStyle | null = null;
-  private forestScene: Forest | null = null;
-  private leafMask: CanvasTexture | null = null;
-  private groundMesh!: Mesh;
-  private catcherMesh!: Mesh;
-  private leavesMesh!: Mesh;
+  private forestScene!: Forest;
   private groundTex!: CanvasTexture;
-  private edgeMask!: CanvasTexture;
-  private edgeShadow!: Mesh;
-  private slab!: Mesh;
   private width = 1;
   private height = 1;
   private sun!: DirectionalLight;
@@ -518,7 +414,6 @@ export class Renderer3D {
         focusRect: { value: new Vector4(0, 0, 0, 0) },
         focusAmt: { value: 0 },
         pure: { value: 0 },
-        golden: { value: 0 },
         voidCol: { value: new Color(VOID) },
       },
       depthTest: false,
@@ -538,25 +433,18 @@ export class Renderer3D {
     this.blurScene.add(new Mesh(new PlaneGeometry(2, 2), this.blurQuad));
 
     this.dapple = dappleTexture();
-    this.forest = forestParam();
-    this.quad.uniforms.golden.value = this.forest ? 1 : 0;
     this.buildScene();
-    const q = typeof location !== "undefined" ? new URLSearchParams(location.search).get("edge") : null;
-    // (the forest's floor runs right up to the yard, so the board's side and the fade have no place in it)
-    this.setEdge(!this.forest && (q === "slab" || q === "fade") ? q : "cut");
   }
 
   private buildScene() {
     const { scene, world, mapSize } = this;
 
-    // low warm sun from the front-left (long soft shadows toward the back-right) plus a cool sky fill. In the forest preview it
-    // is late afternoon: the sun is lower (24 degrees, not 28: the shadow map's bounds below hold at that, they only grow looser),
-    // deeper in color, and a little stronger, as the lower it is the less it lights what faces up.
-    const late = !!this.forest;
-    scene.add(new HemisphereLight(late ? "#c9d4ef" : "#d8e4ff", late ? "#807660" : "#8d826f", late ? 0.85 : 0.95));
+    // late afternoon: a low warm sun from the front-left (long soft shadows toward the back-right, at 24 degrees: the shadow
+    // map's bounds below hold at that) plus a cool sky fill
+    scene.add(new HemisphereLight("#c9d4ef", "#807660", 0.85));
     scene.add(new AmbientLight("#ffffff", 0.22));
-    const sun = (this.sun = new DirectionalLight(late ? "#ffc994" : "#ffd9a6", late ? 2.7 : 2.4));
-    sun.position.set(mapSize / 2 - 420, late ? 252 : 300, mapSize / 2 + 380);
+    const sun = (this.sun = new DirectionalLight("#ffc994", 2.7));
+    sun.position.set(mapSize / 2 - 420, 252, mapSize / 2 + 380);
     sun.target.position.copy(this.center);
     sun.castShadow = true;
     sun.shadow.radius = 4;
@@ -583,51 +471,45 @@ export class Renderer3D {
     const map = this.root;
     scene.add(map);
 
-    // ground: the 2D floor drawing as a smooth texture, a shadow-catching overlay and drifting leaf-shade
-    // (the texture also holds a margin of plain asphalt past the map, which only "fade" mode reveals)
-    // (in the forest preview it holds only what is painted on the ground, on a clear sheet over the forest floor: see setEdge)
-    const tex = new CanvasTexture(buildGroundLayer(world, !!this.forest));
+    // ground: what is painted on the ground (the decals: pit boxes, the finish line, cables) as a smooth texture on a clear sheet
+    // over the forest floor, a shadow-catching overlay and drifting leaf-shade
+    const tex = new CanvasTexture(buildGroundLayer(world));
     tex.minFilter = LinearMipmapLinearFilter;
     tex.magFilter = LinearFilter;
     tex.generateMipmaps = true;
     tex.anisotropy = 8;
-    tex.premultiplyAlpha = !!this.forest; // (so the clear parts do not darken the edges of what is painted)
+    tex.premultiplyAlpha = true; // (so the clear parts do not darken the edges of what is painted)
     this.groundTex = tex;
-    const ground = new Mesh(new PlaneGeometry(mapSize, mapSize), new MeshBasicMaterial({ map: tex, premultipliedAlpha: !!this.forest }));
+    const ground = new Mesh(new PlaneGeometry(mapSize, mapSize), new MeshBasicMaterial({ map: tex, premultipliedAlpha: true, transparent: true }));
     ground.rotation.x = -Math.PI / 2;
     ground.position.copy(this.center);
     ground.renderOrder = -1;
     map.add(ground);
-    this.groundMesh = ground;
-    // (in the forest the catcher reaches well past the map, to the north and east where the shadows of the cranes and the garage
-    // fall, which are the way the sun throws them: over the forest floor, not off the edge of a square. The shadow map already
-    // covers that ground: see the frustum above)
-    const catcherSize = this.forest ? mapSize + 2 * FOREST_SHADOW_PAD : mapSize;
+    // the catcher reaches well past the map, to the north and east where the shadows of the cranes and the garage fall, which
+    // is the way the sun throws them: over the forest floor, not off the edge of a square. The shadow map already covers that
+    // ground: see the frustum above
+    const catcherSize = mapSize + 2 * FOREST_SHADOW_PAD;
     const shadowCatcher = new Mesh(new PlaneGeometry(catcherSize, catcherSize), new ShadowMaterial({ color: "#0b1220", opacity: 0.4 }));
     shadowCatcher.rotation.x = -Math.PI / 2;
     shadowCatcher.position.set(this.center.x, 0.05, this.center.z);
     shadowCatcher.receiveShadow = true;
     map.add(shadowCatcher);
-    this.catcherMesh = shadowCatcher;
-    // (in the forest the leaf shade is not a square: it reaches past the map, with the same blobs in the same places as on the map)
-    const leafSize = this.forest ? mapSize + 2 * FOREST_PAD * 2 : mapSize;
+    // the leaf shade is not a square: it reaches past the map, with the same blobs in the same places as on the map
+    const leafSize = mapSize + 2 * FOREST_PAD * 2;
     const leafGeo = new PlaneGeometry(leafSize, leafSize);
-    if (this.forest) {
-      const uv = leafGeo.attributes.uv;
-      // (the plane's own 0..1 coordinates are kept as a second set, for the mask that says where the shade is: see below)
-      leafGeo.setAttribute("uv1", uv.clone());
-      for (let i = 0; i < uv.count; i++) {
-        const x = this.center.x + leafGeo.attributes.position.getX(i);
-        const z = this.center.z - leafGeo.attributes.position.getY(i);
-        uv.setXY(i, x / mapSize, 1 - z / mapSize);
-      }
+    const uv = leafGeo.attributes.uv;
+    // (the plane's own 0..1 coordinates are kept as a second set, for the mask that says where the shade is: see below)
+    leafGeo.setAttribute("uv1", uv.clone());
+    for (let i = 0; i < uv.count; i++) {
+      const x = this.center.x + leafGeo.attributes.position.getX(i);
+      const z = this.center.z - leafGeo.attributes.position.getY(i);
+      uv.setXY(i, x / mapSize, 1 - z / mapSize);
     }
     const leaves = new Mesh(leafGeo, new MeshBasicMaterial({ map: this.dapple, transparent: true, opacity: 0.34, depthWrite: false }));
     leaves.rotation.x = -Math.PI / 2;
     leaves.position.set(this.center.x, 0.08, this.center.z);
     leaves.renderOrder = 0.5;
     map.add(leaves);
-    this.leavesMesh = leaves;
 
     // scene props
     for (const zone of world.zones) {
@@ -687,15 +569,15 @@ export class Renderer3D {
         if (!list) this.zoneModels.set(zone.id, (list = []));
         list.push(model);
       }
-      // (the forest: a project with a car stands on a paved lot, which rises with it on hover)
-      // (and the FTC project's stacks and driver station on a patch of gravel under them, the field itself on the grass)
+      // (a project with a car stands on a paved lot, which rises with it on hover; the FTC project's stacks and driver station
+      // on a carpet under them, the field itself on the grass)
       const lots: Lot[] = [];
-      const carLot = this.forest ? buildLot(zone.scene.props) : null;
+      const carLot = buildLot(zone.scene.props);
       if (carLot) {
         lots.push(carLot);
         this.lotZones.add(zone.id); // (its glows ride up with it)
       }
-      if (this.forest && zone.variant === "ftc") {
+      if (zone.variant === "ftc") {
         const a = zone.scene.area;
         lots.push(buildApron({ x: a.x + FTC_APRON.x, y: a.y + FTC_APRON.y, w: FTC_APRON.w, h: FTC_APRON.h }));
       }
@@ -725,13 +607,13 @@ export class Renderer3D {
     // hover glow: one brightening overlay per project box, hidden until hovered
     for (const zone of world.zones) {
       const a = zone.scene.area;
-      // (in the forest the glow is a soft pool of light that reaches a little past the box, with no edge: see `spotlightTexture`)
+      // (a soft pool of light that reaches a little past the box, with no edge: see `spotlightTexture`)
       const glow = new Mesh(
-        this.forest ? new PlaneGeometry(a.w * 1.3, a.h * 1.3) : new PlaneGeometry(a.w - 2, a.h - 2),
+        new PlaneGeometry(a.w * 1.3, a.h * 1.3),
         new MeshBasicMaterial({
-          color: this.forest ? "#ffffff" : "#fff3d6",
-          map: this.forest ? spotlightTexture(1) : null,
-          ...(this.forest ? { blending: AdditiveBlending } : {}),
+          color: "#ffffff",
+          map: spotlightTexture(1),
+          blending: AdditiveBlending,
           transparent: true,
           opacity: 0,
           depthWrite: false,
@@ -745,19 +627,14 @@ export class Renderer3D {
       this.zoneGlow.set(zone.id, glow);
     }
 
-    // the invitation: a halo round the racing area, pulsing until something is opened (see `setInvite`)
+    // the invitation: a pool of light round the racing area, pulsing until something is opened (see `setInvite`). It spreads well
+    // past the box, not as a ring along its edge, which on the lawn has nothing to sit on.
     const racing = world.zones.find((z) => z.variant === "garage");
     if (racing) {
       const a = racing.scene.area;
-      const margin = TILE;
-      // (in the forest: a pool of light spreading well past the box instead of a ring along its edge, which has nothing to sit on)
-      const w = this.forest ? a.w * 1.5 : a.w + 2 * margin;
-      const h = this.forest ? a.h * 1.5 : a.h + 2 * margin;
       const mesh = new Mesh(
-        new PlaneGeometry(w, h),
-        this.forest
-          ? new MeshBasicMaterial({ map: spotlightTexture(0.55), blending: AdditiveBlending, transparent: true, opacity: 0, depthWrite: false })
-          : new MeshBasicMaterial({ map: haloTexture(w, h, margin, 0), transparent: true, opacity: 0, depthWrite: false })
+        new PlaneGeometry(a.w * 1.5, a.h * 1.5),
+        new MeshBasicMaterial({ map: spotlightTexture(0.55), blending: AdditiveBlending, transparent: true, opacity: 0, depthWrite: false })
       );
       mesh.rotation.x = -Math.PI / 2;
       mesh.position.set(a.x + a.w / 2, 0.13, a.y + a.h / 2);
@@ -769,13 +646,6 @@ export class Renderer3D {
       if (this.lotZones.has(racing.id)) mesh.position.y += LOT_GLOW_LIFT; // (over the lot, which sits above the ground's layers)
     }
 
-    // yard tire piles (not in the forest, where there is no yard)
-    for (const item of this.forest ? [] : world.items) {
-      const t = tireModel();
-      t.position.set(item.tx * TILE + TILE / 2, 0, item.ty * TILE + TILE / 2);
-      map.add(t);
-    }
-
     // everything that is solid casts and receives soft shadows
     scene.traverse((o) => {
       const m = o as Mesh;
@@ -784,48 +654,23 @@ export class Renderer3D {
       }
     });
 
-    // ---- the edge of the board: drop shadow, wooden slab, fade mask (setEdge picks which are used)
-    const total = mapSize + 2 * SHADOW_PAD;
-    const shadow = new Mesh(
-      new PlaneGeometry(total, total),
-      new MeshBasicMaterial({ map: blurredRectTexture(total, mapSize, 26), transparent: true, depthWrite: false })
+    // the forest goes in last, after the shadow flags above: it casts none and takes none
+    const forest = buildForest(
+      mapSize,
+      world.zones.map((z) => ({
+        kind: z.kind,
+        area: z.scene.area,
+        route: z.scene.props.find((p) => p.drive)?.drive?.map((p) => ({ x: p.x, z: p.y })),
+        door: z.variant === "ftc" ? z.scene.building : undefined,
+      })),
+      sun.position.clone().sub(this.center).normalize(),
+      this.forestReach(mapSize)
     );
-    shadow.rotation.x = -Math.PI / 2;
-    shadow.renderOrder = -2;
-    shadow.castShadow = false;
-    map.add(shadow);
-    this.edgeShadow = shadow;
-
-    const wood = woodTexture();
-    wood.wrapS = RepeatWrapping;
-    wood.repeat.set(3, 1);
-    const side = new MeshLambertMaterial({ map: wood });
-    const slab = new Mesh(new BoxGeometry(mapSize, SLAB_H, mapSize), side);
-    slab.position.set(this.center.x, -SLAB_H / 2 - 0.05, this.center.z);
-    slab.castShadow = false;
-    map.add(slab);
-    this.slab = slab;
-
-    this.edgeMask = fadeMaskTexture(mapSize + 2 * GROUND_MARGIN, mapSize);
-
-    // the preview forest goes in last, after the shadow flags above: it casts none and takes none
-    if (this.forest) {
-      this.forestScene = buildForest(
-        mapSize,
-        this.forest,
-        world.zones.map((z) => ({
-          kind: z.kind,
-          area: z.scene.area,
-          route: z.scene.props.find((p) => p.drive)?.drive?.map((p) => ({ x: p.x, z: p.y })),
-          door: z.variant === "ftc" ? z.scene.building : undefined,
-        })),
-        sun.position.clone().sub(this.center).normalize(),
-        this.forestReach(mapSize)
-      );
-      map.add(this.forestScene.group);
-      // the leaf shade is mostly under the trees: a mask thins it out toward the middle of the clearing
-      this.leafMask = this.forestScene.canopyMask(leafSize);
-    }
+    this.forestScene = forest;
+    map.add(forest.group);
+    // the leaf shade is mostly under the trees: a mask thins it out toward the middle of the clearing
+    (leaves.material as MeshBasicMaterial).alphaMap = forest.canopyMask(leafSize);
+    this.fitCamera();
   }
 
   /**
@@ -903,32 +748,6 @@ export class Renderer3D {
     return g;
   }
 
-  /** Switch how the map ends (see EdgeMode). Safe to call at any time. */
-  setEdge(mode: EdgeMode) {
-    this.edge = mode;
-    const { mapSize } = this;
-    const fade = mode === "fade";
-    const total = mapSize + 2 * GROUND_MARGIN;
-
-    // ground, shadow catcher and leaf shade: exactly the map, or the map plus its fade margin
-    const k = fade ? total / mapSize : 1;
-    for (const m of [this.groundMesh, this.catcherMesh, this.leavesMesh]) m.scale.set(k, k, 1);
-    this.groundTex.repeat.setScalar(fade ? 1 : mapSize / total);
-    this.groundTex.offset.setScalar(fade ? 0 : GROUND_MARGIN / total);
-    for (const m of [this.groundMesh, this.leavesMesh]) {
-      const mat = m.material as MeshBasicMaterial;
-      mat.alphaMap = fade ? this.edgeMask : m === this.leavesMesh ? this.leafMask : null;
-      mat.transparent = fade || m === this.leavesMesh || !!this.forest; // (the forest's ground sheet is clear where nothing is painted)
-      mat.needsUpdate = true;
-    }
-
-    this.edgeShadow.visible = !fade && !this.forest; // (a square drop shadow would show the map's corners)
-    // the light is front-left, so the shadow falls a little toward the back-right
-    this.edgeShadow.position.set(this.center.x + 7, mode === "slab" ? -SLAB_H - 0.1 : -0.2, this.center.z - 7);
-    this.slab.visible = mode === "slab";
-    this.fitCamera();
-  }
-
   resize(innerW: number, innerH: number) {
     const ratio = Math.min(window.devicePixelRatio || 1, MAX_RENDER_RATIO);
     this.width = Math.max(2, Math.round(innerW * ratio));
@@ -976,8 +795,8 @@ export class Renderer3D {
       minY = Infinity,
       maxY = -Infinity;
     // room around the map for whatever the edge adds: the fade margin, the board's side, the drop shadow
-    const pad = this.forest ? FOREST_PAD : this.edge === "fade" ? GROUND_MARGIN : TILE * 1.25;
-    for (const y of [this.edge === "slab" ? -SLAB_H : 0, this.forest ? FOREST_TOP : 45]) {
+    const pad = FOREST_PAD;
+    for (const y of [0, FOREST_TOP]) {
       for (const x of [-pad, mapSize + pad]) {
         for (const z of [-pad, mapSize + pad]) {
           const v = new Vector3(x, y, z).applyMatrix4(inv);
@@ -1527,7 +1346,7 @@ export class Renderer3D {
       }
     });
     this.forestScene?.dispose();
-    for (const texture of [this.groundTex, this.edgeMask, this.dapple]) texture.dispose();
+    for (const texture of [this.groundTex, this.dapple]) texture.dispose();
     this.sun.shadow.map?.dispose();
     this.quad.dispose();
     this.blurQuad.dispose();
