@@ -238,12 +238,11 @@ export const CS = {
   ahead: 3, // how far past the front a pixel lies, centre, when the roller takes it
   reachUp: 13.4, // how far the intake sticks out ahead of the robot's centre when it is raised for driving
   lean: Math.PI / 6, // the slide's lean from vertical
-  slide: { x: -5.6, y: 1, len: 4.06, travel: 10, rails: 2.8 }, // its foot, the length of each stage and how far it extends at most (three stages), and how far the two rails stand either side of the middle (the arm and bucket pass between them)
-  // the arm from the top of the slide to the turret: along the slide and out towards the backdrop. It rests folded forward and down (`fold`
-  // from the deposit position), with the bucket lying flat inside the robot, and swings back up and over the top of the slide to the deposit
-  // position, where the bucket is parallel to the backdrop. The bucket itself only turns through 60 degrees in all (`CS.rest`).
-  arm: { along: 2.4, out: 2.4, fold: (191.5 * Math.PI) / 180 },
-  rest: Math.PI / 3, // how far the bucket turns between lying flat and hanging parallel to the backdrop
+  slide: { x: -4, y: 1, len: 6.6, travel: 12, rails: 2.8 }, // its foot, the length of each stage, how far it extends at most (three stages) and how far the two rails stand either side of the middle (the arm and bucket pass between them)
+  // the arm from the top of the slide to the turret: along the slide (negative: down it) and out towards the backdrop. Arm and bucket are one piece
+  // turning about the slide's top. At rest (`fold`, 60 degrees on) they lie flat inside the robot, the bucket forward of the turret's axis; they swing
+  // back through 60 degrees, out of the robot's back, to the deposit position, where the bucket is parallel to the backdrop.
+  arm: { along: -1.9, out: 3.12, fold: -Math.PI / 3 },
   bucket: { low: 5.8, high: 2.9, top: 0.7 }, // how far below the turret's axis the pixel nearer the opening and the one above it sit; how far the bucket reaches above it
   turret: Math.PI / 3, // the turret's range, each way
   gap: 1.7, // how far in front of the board the pixels' plane is held when it deposits (the bucket's front, 0.6 nearer, clears pixels already placed)
@@ -251,7 +250,7 @@ export const CS = {
 } as const;
 
 /** How the robot waits: intake up, slide down, arm folded with the bucket flat inside the robot, turret straight, gate shut, nothing in it. */
-export const CS_WAIT = { intake: 0, spin: 0, slide: 0, arm: CS.arm.fold, bucket: 0, turret: 0, gate: 0, yellow: -1, white: -1, yellowLow: 0 } as const;
+export const CS_WAIT = { intake: 0, spin: 0, slide: 0, arm: CS.arm.fold, turret: 0, gate: 0, yellow: -1, white: -1, yellowLow: 0 } as const;
 
 const D = [-Math.sin(CS.lean), Math.cos(CS.lean)] as const; // up the slide, in the (x, y) plane of the robot
 const OUT = [-Math.cos(CS.lean), -Math.sin(CS.lean)] as const; // towards the backdrop, square to the slide
@@ -268,20 +267,10 @@ export function csArm(e: number, beta: number) {
   return { hinge, axis: [hinge[0] + l[0], hinge[1] + l[1]] as [number, number], up: rot2(D, -beta), out: rot2(OUT, -beta) };
 }
 
-/**
- * How far the bucket is turned at the arm's end, relative to the arm, so that it turns through only `CS.rest` between lying flat (`bucket` 0) and
- * hanging parallel to the backdrop (`bucket` 1) however far the arm has swung (`beta`): the wrist makes up the difference.
- */
-export const csWrist = (beta: number, bucket: number) => beta + (1 - bucket) * CS.rest;
-
-/**
- * The centre of a pixel in the bucket, `dist` below the turret's axis along the bucket, with the turret turned `phi` (positive towards the
- * robot's right), in the robot's frame. `bucket`: 1 = hanging parallel to the backdrop (for depositing), 0 = lying flat.
- */
-export function csPixel(e: number, beta: number, phi: number, dist: number, bucket = 1): [number, number, number] {
+/** The centre of a pixel in the bucket, `dist` below the turret's axis along the bucket, with the turret turned `phi` (positive towards the robot's right), in the robot's frame. */
+export function csPixel(e: number, beta: number, phi: number, dist: number): [number, number, number] {
   const a = csArm(e, beta);
-  const v = rot2([-Math.cos(phi) * dist * a.up[0], -Math.cos(phi) * dist * a.up[1]], csWrist(beta, bucket));
-  return [a.axis[0] + v[0], a.axis[1] + v[1], Math.sin(phi) * dist];
+  return [a.axis[0] - Math.cos(phi) * dist * a.up[0], a.axis[1] - Math.cos(phi) * dist * a.up[1], Math.sin(phi) * dist];
 }
 
 /**

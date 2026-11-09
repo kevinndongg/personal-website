@@ -1,6 +1,6 @@
 import { BoxGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshLambertMaterial, PlaneGeometry } from "three";
 import { markMoving } from "./bake";
-import { CS, CS_WAIT, PIXEL_SIZE, csArm, csPixel, csWrist } from "./ftcfield";
+import { CS, CS_WAIT, PIXEL_SIZE, csArm, csPixel } from "./ftcfield";
 import { pixelMesh } from "./ftcpixel";
 import { DUCK } from "./ftcpprobot";
 import { pixelText } from "./ftctext";
@@ -30,8 +30,7 @@ export interface CSPose {
   intake: number; // the intake arm: 0 = up, for driving, 1 = down, for taking pixels in
   spin: number; // how far the roller has turned (radians)
   slide: number; // how far the slide is extended (px), 0 .. CS.slide.travel
-  arm: number; // the outtake arm: CS.arm.fold = folded forward and down, 0 = swung back, up and over the slide, at the deposit position
-  bucket: number; // the bucket's own turn: 0 = lying flat inside the robot, 1 = hanging parallel to the backdrop (60 degrees on)
+  arm: number; // the outtake arm and bucket, one piece turning about the slide's top: CS.arm.fold = resting flat inside the robot, 0 = swung back out of its back, at the deposit position
   turret: number; // the turret: 0 = the bucket straight, positive = swung to the robot's right (radians)
   gate: number; // the lock: 0 = its knob is in the lower pixel's hole, holding the pixels, 1 = drawn back
   yellow: number; // the yellow pixel: < 0 not on the robot, 0..1 on its way in over the floor and up the ramp, 1 = in the bucket
@@ -242,11 +241,9 @@ export function csRobotModel(): Group {
 
   // ---- the turret turns the bucket about the axis out of the arm's end (local x); the bucket hangs below it, a back plate with side rails,
   // a closed box with a slit down its middle, room for two pixels one above the other, and a lock
-  const wrist = new Group(); // the bucket turns about the arm's end, through 60 degrees in all, whatever the arm is doing
-  wrist.position.set(-CS.arm.out, CS.arm.along, 0);
-  arm.add(wrist);
   const turret = new Group();
-  wrist.add(turret);
+  turret.position.set(-CS.arm.out, CS.arm.along, 0);
+  arm.add(turret);
   const turretServo = cyl(1.2, 1.2, 0.8, BLACK, 0, 0, 0, 14);
   turretServo.rotation.z = Math.PI / 2;
   turretServo.position.set(0.2, 0, 0);
@@ -255,21 +252,22 @@ export function csRobotModel(): Group {
   const bottom = CS.bucket.low + PIXEL_SIZE.corner / 2 + 0.3;
   const len = top + bottom;
   const mid = (top - bottom) / 2;
-  part(turret, 0.35, len, 3.9, BLUE, 0.55, mid, 0); // the back plate
   for (const s of [-1, 1]) {
     part(turret, 1.2, len, 0.35, BLUE, 0, mid, s * 1.95); // the sides
-    part(turret, 0.3, len, 1.6, BLUE, -0.5, mid, s * 1.15); // the front, in two halves with a slit between them down the middle
+    part(turret, 0.35, len, 1.6, BLUE, 0.55, mid, s * 1.15); // the back, in two halves with a slit between them down the middle: the pixels show through it
+    part(turret, 0.3, len, 1.6, BLUE, -0.5, mid, s * 1.15); // and the front the same
   }
   part(turret, 1.2, 0.35, 3.9, BLUE, 0, top - 0.17, 0); // the end over the upper pixel
   part(turret, 1.2, 0.35, 3.9, BLUE, 0, -bottom + 0.17, 0); // and the one under the lower, so the box is closed all round
-  // the lock: a small servo on the front with a knob that goes through the slit into the hole of the lower pixel and holds it by its centre
+  // the lock, on the back (on top when the bucket lies flat): a small servo with a knob that goes down through the slit into the hole of the
+  // lower pixel and holds it by its centre
   const gate = new Group();
-  gate.position.set(-0.55, -CS.bucket.low, 0);
+  gate.position.set(0.9, -CS.bucket.low, 0);
   const knob = cyl(0.3, 0.3, 1.2, STEEL, 0, 0, 0, 8);
   knob.rotation.z = Math.PI / 2;
-  knob.position.set(0.55, 0, 0);
+  knob.position.set(-0.45, 0, 0); // its tip is in the pixel's hole, at the bucket's middle
   gate.add(knob);
-  part(gate, 0.7, 1.1, 1.6, BLACK, -0.35, 0, 0); // the lock's body
+  part(gate, 0.8, 1.1, 1.6, BLACK, 0.5, 0, 0); // the lock's body, on top of the back plate
   turret.add(gate);
 
   // ---- the pixels: two on their way in over the floor and the ramp, and the same two in the bucket
@@ -287,8 +285,8 @@ export function csRobotModel(): Group {
     turret.add(p);
   }
 
-  const upper = csPixel(0, CS.arm.fold, 0, CS.bucket.high, 0); // where the places are when the bucket is at rest, flat inside the robot
-  const lower = csPixel(0, CS.arm.fold, 0, CS.bucket.low, 0);
+  const upper = csPixel(0, CS.arm.fold, 0, CS.bucket.high); // where the places are when the bucket is at rest, flat inside the robot
+  const lower = csPixel(0, CS.arm.fold, 0, CS.bucket.low);
 
   // the way in, from the floor in front to the slot the pixel will take: (x, y, tilt) at `t` 0..1
   const route = (t: number, slot: [number, number]): [number, number, number] => {
@@ -320,9 +318,8 @@ export function csRobotModel(): Group {
     const a = csArm(e, p.arm);
     arm.position.set(a.hinge[0], a.hinge[1], 0);
     arm.rotation.z = CS.lean - p.arm;
-    wrist.rotation.z = csWrist(p.arm, p.bucket);
     turret.rotation.x = -p.turret;
-    gate.position.x = -0.55 - 1 * p.gate; // drawn back off the pixel's hole
+    gate.position.x = 0.9 + 1.1 * p.gate; // drawn back out of the pixel's hole
     // the pixels
     const place = (which: "y" | "w", t: number, slotUp: [number, number]) => {
       const fed = t >= 0 && t < 1;
@@ -343,6 +340,6 @@ export function csRobotModel(): Group {
   };
   g.userData.pose = pose;
   pose(WAIT);
-  markMoving(g, intake, roller, ...stages, arm, wrist, turret, gate, inside.y, inside.w, held.y, held.w);
+  markMoving(g, intake, roller, ...stages, arm, turret, gate, inside.y, inside.w, held.y, held.w);
   return g;
 }
