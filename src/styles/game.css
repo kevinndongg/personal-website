@@ -967,12 +967,8 @@ html:has(.game) body {
   margin: calc(-4px * var(--card-scale, 1)) 0 0;
 }
 
-/* the date, with the under-construction badge beside it */
+/* the date */
 .when {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: calc(6px * var(--card-scale, 1)) calc(10px * var(--card-scale, 1));
   margin-top: calc(2px * var(--card-scale, 1));
 }
 
@@ -985,8 +981,13 @@ html:has(.game) body {
   color: var(--ink-soft);
 }
 
-/* a project still on the default site is not finished: say so */
+/* a project still on the default site is not finished: say so, inline right after the card's title */
 .badge {
+  display: inline-block;
+  margin-left: calc(10px * var(--card-scale, 1));
+  vertical-align: middle;
+  white-space: nowrap;
+  font-family: var(--font-body);
   padding: calc(2px * var(--card-scale, 1)) calc(9px * var(--card-scale, 1));
   font-size: calc(11px * var(--card-scale, 1));
   font-weight: 600;

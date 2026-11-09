@@ -98,7 +98,7 @@ export class Panel {
     this.brand = root.querySelector("[data-brand]")!;
     this.when = root.querySelector("[data-when]")!;
     this.note = root.querySelector("[data-note]")!;
-    this.badge = root.querySelector("[data-badge]")!;
+    this.badge = el("span", "badge", "Under construction"); // (set after the title on the cards that need it)
     this.org = root.querySelector("[data-org]")!;
     this.summary = root.querySelector("[data-summary]")!;
     this.bullets = root.querySelector("[data-bullets]")!;
@@ -464,9 +464,12 @@ export class Panel {
     this.role.hidden = !zone.role;
     // the date sits under the role; cards without one (contact) show what kind of card they are
     this.kicker.textContent = zone.period || KIND_LABEL[zone.kind] || "";
-    // a project still on the default site is not finished: say so on its card, beside the date
-    this.badge.hidden = zone.variant !== "construction";
-    this.when.hidden = !this.kicker.textContent && this.badge.hidden;
+    this.when.hidden = !this.kicker.textContent;
+    // a project still on the default site is not finished: say so on its card, right after the title
+    // (the title's text was just reset, which dropped the badge from wherever it was)
+    const unfinished = zone.variant === "construction";
+    this.badge.hidden = !unfinished;
+    if (unfinished) (brandTitle ? this.org : this.title).append(this.badge);
     this.summary.textContent = zone.summary;
 
     this.bullets.replaceChildren(...(zone.bullets ?? []).map((b) => el("li", undefined, b)));
