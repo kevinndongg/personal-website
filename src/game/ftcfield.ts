@@ -236,7 +236,7 @@ export const CS = {
   half: 17 / 2 / 1.2,
   reach: 4.3, // how far the intake's fingertips reach past the front when it is down
   ahead: 3, // how far past the front a pixel lies, centre, when the roller takes it
-  reachUp: 13.4, // how far the intake sticks out ahead of the robot's centre when it is raised for driving
+  reachUp: 9, // how far the intake sticks out ahead of the robot's centre when it is raised for driving
   lean: Math.PI / 6, // the slide's lean from vertical
   slide: { x: -4, y: 1, len: 6.6, travel: 12, rails: 2.8 }, // its foot, the length of each stage, how far it extends at most (three stages) and how far the two rails stand either side of the middle (the arm and bucket pass between them)
   // the arm from the top of the slide to the turret: along the slide (negative: down it) and out towards the backdrop. Arm and bucket are one piece

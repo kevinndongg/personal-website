@@ -112,7 +112,7 @@ export function csRobotModel(): Group {
   // ---- the chassis: a floor plate, and the four mecanum wheels, each pair between an outer and an inner plate (clear acrylic edged in
   // aluminium, so they read from above), tied across the top of each pod by rods
   g.add(box(11.6, 0.4, 11.4, PANEL, -0.5, 0.5, 0)); // its top is at 0.9
-  for (const sx of [-4.6, 4.2]) for (const sz of [-5.1, 5.1]) g.add(wheel(sx, sz));
+  for (const sx of [-4.6, 2.2]) for (const sz of [-5.1, 5.1]) g.add(wheel(sx, sz));
   const clear = new MeshLambertMaterial({ color: "#cfe9f2", transparent: true, opacity: 0.28, depthWrite: false });
   const inner = new MeshLambertMaterial({ color: "#b9dbe6", transparent: true, opacity: 0.45, depthWrite: false });
   const sideTex = sideTexture();
@@ -130,7 +130,7 @@ export function csRobotModel(): Group {
     for (const rx of [-5.2, -2.6, 0, 2.6, 5.2]) part(g, 0.3, 0.3, HALF - 0.25 - IN_Z, STEEL, rx, IN_H - 0.15, s * ((HALF - 0.25 + IN_Z) / 2)); // rods across the pod
     // in each pod, between the wheels: a deck over the motors, with the electronics on it
     part(g, 4.8, 0.25, HALF - 0.25 - IN_Z - 0.3, "#2a2d36", -0.2, 3.6, s * ((HALF - 0.25 + IN_Z) / 2));
-    for (const mx of [-1.3, 0.9]) {
+    for (const mx of [-1.9, -0.4]) {
       const motor = cyl(0.7, 0.7, 1.7, "#2a2d36", mx, 0, s * 5.2, 10);
       motor.rotation.x = Math.PI / 2;
       motor.position.set(mx, 2.1, s * 5.2);
@@ -160,27 +160,28 @@ export function csRobotModel(): Group {
   for (let i = 1; i < 4; i++) for (const z of [-2.4, -0.8, 0.8, 2.4]) part(ramp, 0.2, 0.7, 0.35, YELLOW, -(rampLen * i) / 4, 0.45, z);
   g.add(ramp);
 
-  // ---- the intake arm: pivots about an axle across the front, two perforated side arms and between them the roller with five curved fingers
-  const PIVOT = { x: HALF - 1.5, y: 6.2 };
-  const L = 5.8;
+  // ---- the intake arm: pivots about the axle low across the front that the bottom row of fixed yellow fingers is on; from it two perforated side
+  // arms reach up to the roller with five curved fingers (down for taking pixels in, they lie forward along the floor; up, they stand nearly upright)
+  const PIVOT = { x: HALF - 2.3, y: 1.8 };
+  const L = 4.7;
   const intake = new Group();
   intake.position.set(PIVOT.x, PIVOT.y, 0);
   g.add(intake);
   const holes = new MeshBasicMaterial({ map: perforated(), transparent: true, side: DoubleSide, alphaTest: 0.5 });
   for (const s of [-1, 1]) {
-    const arm = new Mesh(new PlaneGeometry(L, (L * 8) / 40), holes);
+    const arm = new Mesh(new PlaneGeometry(L + 1.2, 1.7), holes);
     arm.position.set(L / 2, 0, s * 4.6);
     intake.add(arm);
-    part(intake, L, 0.4, 0.3, BLUE, L / 2, 0.9, s * 4.6); // the edges that stiffen it
-    part(intake, L, 0.4, 0.3, BLUE, L / 2, -0.9, s * 4.6);
+    part(intake, L + 1.2, 0.3, 0.3, BLUE, L / 2, 0.85, s * 4.6); // the edges that stiffen it
+    part(intake, L + 1.2, 0.3, 0.3, BLUE, L / 2, -0.85, s * 4.6);
   }
   const axle = cyl(0.35, 0.35, 10.4, STEEL, 0, 0, 0, 8);
   axle.rotation.x = Math.PI / 2;
   axle.position.set(0, 0, 0);
   intake.add(axle);
-  const motor = cyl(0.8, 0.8, 1.6, GOLD, 0, 0, 0, 10); // the gold motor, on the outside of one arm at the pivot
+  const motor = cyl(0.8, 0.8, 1.6, GOLD, 0, 0, 0, 10); // the gold motor, on the outside of one arm at the roller's end
   motor.rotation.x = Math.PI / 2;
-  motor.position.set(0.6, 0.2, 5.8);
+  motor.position.set(L, 0, 5.6);
   intake.add(motor);
   const roller = new Group();
   roller.position.set(L, 0, 0);
@@ -199,10 +200,10 @@ export function csRobotModel(): Group {
   for (const s of [-1, 1]) part(intake, L - 1, 0.12, 0.12, BLACK, L / 2, 0.2, s * 2.2); // the black cords across the arms
   // the lower bar: five yellow fingers on a fixed bar low at the front, curling up, under the roller
   for (let k = -2; k <= 2; k++) {
-    part(g, 2.4, 0.3, 0.45, YELLOW, HALF + 1, 0.4, k * 1.8);
-    part(g, 0.4, 1.1, 0.45, YELLOW, HALF + 2.1, 0.8, k * 1.8);
+    part(g, HALF + 1.3 - PIVOT.x, 0.3, 0.45, YELLOW, (PIVOT.x + HALF + 1.3) / 2, 0.4, k * 1.8);
+    part(g, 0.4, 1.1, 0.45, YELLOW, HALF + 1.4, 0.8, k * 1.8);
   }
-  part(g, 0.5, 0.5, 10, BLUE, HALF - 0.1, 0.5, 0);
+  part(g, 0.5, 0.5, 10, BLUE, PIVOT.x, 0.5, 0);
 
   // ---- the slide: three stages, a pair of rails each, leaning back at CS.lean; the foot of the lowest is at CS.slide
   const slide = new Group();
@@ -310,8 +311,8 @@ export function csRobotModel(): Group {
   };
 
   const pose = (p: CSPose) => {
-    // the intake: up (25 degrees above level) to down (47 below, the roller's fingers at the floor)
-    intake.rotation.z = lerp((25 * Math.PI) / 180, (-47 * Math.PI) / 180, p.intake);
+    // the intake: up (60 degrees above level) to down (level, the roller's fingers at the floor)
+    intake.rotation.z = lerp((60 * Math.PI) / 180, 0, p.intake);
     roller.rotation.z = -p.spin;
     const e = Math.min(CS.slide.travel, Math.max(0, p.slide));
     stages.forEach((st, k) => (st.position.y = (k * e) / 3));
