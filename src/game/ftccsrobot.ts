@@ -54,31 +54,47 @@ function part(g: Group, w: number, h: number, d: number, color: string, x: numbe
   return m;
 }
 
-/** The lettering, three small ducks and the cobblestone strip (jittered cells in yellow and teal, the same on every load), on a transparent ground. */
+/** The lettering and three small ducks, on a transparent ground (they float on the clear plate above the bottom plate). 56 x 18 texels. */
 function sideTexture() {
   const W = 56;
-  const H = 24;
+  const H = 18;
   const [c, ctx] = canvasOf(W, H);
-  // the lettering and the ducks float on the clear plate, so everything but them stays transparent
-  pixelText(ctx, "6417", 2, 3, 2, TEAL);
-  pixelText(ctx, "BLU", 36, 3, 1, TEAL);
-  pixelText(ctx, "CRU", 36, 9, 1, TEAL);
+  pixelText(ctx, "6417", 2, 1, 2, TEAL);
+  pixelText(ctx, "BLU", 36, 1, 1, TEAL);
+  pixelText(ctx, "CRU", 36, 7, 1, TEAL);
   ctx.fillStyle = YELLOW;
   for (const dx of [3, 14, 25]) {
-    // a small duck: the bitmap sampled every sixth texel
-    DUCK.forEach((row, y) => {
-      if (y % 6 !== 2) return;
-      for (let x = 0; x < row.length; x += 6) if (row[x] === "#") ctx.fillRect(dx + x / 6, 11 + (y - 2) / 6, 1, 1);
-    });
+    // a small duck: the bitmap sampled down to 8 x 7 texels
+    for (let r = 0; r < 7; r++) for (let q = 0; q < 8; q++) if (DUCK[Math.floor((r * DUCK.length) / 7)][Math.floor((q * DUCK[0].length) / 8)] === "#") ctx.fillRect(dx + q, 10 + r, 1, 1);
   }
-  // the cobblestone strip along the bottom: cells of yellow and teal and gaps between them
+  return nearestTexture(c);
+}
+
+/**
+ * The bottom side plate: a solid teal panel with a yellow cobblestone pattern, cells of irregular shape with teal lines between them (the nearest
+ * of a jittered set of points to each texel, the same on every load). 112 x 24 texels.
+ */
+function plateTexture() {
+  const W = 112;
+  const H = 24;
+  const [c, ctx] = canvasOf(W, H);
+  fillRect(ctx, 0, 0, W, H, TEAL);
   let seed = 6417;
   const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
-  for (let x = 0; x < W; ) {
-    const w = 2 + Math.floor(rnd() * 3);
-    ctx.fillStyle = rnd() < 0.55 ? YELLOW : TEAL;
-    ctx.fillRect(x, H - 4 + Math.floor(rnd() * 2), w, 3);
-    x += w + 1;
+  const pts: [number, number][] = [];
+  for (let gy = 0; gy < 4; gy++) for (let gx = 0; gx < 16; gx++) pts.push([(gx + 0.2 + rnd() * 0.6) * 7 + (gy % 2) * 3.5, (gy + 0.2 + rnd() * 0.6) * 6]);
+  ctx.fillStyle = YELLOW;
+  for (let y = 2; y < H - 2; y++) {
+    for (let x = 2; x < W - 2; x++) {
+      let d1 = 1e9;
+      let d2 = 1e9;
+      for (const [px, py] of pts) {
+        const d = Math.hypot(x - px, (y - py) * 1.15);
+        if (d < d1) [d1, d2] = [d, d1];
+        else if (d < d2) d2 = d;
+      }
+      if (d2 - d1 > 1.4) ctx.fillRect(x, y, 1, 1);
+    }
   }
   return nearestTexture(c);
 }
@@ -96,6 +112,7 @@ function wheel(x: number, z: number): Group {
   const g = new Group();
   const body = cyl(1.5, 1.5, 1.3, "#17171c", 0, 0, 0, 12);
   body.rotation.x = Math.PI / 2;
+  body.position.set(0, 0, 0);
   g.add(body);
   // the mecanum rollers round the rim, each set at 45 degrees to the axle, so the wheel reads as one from above
   for (let k = 0; k < 10; k++) {
@@ -108,9 +125,11 @@ function wheel(x: number, z: number): Group {
   }
   const hub = cyl(0.8, 0.8, 1.5, SILVER, 0, 0, 0, 8);
   hub.rotation.x = Math.PI / 2;
+  hub.position.set(0, 0, 0);
   g.add(hub);
   const cap = cyl(0.35, 0.35, 1.7, "#7d818c", 0, 0, 0, 8); // the axle's end
   cap.rotation.x = Math.PI / 2;
+  cap.position.set(0, 0, 0);
   g.add(cap);
   g.position.set(x, 1.65, z);
   return g;
@@ -124,16 +143,25 @@ export function csRobotModel(): Group {
   // ---- the chassis: a floor plate, and the four mecanum wheels, each pair between an outer and an inner plate (clear acrylic edged in
   // aluminium, so they read from above), tied across the top of each pod by rods
   g.add(box(11.6, 0.4, 11.4, PANEL, -0.5, 0.5, 0)); // its top is at 0.9
-  for (const sx of [-4.6, 2.2]) for (const sz of [-5.1, 5.1]) g.add(wheel(sx, sz));
+  for (const sx of [-4.6, 4.2]) for (const sz of [-5.1, 5.1]) g.add(wheel(sx, sz));
   const clear = new MeshLambertMaterial({ color: "#cfe9f2", transparent: true, opacity: 0.28, depthWrite: false });
   const inner = new MeshLambertMaterial({ color: "#b9dbe6", transparent: true, opacity: 0.45, depthWrite: false });
   const sideTex = sideTexture();
+  const plateTex = plateTexture();
   const IN_Z = 3.9; // the inner plates stand this far either side of the middle, just inside the wheels
   const IN_H = 5.6;
   for (const s of [-1, 1]) {
     g.add(mesh(new BoxGeometry(2 * HALF, H - 0.3, 0.25), clear, 0, 0.3 + (H - 0.3) / 2, s * (HALF - 0.125))); // the outer plate
-    const vinyl = new Mesh(new PlaneGeometry(2 * HALF - 1, ((2 * HALF - 1) * 24) / 56), new MeshBasicMaterial({ map: sideTex, transparent: true, depthWrite: false }));
-    vinyl.position.set(0, 0.3 + (H - 0.3) / 2, s * (HALF + 0.02));
+    const PLATE_TOP = 2.9; // the bottom side plate: a solid panel, proud of the clear plate, from the rear to just short of the intake's bay
+    const plateLen = 2 * HALF - 1.2;
+    g.add(box(plateLen, PLATE_TOP - 0.3, 0.15, TEAL, -0.6, 0.3, s * (HALF + 0.075)));
+    const face = new Mesh(new PlaneGeometry(plateLen - 0.3, PLATE_TOP - 0.6), new MeshBasicMaterial({ map: plateTex }));
+    face.position.set(-0.6, 0.3 + (PLATE_TOP - 0.3) / 2, s * (HALF + 0.16));
+    if (s < 0) face.rotation.y = Math.PI;
+    g.add(face);
+    const vh = H - PLATE_TOP - 0.2; // the lettering above it, on the clear plate
+    const vinyl = new Mesh(new PlaneGeometry((vh * 56) / 18, vh), new MeshBasicMaterial({ map: sideTex, transparent: true, depthWrite: false }));
+    vinyl.position.set(0, PLATE_TOP + vh / 2 + 0.05, s * (HALF + 0.02));
     if (s < 0) vinyl.rotation.y = Math.PI;
     g.add(vinyl);
     part(g, 2 * HALF, 0.3, 0.45, STEEL, 0, H, s * (HALF - 0.22)); // the rim along the top of each outer plate
@@ -176,45 +204,46 @@ export function csRobotModel(): Group {
   // arms reach up to the roller with five curved fingers (down for taking pixels in, they lie forward along the floor; up, they stand nearly upright)
   const PIVOT = { x: HALF - 2.3, y: 1.8 };
   const L = 4.7;
+  const ARM_Z = 3.55; // inboard of the inner plates, so the front wheels have the pods to themselves
   const intake = new Group();
   intake.position.set(PIVOT.x, PIVOT.y, 0);
   g.add(intake);
   const holes = new MeshBasicMaterial({ map: perforated(), transparent: true, side: DoubleSide, alphaTest: 0.5 });
   for (const s of [-1, 1]) {
     const arm = new Mesh(new PlaneGeometry(L + 1.2, 1.7), holes);
-    arm.position.set(L / 2, 0, s * 4.6);
+    arm.position.set(L / 2, 0, s * ARM_Z);
     intake.add(arm);
-    part(intake, L + 1.2, 0.3, 0.3, BLUE, L / 2, 0.85, s * 4.6); // the edges that stiffen it
-    part(intake, L + 1.2, 0.3, 0.3, BLUE, L / 2, -0.85, s * 4.6);
+    part(intake, L + 1.2, 0.3, 0.3, BLUE, L / 2, 0.85, s * ARM_Z); // the edges that stiffen it
+    part(intake, L + 1.2, 0.3, 0.3, BLUE, L / 2, -0.85, s * ARM_Z);
   }
-  const axle = cyl(0.35, 0.35, 10.4, STEEL, 0, 0, 0, 8);
+  const axle = cyl(0.35, 0.35, 2 * ARM_Z + 0.6, STEEL, 0, 0, 0, 8);
   axle.rotation.x = Math.PI / 2;
   axle.position.set(0, 0, 0);
   intake.add(axle);
   const motor = cyl(0.8, 0.8, 1.6, GOLD, 0, 0, 0, 10); // the gold motor, on the outside of one arm at the roller's end
   motor.rotation.x = Math.PI / 2;
-  motor.position.set(L, 0, 5.6);
+  motor.position.set(L, 0, ARM_Z + 1.1);
   intake.add(motor);
   const roller = new Group();
   roller.position.set(L, 0, 0);
   intake.add(roller);
-  const drum = cyl(0.5, 0.5, 8.6, TEAL, 0, 0, 0, 10);
+  const drum = cyl(0.5, 0.5, 2 * ARM_Z, TEAL, 0, 0, 0, 10);
   drum.rotation.x = Math.PI / 2;
   drum.position.set(0, 0, 0);
   roller.add(drum);
-  // four yellow flippers on the roller, the same shape as the five on the bottom bar and standing between them (z = +-0.9, +-2.7 against their
-  // 0, +-1.8, +-3.6): a short paddle out from the drum with its tip curled over
-  for (const z of [-2.7, -0.9, 0.9, 2.7]) {
+  // four yellow flippers on the roller, the same shape as the five on the bottom bar and standing between them (z = +-0.8, +-2.4 against their
+  // 0, +-1.6, +-3.2): a short paddle out from the drum with its tip curled over
+  for (const z of [-2.4, -0.8, 0.8, 2.4]) {
     part(roller, 1.1, 0.35, 0.45, YELLOW, 0.8, 0, z);
     part(roller, 0.35, 0.8, 0.45, YELLOW, 1.4, -0.3, z);
   }
   for (const s of [-1, 1]) part(intake, L - 1, 0.12, 0.12, BLACK, L / 2, 0.2, s * 2.2); // the black cords across the arms
   // the lower bar: five yellow flippers on the axle low at the front, short, with their tips curling up
   for (let k = -2; k <= 2; k++) {
-    part(g, HALF + 0.3 - PIVOT.x, 0.3, 0.45, YELLOW, (PIVOT.x + HALF + 0.3) / 2, 0.4, k * 1.8);
-    part(g, 0.35, 0.9, 0.45, YELLOW, HALF + 0.4, 0.75, k * 1.8);
+    part(g, HALF + 0.3 - PIVOT.x, 0.3, 0.45, YELLOW, (PIVOT.x + HALF + 0.3) / 2, 0.4, k * 1.6);
+    part(g, 0.35, 0.9, 0.45, YELLOW, HALF + 0.4, 0.75, k * 1.6);
   }
-  part(g, 0.5, 0.5, 10, BLUE, PIVOT.x, 0.5, 0);
+  part(g, 0.5, 0.5, 2 * ARM_Z, BLUE, PIVOT.x, 0.5, 0);
 
   // ---- the slide: three stages, a pair of rails each, leaning back at CS.lean; the foot of the lowest is at CS.slide
   const slide = new Group();
