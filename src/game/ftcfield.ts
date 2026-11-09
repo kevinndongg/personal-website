@@ -242,12 +242,13 @@ export const CS = {
   arm: { along: 2.4, out: 1.7, swing: Math.PI / 6 }, // the arm from the top of the slide to the turret: along the slide and out towards the backdrop; how far it swings back
   bucket: { low: 5.8, high: 2.9 }, // how far below the turret's axis the pixel nearer the opening and the one above it sit
   turret: Math.PI / 3, // the turret's range, each way
+  tilt: Math.PI / 2, // how far the bucket tips over from hanging along the arm to lying flat over the chassis
   gap: 1.7, // how far in front of the board the pixels' plane is held when it deposits (the bucket's front, 0.6 nearer, clears pixels already placed)
   height: 7.4, // the chassis's height, under the Stage Door's 12.6 px rail with the slide down
 } as const;
 
-/** How the robot waits: intake up, slide down, arm retracted, turret straight, gate shut, nothing in it. */
-export const CS_WAIT = { intake: 0, spin: 0, slide: 0, arm: CS.arm.swing, turret: 0, gate: 0, yellow: -1, white: -1, yellowLow: 0 } as const;
+/** How the robot waits: intake up, slide down, arm retracted with the bucket flat, turret straight, gate shut, nothing in it. */
+export const CS_WAIT = { intake: 0, spin: 0, slide: 0, arm: CS.arm.swing, tilt: 1, turret: 0, gate: 0, yellow: -1, white: -1, yellowLow: 0 } as const;
 
 const D = [-Math.sin(CS.lean), Math.cos(CS.lean)] as const; // up the slide, in the (x, y) plane of the robot
 const OUT = [-Math.cos(CS.lean), -Math.sin(CS.lean)] as const; // towards the backdrop, square to the slide
@@ -264,10 +265,15 @@ export function csArm(e: number, beta: number) {
   return { hinge, axis: [hinge[0] + l[0], hinge[1] + l[1]] as [number, number], up: rot2(D, -beta), out: rot2(OUT, -beta) };
 }
 
-/** The centre of a pixel in the bucket, `dist` below the turret's axis along the bucket, with the turret turned `phi` (positive towards the robot's right), in the robot's frame. */
-export function csPixel(e: number, beta: number, phi: number, dist: number): [number, number, number] {
+/**
+ * The centre of a pixel in the bucket, `dist` below the turret's axis along the bucket, with the turret turned `phi` (positive towards the
+ * robot's right) and the bucket tilted `tilt` (0 = hanging along the arm, 1 = a quarter turn over, lying horizontal over the chassis with its
+ * open side down, where the ramp feeds it), in the robot's frame.
+ */
+export function csPixel(e: number, beta: number, phi: number, dist: number, tilt = 0): [number, number, number] {
   const a = csArm(e, beta);
-  return [a.axis[0] - Math.cos(phi) * dist * a.up[0], a.axis[1] - Math.cos(phi) * dist * a.up[1], Math.sin(phi) * dist];
+  const v = rot2([-Math.cos(phi) * dist * a.up[0], -Math.cos(phi) * dist * a.up[1]], tilt * CS.tilt);
+  return [a.axis[0] + v[0], a.axis[1] + v[1], Math.sin(phi) * dist];
 }
 
 /**

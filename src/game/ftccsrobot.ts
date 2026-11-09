@@ -34,6 +34,7 @@ export interface CSPose {
   gate: number; // 0 = the gate holds the pixels, 1 = open
   yellow: number; // the yellow pixel: < 0 not on the robot, 0..1 on its way in over the floor and up the ramp, 1 = in the bucket
   white: number; // the white one, the same
+  tilt: number; // the bucket: 0 = hanging along the arm (for depositing), 1 = tipped over to lie flat over the chassis, open side down, over the ramp's end
   yellowLow: number; // 0 = the yellow pixel in the bucket's upper place, 1 = slid down to the lower one
 }
 
@@ -108,26 +109,47 @@ export function csRobotModel(): Group {
   const HALF = CS.half;
   const H = CS.height;
 
-  // ---- the chassis: a floor plate, wheels, the clear plates round it and a few rods across the top
+  // ---- the chassis: a floor plate, and the four mecanum wheels, each pair between an outer and an inner plate (clear acrylic edged in
+  // aluminium, so they read from above), tied across the top of each pod by rods
   g.add(box(11.6, 0.4, 11.4, PANEL, -0.5, 0.5, 0)); // its top is at 0.9
   for (const sx of [-4.6, 4.2]) for (const sz of [-5.1, 5.1]) g.add(wheel(sx, sz));
   const clear = new MeshLambertMaterial({ color: "#cfe9f2", transparent: true, opacity: 0.28, depthWrite: false });
+  const inner = new MeshLambertMaterial({ color: "#b9dbe6", transparent: true, opacity: 0.45, depthWrite: false });
   const sideTex = sideTexture();
+  const IN_Z = 3.9; // the inner plates stand this far either side of the middle, just inside the wheels
+  const IN_H = 5.6;
   for (const s of [-1, 1]) {
-    g.add(mesh(new BoxGeometry(2 * HALF, H - 0.3, 0.25), clear, 0, 0.3 + (H - 0.3) / 2, s * (HALF - 0.125)));
+    g.add(mesh(new BoxGeometry(2 * HALF, H - 0.3, 0.25), clear, 0, 0.3 + (H - 0.3) / 2, s * (HALF - 0.125))); // the outer plate
     const vinyl = new Mesh(new PlaneGeometry(2 * HALF - 1, ((2 * HALF - 1) * 24) / 56), new MeshBasicMaterial({ map: sideTex, transparent: true, depthWrite: false }));
     vinyl.position.set(0, 0.3 + (H - 0.3) / 2, s * (HALF + 0.02));
     if (s < 0) vinyl.rotation.y = Math.PI;
     g.add(vinyl);
-    part(g, 2 * HALF, 0.3, 0.45, STEEL, 0, H, s * (HALF - 0.22)); // the rim along the top of each side
+    part(g, 2 * HALF, 0.3, 0.45, STEEL, 0, H, s * (HALF - 0.22)); // the rim along the top of each outer plate
+    g.add(mesh(new BoxGeometry(12.4, IN_H - 0.3, 0.25), inner, -0.4, 0.3 + (IN_H - 0.3) / 2, s * IN_Z)); // the inner plate
+    part(g, 12.4, 0.3, 0.45, STEEL, -0.4, IN_H, s * IN_Z); // with its rim
+    for (const rx of [-5.2, -2.6, 0, 2.6, 5.2]) part(g, 0.3, 0.3, HALF - 0.25 - IN_Z, STEEL, rx, IN_H - 0.15, s * ((HALF - 0.25 + IN_Z) / 2)); // rods across the pod
+    // in each pod, between the wheels: a deck over the motors, with the electronics on it
+    part(g, 4.8, 0.25, HALF - 0.25 - IN_Z - 0.3, "#2a2d36", -0.2, 3.6, s * ((HALF - 0.25 + IN_Z) / 2));
+    for (const mx of [-1.3, 0.9]) {
+      const motor = cyl(0.7, 0.7, 1.7, "#2a2d36", mx, 0, s * 5.2, 10);
+      motor.rotation.x = Math.PI / 2;
+      motor.position.set(mx, 2.1, s * 5.2);
+      g.add(motor);
+      part(g, 0.3, 1.4, 1, "#3a3d48", mx + 0.9, 2.4, s * 5.2);
+    }
   }
   g.add(mesh(new BoxGeometry(0.25, H - 0.3, 2 * HALF), clear, HALF - 0.125, 0.3 + (H - 0.3) / 2, 0)); // the front
   g.add(box(0.5, 0.3, 2 * HALF, STEEL, HALF - 0.25, H - 0.15, 0)); // its rim
-  for (const rx of [-3.4, 0, 3.4]) g.add(box(0.3, 0.3, 2 * HALF - 0.8, STEEL, rx, H - 0.15, 0)); // rods across the top
-  // the electronics: the hub, the battery and a few wires, against the sides so the ramp has its way down the middle
-  g.add(box(2.4, 2, 1, BLACK, -1.2, 0.9, 4.6));
-  g.add(box(3.4, 2.2, 1.6, PANEL, 1.8, 0.9, -4.5));
-  g.add(box(2.2, 0.3, 0.15, YELLOW, 1.8, 3.1, -3.68));
+  // the electronics on the decks: the battery on the left, the control and expansion hubs on the right, wires across the ramp between them
+  part(g, 3.2, 1.7, 1.9, PANEL, -0.4, 4.6, -5.6);
+  part(g, 2.0, 0.12, 0.8, YELLOW, -0.4, 5.5, -5.6); // its strap
+  part(g, 0.6, 0.5, 0.5, RED, 1.4, 4.1, -5.6); // the connector
+  part(g, 3.0, 0.5, 2.0, BLACK, -0.4, 3.95, 5.6); // the control hub
+  part(g, 2.6, 0.08, 1.2, "#4a4d58", -0.4, 4.23, 5.6); // its label
+  part(g, 3.0, 0.5, 2.0, "#1b1d24", -0.4, 4.5, 5.6); // the expansion hub stacked on it
+  part(g, 0.6, 0.35, 0.5, TEAL, 1.3, 4.9, 5.6); // a power switch
+  for (const wx of [-2.4, -1.2, 0.6, 1.8]) part(g, 0.14, 0.14, 2 * IN_Z + 0.6, BLACK, wx, 5.1, 0); // black wires and servo leads across the channel
+  for (const rx of [-3.4, 3.2]) part(g, 0.3, 0.3, 2 * HALF - 0.8, STEEL, rx, H - 0.15, 0); // rods across the top
 
   // ---- the ramp: a plate from the intake's mouth up to the bucket, with rows of yellow fingers across it
   const ramp = new Group();
@@ -217,9 +239,11 @@ export function csRobotModel(): Group {
 
   // ---- the turret turns the bucket about the axis out of the arm's end (local x); the bucket hangs below it, a back plate with side rails,
   // the gate across the middle and room for two pixels one above the other
+  const tilt = new Group(); // the bucket tips over about the arm's end: hanging along the arm, or lying flat over the chassis
+  tilt.position.set(-CS.arm.out, CS.arm.along, 0);
+  arm.add(tilt);
   const turret = new Group();
-  turret.position.set(-CS.arm.out, CS.arm.along, 0);
-  arm.add(turret);
+  tilt.add(turret);
   const turretServo = cyl(1.2, 1.2, 0.8, BLACK, 0, 0, 0, 14);
   turretServo.rotation.z = Math.PI / 2;
   turretServo.position.set(0.2, 0, 0);
@@ -251,6 +275,9 @@ export function csRobotModel(): Group {
     turret.add(p);
   }
 
+  const upper = csPixel(0, CS.arm.swing, 0, CS.bucket.high, 1); // where the places are when the bucket is retracted, flat over the chassis
+  const lower = csPixel(0, CS.arm.swing, 0, CS.bucket.low, 1);
+
   // the way in, from the floor in front to the slot the pixel will take: (x, y, tilt) at `t` 0..1
   const route = (t: number, slot: [number, number]): [number, number, number] => {
     const ramp = Math.atan2(IN.c[1] - IN.b[1], IN.b[0] - IN.c[0]); // how steeply the ramp climbs towards the back
@@ -258,10 +285,11 @@ export function csRobotModel(): Group {
       [IN.a[0], IN.a[1], 0],
       [IN.b[0], IN.b[1] + 0.1, 0],
       [IN.c[0], IN.c[1] + 0.1, -ramp],
-      [slot[0], slot[1], Math.PI / 2],
+      [lower[0], lower[1] - 1.2, 0], // up into the bucket from below, at its lower place; the pixel for the upper place goes on from there
+      [slot[0], slot[1], 0],
     ];
-    const cuts = [0, 0.18, 0.62, 1];
-    for (let i = 1; i < 4; i++) {
+    const cuts = [0, 0.15, 0.5, 0.78, 1];
+    for (let i = 1; i < 5; i++) {
       if (t <= cuts[i]) {
         const u = ease((t - cuts[i - 1]) / (cuts[i] - cuts[i - 1]));
         const [x0, y0, a0] = waypoints[i - 1];
@@ -269,10 +297,8 @@ export function csRobotModel(): Group {
         return [lerp(x0, x1, u), lerp(y0, y1, u), lerp(a0, a1, u)];
       }
     }
-    return [slot[0], slot[1], Math.PI / 2];
+    return [slot[0], slot[1], 0];
   };
-  const upper = csPixel(0, CS.arm.swing, 0, CS.bucket.high); // where the slots are when the bucket is retracted
-  const lower = csPixel(0, CS.arm.swing, 0, CS.bucket.low);
 
   const pose = (p: CSPose) => {
     // the intake: up (25 degrees above level) to down (47 below, the roller's fingers at the floor)
@@ -283,6 +309,7 @@ export function csRobotModel(): Group {
     const a = csArm(e, p.arm);
     arm.position.set(a.hinge[0], a.hinge[1], 0);
     arm.rotation.z = CS.lean - p.arm;
+    tilt.rotation.z = CS.tilt * p.tilt;
     turret.rotation.x = -p.turret;
     gate.position.z = -3.4 * p.gate;
     // the pixels
@@ -305,6 +332,6 @@ export function csRobotModel(): Group {
   };
   g.userData.pose = pose;
   pose(WAIT);
-  markMoving(g, intake, roller, ...stages, arm, turret, gate, inside.y, inside.w, held.y, held.w);
+  markMoving(g, intake, roller, ...stages, arm, tilt, turret, gate, inside.y, inside.w, held.y, held.w);
   return g;
 }

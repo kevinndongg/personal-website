@@ -131,7 +131,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   const S: Arm = { ...CS_WAIT, intake: 1 }; // intake down, everything else stowed
   const driving: Arm = { ...S, intake: 0 };
   const lifted: Arm = { ...driving, slide: dW.e }; // the slides up for the white pixel
-  const armBack: Arm = { ...lifted, arm: 0 };
+  const armBack: Arm = { ...lifted, arm: 0, tilt: 0 }; // the arm swings back and the bucket tips down to hang parallel to the backdrop
   const lined: Arm = { ...armBack, turret: phiW };
   const open: Arm = { ...lined, gate: 1 };
   const lowered: Arm = { ...open, yellowLow: 1, gate: 0 }; // the yellow slid down to the lower place and held there
@@ -160,7 +160,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   const north = leg([{ x: lane.x, y: lane.y }, approach], SOUTH, SOUTH, 4.4, 0, 0);
   const uClear = firstU(north, (p) => p.y < cfg.door.y - DOOR_CLEAR);
   loop.push({ ...north, arm: [driving, lifted], when: { slide: [uClear, Math.min(1, uClear + 0.3)] } });
-  loop.push({ dur: 0.7, at: approach, arm: [lifted, armBack] });
+  loop.push({ dur: 0.9, at: approach, arm: [lifted, armBack] });
   loop.push({ ...leg([approach, stand], SOUTH, SOUTH, 1.0, 0, 0), arm: [armBack, lined], when: { turret: [0.1, 0.95] } });
   // the white pixel: the gate opens and it drops; the yellow slides down and is held; then the slides, the turret and the gate for the yellow one
   loop.push({ dur: 0.6, at: stand, arm: [lined, open], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 0, offset: 0.3, turn: -phiW }] });
@@ -177,7 +177,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   loop.push({
     ...exit,
     arm: [clear1, driving],
-    when: { arm: [uFold, uFold + 0.12], slide: [uDown, Math.min(1, uDown + 0.2)] },
+    when: { arm: [uFold, uFold + 0.12], tilt: [uFold, uFold + 0.12], slide: [uDown, Math.min(1, uDown + 0.2)] },
     marks: [
       { what: "clear", index: 0, offset: farOffset(exit, stand, GONE) },
       { what: "clear", index: 1, offset: farOffset(exit, stand, GONE) + 0.2 },
@@ -222,7 +222,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   /** Where a pixel taken in at `pick` and let go at `drop` is on the robot at `tl`: not on it (-1), on its way in (0..1), or in the bucket (1). */
   const aboard = (tl: number, pick: number, drop: number) => (tl < pick || tl >= drop ? -1 : Math.min(1, (tl - pick) / FEED));
 
-  const channels: Channel[] = ["intake", "slide", "arm", "turret", "gate", "yellowLow"];
+  const channels: Channel[] = ["intake", "slide", "arm", "tilt", "turret", "gate", "yellowLow"];
 
   model.userData.animate = ({ t }: AnimCtx) => {
     if (t <= 0) return; // reduced motion: standing at the wall, every pixel where it was
