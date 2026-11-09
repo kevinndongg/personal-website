@@ -225,7 +225,7 @@ function samplePile(color: string, layers = 6): Group {
   return g;
 }
 
-// ---- Center Stage: the backdrop, the truss, the drone and the pixels
+// ---- Center Stage: the backdrop, the truss and the pixels
 
 /**
  * The face of the backdrop: the bare board with a lattice of hexagonal recesses, rows of six and five in turn, and a zigzag bottom
@@ -336,25 +336,6 @@ function trussModel(): Group {
   const hangY = 22 * 0.6;
   const hangX = BASE * 0.4;
   for (const sx of [-1, 1]) g.add(box(0.9, 0.9, 2 * R + 1, GOLD, sx * hangX, hangY - 0.45, 0));
-  return g;
-}
-
-/** A paper-plane drone, nose up on its launcher. */
-function droneModel(): Group {
-  const g = new Group();
-  g.add(box(3, 0.6, 3, DARK, 0, 0, 0));
-  g.add(cyl(0.5, 0.5, 3.4, STEEL, 0, 0.6, 0, 6));
-  const plane = new Group();
-  plane.position.set(0, 4.4, 0);
-  plane.rotation.z = 0.18;
-  plane.add(box(8, 0.5, 1.6, "#f4f4f4", 0, 0, 0)); // body
-  for (const s of [-1, 1]) {
-    const wing = box(3.8, 0.3, 3.4, "#f4f4f4", 0.6, 0.2, s * 2.2);
-    wing.rotation.y = -s * 0.55;
-    plane.add(wing);
-  }
-  plane.add(box(1.2, 2, 0.3, RED, -3.4, 0.5, 0)); // tail fin
-  g.add(plane);
   return g;
 }
 
@@ -771,8 +752,6 @@ export function ftcModel(id: string, w: number, d: number): Group | null {
       return backdropModel(w, d);
     case "truss":
       return trussModel();
-    case "drone":
-      return droneModel();
     case "pixel-y":
       return pixelModel(PIXEL.y);
     case "pixel-p":

@@ -122,13 +122,12 @@ export function ftcScene(ox: number, oy: number): Scene {
     },
   });
 
-  // ---- Center Stage (top right wedge): the backdrop against the wall, the truss, the drone, loose pixels
+  // ---- Center Stage (top right wedge): the backdrop against the wall, the truss, loose pixels
   // the backdrop is a whole tile wide (the second tile from the right, against the north wall) and 10 deep
   props.push(block("ftc-backdrop", f(30, -55), 20, 10));
   // the truss lies across the middle of the third tile down in the right-hand column, its bars running left to right on
   // screen: the model is 12 wide and 20 long, turned a quarter so the length runs east-west
   props.push({ sprite: "ftc-truss", ...f(50, -10), angle: Math.PI / 2, solid: rect(12, 20) });
-  props.push(round("ftc-drone", f(38, -46), 3));
   // pixels lie flat on the floor, to scale (3 in across), with no footprint to block anything: loose ones about the wedge, turned this way and
   // that, and two against the east wall in the middle of the fourth tile down, side by side: the white one right up to the wall (its
   // flat side on it) and the yellow one directly to the west of it, touching, for a robot to pick up and take to the backdrop
