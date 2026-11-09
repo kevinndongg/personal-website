@@ -238,17 +238,19 @@ export const CS = {
   ahead: 3, // how far past the front a pixel lies, centre, when the roller takes it
   reachUp: 13.4, // how far the intake sticks out ahead of the robot's centre when it is raised for driving
   lean: Math.PI / 6, // the slide's lean from vertical
-  slide: { x: -4.2, y: 1, len: 6.6, travel: 9.5 }, // its foot, the length of each stage and how far it extends at most (three stages)
-  arm: { along: 2.4, out: 1.7, swing: Math.PI / 6 }, // the arm from the top of the slide to the turret: along the slide and out towards the backdrop; how far it swings back
-  bucket: { low: 5.8, high: 2.9 }, // how far below the turret's axis the pixel nearer the opening and the one above it sit
+  slide: { x: -5.6, y: 1, len: 4.06, travel: 9.5 }, // its foot, the length of each stage and how far it extends at most (three stages)
+  // the arm from the top of the slide to the turret: along the slide and out towards the backdrop (negative: towards the robot), and how far it folds
+  // from the deposit position (parallel to the backdrop, its last 30 degrees the swing) to its rest, the bucket down inside the robot
+  arm: { along: 2.4, out: 2.4, fold: (191.5 * Math.PI) / 180 },
+  bucket: { low: 5.8, high: 2.9, top: 0.7 }, // how far below the turret's axis the pixel nearer the opening and the one above it sit; how far the bucket reaches above it
   turret: Math.PI / 3, // the turret's range, each way
-  tilt: Math.PI / 2, // how far the bucket tips over from hanging along the arm to lying flat over the chassis
+  tilt: (-108.5 * Math.PI) / 180, // how far the bucket pivots at the arm's end, as the arm folds, from hanging along the face to lying flat inside the robot (and it rolls over, open side up)
   gap: 1.7, // how far in front of the board the pixels' plane is held when it deposits (the bucket's front, 0.6 nearer, clears pixels already placed)
   height: 7.4, // the chassis's height, under the Stage Door's 12.6 px rail with the slide down
 } as const;
 
-/** How the robot waits: intake up, slide down, arm retracted with the bucket flat, turret straight, gate shut, nothing in it. */
-export const CS_WAIT = { intake: 0, spin: 0, slide: 0, arm: CS.arm.swing, tilt: 1, turret: 0, gate: 0, yellow: -1, white: -1, yellowLow: 0 } as const;
+/** How the robot waits: intake up, slide down, arm folded with the bucket flat inside the robot, turret straight, gate shut, nothing in it. */
+export const CS_WAIT = { intake: 0, spin: 0, slide: 0, arm: CS.arm.fold, tilt: 1, turret: 0, gate: 0, yellow: -1, white: -1, yellowLow: 0 } as const;
 
 const D = [-Math.sin(CS.lean), Math.cos(CS.lean)] as const; // up the slide, in the (x, y) plane of the robot
 const OUT = [-Math.cos(CS.lean), -Math.sin(CS.lean)] as const; // towards the backdrop, square to the slide
@@ -256,7 +258,7 @@ const rot2 = (v: readonly [number, number], a: number): [number, number] => [v[0
 
 /**
  * The top of the slide, extended `e` px, and the arm and turret on it, swung back by `beta` (0 = lying along the slide, parallel to the
- * backdrop; `CS.arm.swing` = swung forward to the retracted position, the bucket upright): the hinge, the turret's axis, and the bucket's
+ * backdrop; `CS.arm.fold` = folded down inside the robot): the hinge, the turret's axis, and the bucket's
  * up and out directions, in the robot's (x, y) plane.
  */
 export function csArm(e: number, beta: number) {
@@ -267,8 +269,7 @@ export function csArm(e: number, beta: number) {
 
 /**
  * The centre of a pixel in the bucket, `dist` below the turret's axis along the bucket, with the turret turned `phi` (positive towards the
- * robot's right) and the bucket tilted `tilt` (0 = hanging along the arm, 1 = a quarter turn over, lying horizontal over the chassis with its
- * open side down, where the ramp feeds it), in the robot's frame.
+ * robot's right) and the bucket tilted `tilt` (0 = hanging along the arm, 1 = pivoted over to lie flat with its open side up, where the ramp feeds it), in the robot's frame.
  */
 export function csPixel(e: number, beta: number, phi: number, dist: number, tilt = 0): [number, number, number] {
   const a = csArm(e, beta);

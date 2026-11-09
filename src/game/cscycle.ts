@@ -128,16 +128,16 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   const farOffset = (ph: Drive, from: { x: number; y: number }, dist: number) => firstU(ph, (p) => Math.hypot(p.x - from.x, p.y - from.y) >= dist) * ph.dur;
 
   // ---- the arm poses along the way
-  const S: Arm = { ...CS_WAIT, intake: 1 }; // intake down, everything else stowed
+  const S: Arm = { ...CS_WAIT, intake: 1 }; // intake down, everything else stowed: the arm folded, the bucket flat inside the robot
   const driving: Arm = { ...S, intake: 0 };
   const lifted: Arm = { ...driving, slide: dW.e }; // the slides up for the white pixel
-  const armBack: Arm = { ...lifted, arm: 0, tilt: 0 }; // the arm swings back and the bucket tips down to hang parallel to the backdrop
+  const armBack: Arm = { ...lifted, arm: 0, tilt: 0 }; // the arm unfolds, swinging back, and the bucket pivots back to hang parallel to the backdrop
   const lined: Arm = { ...armBack, turret: phiW };
   const open: Arm = { ...lined, gate: 1 };
   const lowered: Arm = { ...open, yellowLow: 1, gate: 0 }; // the yellow slid down to the lower place and held there
   const raised: Arm = { ...lowered, slide: dY.e, turret: phiY };
   const openY: Arm = { ...raised, gate: 1 };
-  const clear1: Arm = { ...openY, slide: dY.e + 1.5, turret: 0, gate: 0 }; // slides up slightly and the turret centred
+  const clear1: Arm = { ...openY, slide: Math.min(CS.slide.travel, dY.e + 0.9), turret: 0, gate: 0 }; // slides up slightly and the turret centred
 
   const loop: Phase[] = [];
   // the yellow pixel in, then a short creep to the white one and the same
@@ -160,7 +160,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   const north = leg([{ x: lane.x, y: lane.y }, approach], SOUTH, SOUTH, 4.4, 0, 0);
   const uClear = firstU(north, (p) => p.y < cfg.door.y - DOOR_CLEAR);
   loop.push({ ...north, arm: [driving, lifted], when: { slide: [uClear, Math.min(1, uClear + 0.3)] } });
-  loop.push({ dur: 0.9, at: approach, arm: [lifted, armBack] });
+  loop.push({ dur: 0.9, at: approach, arm: [lifted, armBack], when: { tilt: [0, 0.7] } }); // the bucket straightens ahead of the arm, so it stays clear of the slide as it goes over
   loop.push({ ...leg([approach, stand], SOUTH, SOUTH, 1.0, 0, 0), arm: [armBack, lined], when: { turret: [0.1, 0.95] } });
   // the white pixel: the gate opens and it drops; the yellow slides down and is held; then the slides, the turret and the gate for the yellow one
   loop.push({ dur: 0.6, at: stand, arm: [lined, open], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 0, offset: 0.3, turn: -phiW }] });
@@ -177,7 +177,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   loop.push({
     ...exit,
     arm: [clear1, driving],
-    when: { arm: [uFold, uFold + 0.12], tilt: [uFold, uFold + 0.12], slide: [uDown, Math.min(1, uDown + 0.2)] },
+    when: { arm: [uFold, uFold + 0.12], tilt: [uFold + 0.04, uFold + 0.12], slide: [uDown, Math.min(1, uDown + 0.2)] },
     marks: [
       { what: "clear", index: 0, offset: farOffset(exit, stand, GONE) },
       { what: "clear", index: 1, offset: farOffset(exit, stand, GONE) + 0.2 },

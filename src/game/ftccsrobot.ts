@@ -30,12 +30,12 @@ export interface CSPose {
   intake: number; // the intake arm: 0 = up, for driving, 1 = down, for taking pixels in
   spin: number; // how far the roller has turned (radians)
   slide: number; // how far the slide is extended (px), 0 .. CS.slide.travel
-  arm: number; // the outtake arm: CS.arm.swing = retracted (the bucket upright), 0 = swung back, parallel to the backdrop
+  arm: number; // the outtake arm: CS.arm.fold = folded down inside the robot, 0 = swung back, parallel to the backdrop
   turret: number; // the turret: 0 = the bucket straight, positive = swung to the robot's right (radians)
   gate: number; // 0 = the gate holds the pixels, 1 = open
   yellow: number; // the yellow pixel: < 0 not on the robot, 0..1 on its way in over the floor and up the ramp, 1 = in the bucket
   white: number; // the white one, the same
-  tilt: number; // the bucket: 0 = hanging along the arm (for depositing), 1 = tipped over to lie flat over the chassis, open side down, over the ramp's end
+  tilt: number; // the bucket: 0 = hanging along the arm (for depositing), 1 = pivoted over to lie flat inside the robot, open side up, at the ramp's end
   yellowLow: number; // 0 = the yellow pixel in the bucket's upper place, 1 = slid down to the lower one
 }
 
@@ -43,7 +43,7 @@ const WAIT: CSPose = { ...CS_WAIT };
 
 /** The path a pixel takes in, in the robot's frame (x, y): lying on the floor ahead, in through the intake, up the ramp, and into the bucket. */
 const FLOOR_Y = 0.34; // the centre of a pixel on the floor sheet
-const IN = { a: [CS.half + CS.ahead, FLOOR_Y], b: [CS.half - 1.6, 1.2], c: [-CS.half + 3.4, 3.6] } as const;
+const IN = { a: [CS.half + CS.ahead, FLOOR_Y], b: [CS.half - 1.7, 1.1], c: [3.4, 2.3] } as const;
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const ease = (t: number) => t * t * (3 - 2 * t);
@@ -149,16 +149,16 @@ export function csRobotModel(): Group {
   part(g, 2.6, 0.08, 1.2, "#4a4d58", -0.4, 4.23, 5.6); // its label
   part(g, 3.0, 0.5, 2.0, "#1b1d24", -0.4, 4.5, 5.6); // the expansion hub stacked on it
   part(g, 0.6, 0.35, 0.5, TEAL, 1.3, 4.9, 5.6); // a power switch
-  for (const wx of [-2.4, -1.2, 0.6, 1.8]) part(g, 0.14, 0.14, 2 * IN_Z + 0.6, BLACK, wx, 5.1, 0); // black wires and servo leads across the channel
-  for (const rx of [-3.4, 3.2]) part(g, 0.3, 0.3, 2 * HALF - 0.8, STEEL, rx, H - 0.15, 0); // rods across the top
+  for (const wx of [-3.2, -2.4]) part(g, 0.14, 0.14, 2 * IN_Z + 0.6, BLACK, wx, 1.5, 0); // black wires and servo leads across, under the bucket
 
   // ---- the ramp: a plate from the intake's mouth up to the bucket, with rows of yellow fingers across it
   const ramp = new Group();
   ramp.position.set(IN.b[0], IN.b[1] - 0.45, 0);
   const rampLen = Math.hypot(IN.c[0] - IN.b[0], IN.c[1] - IN.b[1]);
   ramp.rotation.z = -Math.atan2(IN.c[1] - IN.b[1], IN.b[0] - IN.c[0]); // the ramp rises towards the back
-  part(ramp, rampLen, 0.25, 6.6, "#2a2d36", -rampLen / 2, 0, 0);
-  for (let i = 1; i < 5; i++) for (const z of [-2.6, -0.9, 0.9, 2.6]) part(ramp, 0.2, 0.7, 0.35, YELLOW, -(rampLen * i) / 5, 0.45, z);
+  part(ramp, rampLen + 0.4, 0.25, 6.6, BLUE, -rampLen / 2, 0, 0); // the ramp is blue
+  for (const s of [-1, 1]) part(ramp, rampLen + 0.4, 0.7, 0.25, BLUE, -rampLen / 2, 0.45, s * 3.2); // with a low wall down each side
+  for (let i = 1; i < 4; i++) for (const z of [-2.4, -0.8, 0.8, 2.4]) part(ramp, 0.2, 0.7, 0.35, YELLOW, -(rampLen * i) / 4, 0.45, z);
   g.add(ramp);
 
   // ---- the intake arm: pivots about an axle across the front, two perforated side arms and between them the roller with five curved fingers
@@ -245,21 +245,23 @@ export function csRobotModel(): Group {
   arm.add(tilt);
   const turret = new Group();
   tilt.add(turret);
+  const roll = new Group(); // the bucket rolls over about its own length as it pivots, so that it ends open side up
+  turret.add(roll);
   const turretServo = cyl(1.2, 1.2, 0.8, BLACK, 0, 0, 0, 14);
   turretServo.rotation.z = Math.PI / 2;
   turretServo.position.set(0.2, 0, 0);
-  turret.add(turretServo);
-  const top = 1.7;
+  turret.add(turretServo); // (the turret's own servo stays put)
+  const top = CS.bucket.top;
   const bottom = CS.bucket.low + PIXEL_SIZE.corner / 2 + 0.3;
-  part(turret, 0.35, top + bottom, 3.9, BLUE, 0.55, (top - bottom) / 2, 0); // the back plate
+  part(roll, 0.35, top + bottom, 3.9, BLUE, 0.55, (top - bottom) / 2, 0); // the back plate
   for (const s of [-1, 1]) {
-    part(turret, 1.2, top + bottom, 0.35, BLUE, 0, (top - bottom) / 2, s * 1.95); // the rails
-    part(turret, 1.2, 0.35, 0.8, BLUE, 0, -bottom + 0.2, s * 1.55); // a lip at the foot
+    part(roll, 1.2, top + bottom, 0.35, BLUE, 0, (top - bottom) / 2, s * 1.95); // the rails
+    part(roll, 1.2, 0.35, 0.8, BLUE, 0, -bottom + 0.2, s * 1.55); // a lip at the foot
   }
   const gate = new Group(); // the gate: a bar across the middle, between the two pixels; it slides aside to let the lower one go
   gate.position.set(-0.35, -(CS.bucket.low + CS.bucket.high) / 2, 0);
   part(gate, 0.4, 0.5, 3.2, BLACK, 0, 0, 0);
-  turret.add(gate);
+  roll.add(gate);
 
   // ---- the pixels: two on their way in over the floor and the ramp, and the same two in the bucket
   const pix = (color: string) => {
@@ -273,11 +275,11 @@ export function csRobotModel(): Group {
   for (const p of Object.values(held)) {
     p.children[0].rotation.y = Math.PI / 2; // points up and down, as on the backdrop's lattice
     p.rotation.z = Math.PI / 2; // its flat face to the backdrop (towards -x)
-    turret.add(p);
+    roll.add(p);
   }
 
-  const upper = csPixel(0, CS.arm.swing, 0, CS.bucket.high, 1); // where the places are when the bucket is retracted, flat over the chassis
-  const lower = csPixel(0, CS.arm.swing, 0, CS.bucket.low, 1);
+  const upper = csPixel(0, CS.arm.fold, 0, CS.bucket.high, 1); // where the places are when the bucket is at rest, flat inside the robot
+  const lower = csPixel(0, CS.arm.fold, 0, CS.bucket.low, 1);
 
   // the way in, from the floor in front to the slot the pixel will take: (x, y, tilt) at `t` 0..1
   const route = (t: number, slot: [number, number]): [number, number, number] => {
@@ -286,11 +288,10 @@ export function csRobotModel(): Group {
       [IN.a[0], IN.a[1], 0],
       [IN.b[0], IN.b[1] + 0.1, 0],
       [IN.c[0], IN.c[1] + 0.1, -ramp],
-      [lower[0], lower[1] - 1.2, 0], // up into the bucket from below, at its lower place; the pixel for the upper place goes on from there
       [slot[0], slot[1], 0],
     ];
-    const cuts = [0, 0.15, 0.5, 0.78, 1];
-    for (let i = 1; i < 5; i++) {
+    const cuts = [0, 0.2, 0.5, 1];
+    for (let i = 1; i < 4; i++) {
       if (t <= cuts[i]) {
         const u = ease((t - cuts[i - 1]) / (cuts[i] - cuts[i - 1]));
         const [x0, y0, a0] = waypoints[i - 1];
@@ -311,6 +312,7 @@ export function csRobotModel(): Group {
     arm.position.set(a.hinge[0], a.hinge[1], 0);
     arm.rotation.z = CS.lean - p.arm;
     tilt.rotation.z = CS.tilt * p.tilt;
+    roll.rotation.y = Math.PI * p.tilt;
     turret.rotation.x = -p.turret;
     gate.position.z = -3.4 * p.gate;
     // the pixels
@@ -333,6 +335,6 @@ export function csRobotModel(): Group {
   };
   g.userData.pose = pose;
   pose(WAIT);
-  markMoving(g, intake, roller, ...stages, arm, tilt, turret, gate, inside.y, inside.w, held.y, held.w);
+  markMoving(g, intake, roller, ...stages, arm, tilt, turret, roll, gate, inside.y, inside.w, held.y, held.w);
   return g;
 }
