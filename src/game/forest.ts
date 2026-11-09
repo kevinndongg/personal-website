@@ -35,17 +35,15 @@ import { toon } from "./models";
 import type { Rect } from "./scenes";
 
 /**
- * A preview of the projects living in a forest instead of on a square yard (switched on with `?forest` on the home page;
- * `?forest=grass` for a lawn clearing instead of packed earth). The map's tiles and outlines are gone (see `buildGroundLayer`'s
- * `bare`): this is the floor they stand on, a clearing that follows the projects and is not a rectangle, and what grows round
- * them. Nothing here is part of the map as such, it is scenery in the map's own group, so that it zooms with it.
+ * The projects live in a forest. This is the floor they stand on (a lawn clearing that follows the projects and is not a
+ * rectangle), and what grows round them. Nothing here is part of the map as such, it is scenery in the map's own group, so that
+ * it zooms with it.
  *
  * A trail circles the name and branches to every project; another comes in from the front. Wide-crowned trees stand far apart,
  * never where their crown would hide a project, and run on into the dark as silhouettes. A small camp sits by the trail: a
  * fire, a tent, stumps to sit on, a pile of logs, lanterns, a string of lights. The light is late afternoon: soft long shade
  * from the trees, patches of leaf shade near them only, a few shafts of sun.
  */
-export type ForestStyle = "yard" | "grass";
 
 /** The forest as the renderer uses it: what to add to the map, a per-frame step (the fire), and a way to let go of it. */
 export interface Forest {
@@ -455,7 +453,6 @@ function clearingField(mapSize: number, zones: ForestZone[], camp: Pt, pad: numb
 // ------------------------------------------------------------------ the forest floor
 
 type RGB = [number, number, number];
-const EARTH: RGB = [0x6c, 0x59, 0x3f];
 const PATH: RGB = [0x8a, 0x76, 0x56];
 const GRASS: RGB = [0x44, 0x70, 0x3a];
 const MOSS: RGB = [0x27, 0x44, 0x2a];
@@ -471,13 +468,12 @@ function mix(out: RGB, a: RGB, b: RGB, t: number) {
   out[2] = a[2] + (b[2] - a[2]) * t;
 }
 
-/** The ground everything stands on, one texture over the map and `FOREST_REACH` past it: earth or lawn, grass, moss, dusk, and the trails. */
+/** The ground everything stands on, one texture over the map and `FOREST_REACH` past it: lawn, moss, dusk, and the trails. */
 function floorTexture(
   mapSize: number,
   camp: Pt,
   field: (x: number, z: number) => number,
   trail: (x: number, z: number) => number,
-  style: ForestStyle,
   padX: number,
   padZ: number
 ): CanvasTexture {
@@ -491,7 +487,6 @@ function floorTexture(
   const img = ctx.createImageData(w, h);
   const data = img.data;
   const col: RGB = [0, 0, 0];
-  const tmp: RGB = [0, 0, 0];
   const pathCol: RGB = [0, 0, 0];
   for (let py = 0; py < h; py++) {
     for (let px = 0; px < w; px++) {
@@ -503,14 +498,6 @@ function floorTexture(
       mix(col, GRASS, MOSS, smooth(d, 10, 70));
       mix(col, col, DEEP, smooth(d, 60, 220));
       mix(col, col, DARK, smooth(d, 200, 360));
-      if (style === "yard") {
-        // packed earth where the projects stand, worn through the grass; ragged at the edge, with tufts coming through
-        const e = 1 - smooth(d + (n - 0.5) * 8, -3, 6);
-        mix(tmp, col, EARTH, e * (1 - 0.35 * smooth(vnoise(x / 9, z / 9, 21), 0.62, 0.8)));
-        col[0] = tmp[0];
-        col[1] = tmp[1];
-        col[2] = tmp[2];
-      }
       // the trails: packed earth with a lighter worn middle and the odd pebble, fading into the dusk with the rest
       const pg = trail(x, z);
       if (pg < 3) {
@@ -809,7 +796,6 @@ function disks(mat: Material, spots: { x: number; y: number; z: number; r: numbe
  */
 export function buildForest(
   mapSize: number,
-  style: ForestStyle,
   zones: ForestZone[],
   toSun: Vector3,
   reach: ForestReach = { x: FOREST_REACH, z: FOREST_REACH },
@@ -842,7 +828,7 @@ export function buildForest(
   const total = Math.max(totalX, totalZ);
   const floor = new Mesh(
     new PlaneGeometry(totalX, totalZ),
-    new MeshBasicMaterial({ map: floorTexture(mapSize, camp, field, trail, style, padX, padZ) })
+    new MeshBasicMaterial({ map: floorTexture(mapSize, camp, field, trail, padX, padZ) })
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(mapSize / 2, -0.4, mapSize / 2);

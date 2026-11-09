@@ -1,11 +1,8 @@
 import { lapCurve } from "./drive";
 import { GROUND } from "./palette";
 import type { Prop } from "./scenes";
-import { TILE, Terrain } from "./world";
+import { TILE } from "./world";
 import type { Decal, World } from "./world";
-
-/** Extra asphalt painted past the map on every side; only visible in the "fade" edge mode. */
-export const GROUND_MARGIN = 3 * TILE;
 
 function hash(x: number, y: number, n = 0) {
   let h = (x * 374761393 + y * 668265263 + n * 2147483647) | 0;
@@ -113,69 +110,27 @@ function drawDecal(ctx: CanvasRenderingContext2D, d: Decal, accent: string) {
 }
 
 /**
- * The flat floor of the whole map as one texture: asphalt tiles, lane lines, area outlines, decals. With `bare` there are no
- * tiles and no outlines, only the decals on a transparent sheet (the forest preview: the projects stand on the forest floor,
- * which is drawn under this one).
+ * What is painted on the ground, as one texture the size of the map on a clear sheet (the projects stand on the forest floor,
+ * which is drawn under it): the decals, such as the pit boxes, the finish line and the cables.
  */
-export function buildGroundLayer(world: World, bare = false): HTMLCanvasElement {
+export function buildGroundLayer(world: World): HTMLCanvasElement {
   const c = document.createElement("canvas");
-  c.width = world.w * TILE + 2 * GROUND_MARGIN;
-  c.height = world.h * TILE + 2 * GROUND_MARGIN;
+  c.width = world.w * TILE;
+  c.height = world.h * TILE;
   const ctx = c.getContext("2d")!;
   ctx.imageSmoothingEnabled = false;
-  // from here on, coordinates are map coordinates; the margin sits at negative values
-  ctx.translate(GROUND_MARGIN, GROUND_MARGIN);
-
-  const mt = bare ? 0 : GROUND_MARGIN / TILE;
-  for (let ty = -mt; ty < (bare ? 0 : world.h + mt); ty++) {
-    for (let tx = -mt; tx < world.w + mt; tx++) {
-      const inside = tx >= 0 && ty >= 0 && tx < world.w && ty < world.h;
-      const t = inside ? world.terrain[ty * world.w + tx] : Terrain.Asphalt;
-      const x = tx * TILE;
-      const y = ty * TILE;
-      const alt = (tx + ty) & 1;
-      const concrete = t === Terrain.Concrete;
-      ctx.fillStyle = (concrete ? GROUND.concrete : GROUND.asphalt)[alt];
-      ctx.fillRect(x, y, TILE, TILE);
-      const speck = concrete ? GROUND.concreteSpeck : GROUND.asphaltSpeck;
-      for (let i = 0; i < 7; i++) {
-        ctx.fillStyle = speck[hash(tx, ty, i + 11) < 0.5 ? 0 : 1];
-        ctx.fillRect(x + Math.floor(hash(tx, ty, i) * TILE), y + Math.floor(hash(tx, ty, i + 40) * TILE), 1, 1);
-      }
-      if (concrete) {
-        ctx.fillStyle = GROUND.concreteJoint;
-        ctx.fillRect(x, y + TILE - 1, TILE, 1);
-        ctx.fillRect(x + TILE - 1, y, 1, TILE);
-      } else if (hash(tx, ty, 99) < 0.06) {
-        ctx.fillStyle = GROUND.oil;
-        ctx.fillRect(x + 4, y + 6, 7, 4);
-        ctx.fillRect(x + 6, y + 4, 4, 8);
-      }
-    }
-  }
-
-  // thin black border around each project area (a contact button is no area to look into: it stands on the plain yard)
-  ctx.fillStyle = "#16161d";
-  for (const z of world.zones) {
-    if (bare || z.kind === "link" || z.kind === "about") continue; // (no black box round a slab or the name)
-    const a = z.scene.area;
-    ctx.fillRect(a.x, a.y, a.w, 2);
-    ctx.fillRect(a.x, a.y + a.h - 2, a.w, 2);
-    ctx.fillRect(a.x, a.y, 2, a.h);
-    ctx.fillRect(a.x + a.w - 2, a.y, 2, a.h);
-  }
 
   for (const z of world.zones)
     for (const d of z.scene.decals) {
-      // (the forest: the field stands on the grass, so the dark carpet the yard laid under it is left out)
-      if (bare && z.variant === "ftc" && d.kind === "pool") continue;
+      // (the FTC field stands on the grass, so the dark carpet its yard once had under it is left out)
+      if (z.variant === "ftc" && d.kind === "pool") continue;
       drawDecal(ctx, d, z.accent);
     }
   return c;
 }
 
 /**
- * The paved lot of a project with an autonomous car (the forest preview, where there are no asphalt tiles). The car finds its way
+ * The paved lot of a project with an autonomous car . The car finds its way
  * by the cones, so the pavement draws no route: it is an open lot with a plain shape of its own, a rounded rectangle like the other
  * projects' pads, big enough for the whole course and for the car's way back. Lighter, weathered grey, with a worn kerb, a few oil
  * stains and cracks.
