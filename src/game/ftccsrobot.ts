@@ -22,6 +22,7 @@ const SILVER = "#c8ccd6";
 const TEAL = "#19b3a6"; // the vinyl and the roller
 const YELLOW = "#f2c230"; // the fingers and the ducks
 const GOLD = "#c9a227"; // the intake's motor
+const RED = "#d8322c"; // the battery connector
 const PIXEL = { y: "#f2c230", w: "#f4f4f4" };
 
 /** What `userData.pose` is given each frame (see `CS` in ftcfield.ts for the layout). */
