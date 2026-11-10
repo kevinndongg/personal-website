@@ -286,7 +286,7 @@ export function csRobotModel(): Group {
   }
   for (const s of [-1, 1]) {
     for (const y of [1.2, 4.0]) part(slide, 1.4, 0.6, 0.5, STEEL, 0, y, s * (IN_Z - 0.0)); // clamps holding the lowest stage to the inner plate
-    g.add(box(2.6, 0.25, 1.2, PANEL, CS.slide.x - 0.4, 0.9, s * (IN_Z - 0.55))); // and its foot on the chassis, under the stack
+    g.add(box(2.6, 0.1, 1.2, PANEL, CS.slide.x - 0.4, 0.9, s * (IN_Z - 0.55))); // and its foot on the chassis, under the stack
   }
 
   // ---- the arm on the top of the slide: its frame has local y up the bucket and -x out towards the backdrop

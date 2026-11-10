@@ -238,13 +238,13 @@ export const CS = {
   ahead: 3, // how far past the front a pixel lies, centre, when the roller takes it
   reachUp: 9, // how far the intake sticks out ahead of the robot's centre when it is raised for driving
   lean: Math.PI / 6, // the slide's lean from vertical
-  slide: { x: -0.9, y: 1, len: 9.8, travel: 12.5, rails: 3.15, pitch: 0.7 }, // its foot, the length of each stage, how far it extends at most (three stages), and how far the innermost stage of each side's stack stands from the middle (the arm and bucket pass between the two stacks) and how far apart the stages are; the other stages stand outwards of it, the lowest against the inner plate
+  slide: { x: 0.9, y: 1, len: 8.2, travel: 13.5, rails: 3.12, pitch: 0.7 }, // its foot, the length of each stage, how far it extends at most (three stages), and how far the innermost stage of each side's stack stands from the middle (the arm and bucket pass between the two stacks) and how far apart the stages are; the other stages stand outwards of it, the lowest against the inner plate
   // the arm from the top of the slide to the turret: along the slide (negative: down it) and out towards the backdrop. Arm and bucket are one piece
   // turning about the slide's top. At rest (`fold`, 60 degrees on) they lie flat inside the robot, the bucket forward of the turret's axis; they swing
   // back through 60 degrees, out of the robot's back, to the deposit position, where the bucket is parallel to the backdrop.
   // the arm's pivot, on an aluminium plate off the slide's rear face: down the slide from the top of its highest stage, and out from its middle
-  pivot: { along: -2.1, out: 1.6 },
-  arm: { along: 0, out: 4.9, fold: -Math.PI / 3 }, // from the pivot to the turret's axis: out square from the slide at the deposit position, straight down at rest
+  pivot: { along: -2.1, out: 0.9 },
+  arm: { along: 0, out: 3.85, fold: -Math.PI / 3 }, // from the pivot to the turret's axis: out square from the slide at the deposit position, straight down at rest
   // how far below the turret's axis the pixel nearer the opening and the one above it sit (one pixel's height apart); where the bucket's closed top
   // end is (above the axis: positive; this one starts below it). The bucket is just long enough for the two pixels, closed at the top, open at the bottom
   bucket: { low: 4.4, high: 1.5, top: -(1.5 - PIXEL_SIZE.corner / 2 - 0.35) },
