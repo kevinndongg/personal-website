@@ -371,7 +371,7 @@ export function csRobotModel(): Group {
     intake.rotation.z = lerp((60 * Math.PI) / 180, 0, p.intake);
     roller.rotation.z = -p.spin;
     const e = Math.min(CS.slide.travel, Math.max(0, p.slide));
-    stages.forEach((st, k) => (st.position.y = (k * e) / 3));
+    stages.forEach((st, k) => (st.position.y = (k * e) / 2)); // the highest stage carries the arm's pivot, so it goes the whole way
     const a = csArm(e, p.arm);
     arm.position.set(a.hinge[0], a.hinge[1], 0);
     arm.rotation.z = CS.lean - p.arm;
