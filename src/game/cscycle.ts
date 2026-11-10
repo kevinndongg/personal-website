@@ -91,9 +91,13 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
 
   // the two deposits: the turret's angle and the slide's extension for each pixel's place on the backdrop
   const cell = (n: number) => backdropCell(BACKDROP_PLACE[n].row, BACKDROP_PLACE[n].col);
-  const dW = csDeposit(cell(0).u, cell(0).v);
-  const dY = csDeposit(cell(1).u, cell(1).v);
-  const stand: Pose = { x: cfg.backdrop.x, y: cfg.backdrop.y + dW.z, h: SOUTH }; // facing south, rear to the backdrop
+  // the lower pixel is only 3.9 px from the turret's axis, so the turret alone (60 degrees) reaches 3.4 px to either side: it stands a little off the
+  // backdrop's middle for the white (left of centre) and strafes right, across the board, for the yellow
+  const OFF = { w: -0.55, y: 2.0 };
+  const dW = csDeposit(cell(0).u - OFF.w, cell(0).v);
+  const dY = csDeposit(cell(1).u - OFF.y, cell(1).v);
+  const stand: Pose = { x: cfg.backdrop.x + OFF.w, y: cfg.backdrop.y + dW.z, h: SOUTH }; // facing south, rear to the backdrop
+  const standY: Pose = { ...stand, x: cfg.backdrop.x + OFF.y };
   const approach: Pose = { ...stand, y: stand.y + APPROACH };
   const phiW = dW.phi; // + = to the robot's right (west when it faces south)
   const phiY = dY.phi;
@@ -165,13 +169,13 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   // the white pixel: the lock draws back and it drops; the yellow slides down and is held; then the slides, the turret and the lock for the yellow one
   loop.push({ dur: 0.6, at: stand, arm: [lined, open], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 0, offset: 0.3, turn: -phiW }] });
   loop.push({ dur: 0.9, at: stand, arm: [open, lowered], when: { yellowLow: [0, 0.6], gate: [0.6, 1] } });
-  loop.push({ dur: 1.8, at: stand, arm: [lowered, raised], when: { slide: [0, 0.5], turret: [0.5, 1] } });
-  loop.push({ dur: 0.6, at: stand, arm: [raised, openY], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 1, offset: 0.3, turn: -phiY }] });
+  loop.push({ ...leg([stand, standY], SOUTH, SOUTH, 1.8, 0, 0), arm: [lowered, raised], when: { slide: [0, 0.5], turret: [0.5, 1] } });
+  loop.push({ dur: 0.6, at: standY, arm: [raised, openY], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 1, offset: 0.3, turn: -phiY }] });
   // retract: slides up a little and the turret centred together, then the arm folds
-  loop.push({ dur: 1.0, at: stand, arm: [openY, clear1], when: { gate: [0.5, 1] } });
+  loop.push({ dur: 1.0, at: standY, arm: [openY, clear1], when: { gate: [0.5, 1] } });
   // forward again: once it has backed off the board the arm folds, and once the bucket is out from over the backdrop's platform the slides go
   // all the way down, well before the rear reaches the door
-  const exit = leg([stand, lane], SOUTH, SOUTH, 5.0, 0, 0);
+  const exit = leg([standY, lane], SOUTH, SOUTH, 5.0, 0, 0);
   const uFold = firstU(exit, (p) => p.y > stand.y + FOLD_AT);
   const uDown = firstU(exit, (p) => p.y > stand.y + DOWN_AT);
   loop.push({

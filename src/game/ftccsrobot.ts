@@ -42,7 +42,7 @@ const WAIT: CSPose = { ...CS_WAIT };
 
 /** The path a pixel takes in, in the robot's frame (x, y): lying on the floor ahead, in through the intake, up the ramp, and into the bucket. */
 const FLOOR_Y = 0.34; // the centre of a pixel on the floor sheet
-const IN = { a: [CS.half + CS.ahead, FLOOR_Y], b: [CS.half - 1.7, 1.1], c: [3.4, 2.3] } as const;
+const IN = { a: [CS.half + CS.ahead, FLOOR_Y], b: [CS.half - 1.7, 1.1], c: [3.4, 2.0] } as const;
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const ease = (t: number) => t * t * (3 - 2 * t);
@@ -264,33 +264,37 @@ export function csRobotModel(): Group {
       part(stage, 0.15, CS.slide.len - 0.6, 1.1 - 0.1 * k, "#6d717e", 0.3 * k + 0.5 - 0.15 * k, CS.slide.len / 2, s * CS.slide.rails); // a dark runner down its face
     }
     if (k === 2) {
-      // the arm's hinge, on the top of the highest stage: an axle across between the rails, with a bracket on each rail holding its ends
-      const hinge = cyl(0.3, 0.3, 2 * CS.slide.rails - 0.4, STEEL, 0, 0, 0, 8);
+      // the arm's pivot: an axle across, out behind the slide's rear face and down from the top of the highest stage, held by an aluminium plate
+      // on the outside of each rail that reaches back to it
+      const px = -CS.pivot.out;
+      const py = CS.slide.len + CS.pivot.along;
+      const hinge = cyl(0.3, 0.3, 2 * CS.slide.rails + 1.6, STEEL, 0, 0, 0, 8);
       hinge.rotation.x = Math.PI / 2;
-      hinge.position.set(0, CS.slide.len, 0);
+      hinge.position.set(px, py, 0);
       stage.add(hinge);
-      for (const s of [-1, 1]) part(stage, 1.3, 1.5, 0.35, STEEL, 0.15, CS.slide.len - 0.25, s * 2.25);
+      for (const s of [-1, 1]) {
+        part(stage, -px + 1.0, 3.6, 0.35, "#c9ced6", (px - 0.8) / 2 + 0.1, CS.slide.len - 1.6, s * 3.4); // the plate, on the outside of the rail
+        part(stage, 0.5, 0.5, 0.5, STEEL, px, py, s * 3.8); // the pivot's bolt head
+      }
     }
     slide.add(stage);
     stages.push(stage);
   }
-  g.add(box(2.6, 0.4, 2 * CS.slide.rails + 1.4, PANEL, CS.slide.x - 0.4, 0.9, 0)); // the slide's foot plate on the chassis
+  g.add(box(2.6, 0.25, 2 * CS.slide.rails + 1.4, PANEL, CS.slide.x - 0.4, 0.9, 0)); // the slide's foot plate on the chassis
 
   // ---- the arm on the top of the slide: its frame has local y up the bucket and -x out towards the backdrop
   const arm = new Group();
   arm.name = "cs-arm";
   g.add(arm);
-  const lx = -CS.arm.out; // the link from the hinge to the turret's axis, a printed bar
-  const ly = CS.arm.along;
-  const link = part(arm, Math.hypot(lx, ly) + 0.6, 0.9, 3, BLUE, lx / 2, ly / 2, 0);
-  link.rotation.z = Math.atan2(ly, lx);
-  const servo = cyl(0.9, 0.9, 3.4, BLACK, 0, 0, 0, 10); // the arm's servo, on its hinge
+  // the arm: a printed bar from the pivot out to the turret's servo on the bucket's back (hanging straight down at rest, where the pillar of it shows)
+  part(arm, CS.arm.out - 0.9, 0.9, 3, BLUE, (1.5 - CS.arm.out) / 2, 0, 0);
+  const servo = cyl(0.9, 0.9, 4.4, BLACK, 0, 0, 0, 10); // the arm's servo, on its hinge
   servo.rotation.x = Math.PI / 2;
   servo.position.set(0, 0, 0);
   arm.add(servo);
   const disc = cyl(1.3, 1.3, 0.35, BLUE, 0, 0, 0, 16); // the sprung wiring holder, a blue disc on the hinge's side
   disc.rotation.x = Math.PI / 2;
-  disc.position.set(0.3, 0.7, 1.85);
+  disc.position.set(0.3, 0.7, 4.2);
   arm.add(disc);
 
   // ---- the turret turns the bucket about the axis out of the arm's end (local x); the bucket hangs below it, a back plate with side rails,
@@ -298,9 +302,9 @@ export function csRobotModel(): Group {
   const turret = new Group();
   turret.position.set(-CS.arm.out, CS.arm.along, 0);
   arm.add(turret);
-  const turretServo = cyl(1.2, 1.2, 0.8, BLACK, 0, 0, 0, 14);
+  const turretServo = cyl(1.0, 1.0, 0.8, BLACK, 0, 0, 0, 14);
   turretServo.rotation.z = Math.PI / 2;
-  turretServo.position.set(0.2, 0, 0);
+  turretServo.position.set(1.2, 0, 0);
   turret.add(turretServo); // (the turret's own servo stays put)
   const top = CS.bucket.top;
   const bottom = CS.bucket.low + PIXEL_SIZE.corner / 2; // the lower pixel's lowest point: the bucket ends there, open, so the pixel falls out of it
@@ -312,7 +316,6 @@ export function csRobotModel(): Group {
     part(turret, 0.3, len, 1.6, BLUE, -0.5, mid, s * 1.15); // and the front the same
   }
   part(turret, 1.2, 0.35, 3.9, BLUE, 0, top - 0.17, 0); // the end over the upper pixel
-  part(turret, 1.0, 1.7, 1.6, BLUE, 0, top / 2 + 0.3, 0); // the turret's mount, from its axis down to the bucket
   // the lock, on the back (on top when the bucket lies flat): a small servo with a knob that goes down through the slit into the hole of the
   // lower pixel and holds it by its centre
   const gate = new Group();
