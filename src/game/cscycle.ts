@@ -23,6 +23,8 @@ import type { CenterStageCycle } from "./scenes";
 const GONE = 14; // how far (px) the robot has driven from a stop before the pixel it leaves there changes (a placed one shrinks, a taken one is replaced)
 const FEED = 1.0; // how long a pixel takes to ride in from the floor to its place in the bucket (s)
 const SPIN = 10; // the roller's speed (rad/s)
+const SLIDE_V = 24; // how fast the slides move, up or down alike (px/s on average over a move; they ease in and out)
+const slideTime = (dist: number) => Math.abs(dist) / SLIDE_V; // how long a slide move of `dist` px takes (s)
 const DOOR_CLEAR = CS.reachUp + 0.8; // the robot's centre has to be this far past the Stage Door for the raised intake to be clear of it
 const FOLD_AT = 4; // how far (px) it has driven back off the backdrop before the arm folds,
 const DOWN_AT = 8; // and before the slides go down
@@ -172,23 +174,23 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   const lowered: Arm = { ...open, yellowLow: 1, gate: 0 }; // the yellow slid down to the lower place and held there
   const raised: Arm = { ...lowered, slide: dY.e, turret: phiY };
   const openY: Arm = { ...raised, gate: 1 };
-  const clear1: Arm = { ...openY, slide: Math.min(CS.slide.travel, dY.e + 0.9), turret: 0, gate: 0 }; // slides up slightly and the turret centred
+  const clear1: Arm = { ...openY, turret: 0, gate: 0 }; // the turret centred and the lock shut
 
   const loop: Phase[] = [];
-  // at the backdrop, the last pixel let go: the lock closes, the turret centres and the slides rise a little
+  // at the backdrop, the last pixel let go: the lock closes and the turret centres
   loop.push({ dur: 0.7, at: stand, arm: [openY, clear1], when: { gate: [0.5, 1] } });
   // away from the backdrop in one run: the arm folds once it has backed off the board and the slides go down before the rear reaches the door,
   // then one long turn, the intake coming down as it drives up to the pixels, the yellow taken first and the white as it comes to rest
   const A = run(pathA, 5.0, 0, 0, 1);
   const uFold = firstU(A, (p) => p.y > stand.y + FOLD_AT);
-  const uDown = firstU(A, (p) => p.y > stand.y + DOWN_AT);
+  const uDown = Math.max(firstU(A, (p) => p.y > stand.y + DOWN_AT), uFold + 0.1 + 0.01); // the slides go down once the arm is in
   const toPixels = (p: { x: number; y: number }) => Math.hypot(p.x - yStand.x, p.y - yStand.y);
   const uI0 = firstU(A, (p) => toPixels(p) < 24);
   const uI1 = firstU(A, (p) => toPixels(p) < 12);
   loop.push({
     ...A,
     arm: [clear1, S],
-    when: { arm: [uFold, uFold + 0.1], slide: [uDown, Math.min(1, uDown + 0.15)], intake: [uI0, uI1] },
+    when: { arm: [uFold, uFold + 0.1], slide: [uDown, Math.min(1, uDown + slideTime(clear1.slide) / A.dur)], intake: [uI0, uI1] },
     marks: [
       { what: "clear", index: 0, offset: farOffset(A, stand, GONE) },
       { what: "clear", index: 1, offset: farOffset(A, stand, GONE) + 0.2 },
@@ -204,7 +206,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   loop.push({
     ...B1,
     arm: [S, lifted],
-    when: { intake: [0.14, 0.34], slide: [uClear, 1] },
+    when: { intake: [0.14, 0.34], slide: [uClear, Math.min(1, uClear + slideTime(dW.e) / B1.dur)] },
     marks: [
       { what: "spawn", index: 0, offset: farOffset(B1, wStand, GONE) },
       { what: "spawn", index: 1, offset: farOffset(B1, wStand, GONE) + 0.25 },
@@ -215,7 +217,8 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   loop.push({ dur: 0.7, at: stand, arm: [armBack, lined] });
   loop.push({ dur: 0.5, at: stand, arm: [lined, open], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 0, offset: 0.25, turn: -phiW }] });
   loop.push({ dur: 0.7, at: stand, arm: [open, lowered], when: { yellowLow: [0, 0.6], gate: [0.6, 1] } });
-  loop.push({ dur: 1.5, at: stand, arm: [lowered, raised], when: { slide: [0, 0.5], turret: [0.5, 1] } });
+  const upW = slideTime(dY.e - dW.e) / 1.3; // the slides go up first, then the turret turns
+  loop.push({ dur: 1.3, at: stand, arm: [lowered, raised], when: { slide: [0, upW], turret: [upW + 0.02, 1] } });
   loop.push({ dur: 0.5, at: stand, arm: [raised, openY], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 1, offset: 0.25, turn: -phiY }] });
   const loopTotal = loop.reduce((s, p) => s + p.dur, 0);
 
