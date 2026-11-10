@@ -238,11 +238,11 @@ export const CS = {
   ahead: 3, // how far past the front a pixel lies, centre, when the roller takes it
   reachUp: 9, // how far the intake sticks out ahead of the robot's centre when it is raised for driving
   lean: Math.PI / 6, // the slide's lean from vertical
-  slide: { x: -4, y: 1, len: 6.6, travel: 13.6, rails: 2.8 }, // its foot, the length of each stage, how far it extends at most (three stages) and how far the two rails stand either side of the middle (the arm and bucket pass between them)
+  slide: { x: -3, y: 1, len: 6.6, travel: 12.5, rails: 2.8 }, // its foot, the length of each stage, how far it extends at most (three stages) and how far the two rails stand either side of the middle (the arm and bucket pass between them)
   // the arm from the top of the slide to the turret: along the slide (negative: down it) and out towards the backdrop. Arm and bucket are one piece
   // turning about the slide's top. At rest (`fold`, 60 degrees on) they lie flat inside the robot, the bucket forward of the turret's axis; they swing
   // back through 60 degrees, out of the robot's back, to the deposit position, where the bucket is parallel to the backdrop.
-  arm: { along: -1.9, out: 3.12, fold: -Math.PI / 3 },
+  arm: { along: 0, out: 4.7, fold: -Math.PI / 3 }, // (the arm hangs straight down from the hinge at rest, and its end, the turret's axis, is 4.7 below it)
   // how far below the turret's axis the pixel nearer the opening and the one above it sit (one pixel's height apart); where the bucket's closed top
   // end is (above the axis: positive; this one starts below it). The bucket is just long enough for the two pixels, closed at the top, open at the bottom
   bucket: { low: 5.8, high: 2.9, top: -(2.9 - PIXEL_SIZE.corner / 2 - 0.35) },

@@ -192,7 +192,7 @@ export function csRobotModel(): Group {
   part(g, 2.6, 0.08, 1.0, "#4a4d58", -1.2, 4.23, WHEEL_Z); // its label
   part(g, 3.2, 0.5, 1.4, "#1b1d24", -1.2, 4.5, WHEEL_Z); // the expansion hub stacked on it
   part(g, 0.5, 0.35, 0.5, TEAL, 0.2, 4.9, WHEEL_Z); // a power switch
-  for (const wx of [-3.2, -2.4]) part(g, 0.14, 0.14, 2 * IN_Z + 0.6, BLACK, wx, 1.5, 0); // black wires and servo leads across, under the bucket
+  for (const wx of [-3.2, -2.4]) part(g, 0.14, 0.14, 2 * IN_Z + 0.6, BLACK, wx, 1.0, 0); // black wires and servo leads across, under the bucket
 
   // ---- the ramp: a plate from the intake's mouth up to the bucket, with rows of yellow fingers across it
   const ramp = new Group();
@@ -251,6 +251,7 @@ export function csRobotModel(): Group {
 
   // ---- the slide: three stages, a pair of rails each, leaning back at CS.lean; the foot of the lowest is at CS.slide
   const slide = new Group();
+  slide.name = "cs-slide";
   slide.position.set(CS.slide.x, CS.slide.y, 0);
   slide.rotation.z = CS.lean; // its local y runs up the slide, its local -x towards the backdrop
   g.add(slide);
@@ -262,7 +263,14 @@ export function csRobotModel(): Group {
       part(stage, 1.2 - 0.3 * k, CS.slide.len, 1 - 0.1 * k, shades[k], 0.3 * k, CS.slide.len / 2, s * CS.slide.rails);
       part(stage, 0.15, CS.slide.len - 0.6, 1.1 - 0.1 * k, "#6d717e", 0.3 * k + 0.5 - 0.15 * k, CS.slide.len / 2, s * CS.slide.rails); // a dark runner down its face
     }
-    if (k === 0) part(stage, 0.6, 0.5, 2 * CS.slide.rails, "#6d717e", 0, 0.5, 0); // a cross-piece tying the pair at the foot (the arm and the bucket pass between the rails)
+    if (k === 2) {
+      // the arm's hinge, on the top of the highest stage: an axle across between the rails, with a bracket on each rail holding its ends
+      const hinge = cyl(0.3, 0.3, 2 * CS.slide.rails - 0.4, STEEL, 0, 0, 0, 8);
+      hinge.rotation.x = Math.PI / 2;
+      hinge.position.set(0, CS.slide.len, 0);
+      stage.add(hinge);
+      for (const s of [-1, 1]) part(stage, 1.3, 1.5, 0.35, STEEL, 0.15, CS.slide.len - 0.25, s * 2.25);
+    }
     slide.add(stage);
     stages.push(stage);
   }
@@ -270,10 +278,11 @@ export function csRobotModel(): Group {
 
   // ---- the arm on the top of the slide: its frame has local y up the bucket and -x out towards the backdrop
   const arm = new Group();
+  arm.name = "cs-arm";
   g.add(arm);
   const lx = -CS.arm.out; // the link from the hinge to the turret's axis, a printed bar
   const ly = CS.arm.along;
-  const link = part(arm, Math.hypot(lx, ly) + 0.6, 0.6, 3, BLUE, lx / 2, ly / 2, 0);
+  const link = part(arm, Math.hypot(lx, ly) + 0.6, 0.9, 3, BLUE, lx / 2, ly / 2, 0);
   link.rotation.z = Math.atan2(ly, lx);
   const servo = cyl(0.9, 0.9, 3.4, BLACK, 0, 0, 0, 10); // the arm's servo, on its hinge
   servo.rotation.x = Math.PI / 2;
@@ -303,6 +312,7 @@ export function csRobotModel(): Group {
     part(turret, 0.3, len, 1.6, BLUE, -0.5, mid, s * 1.15); // and the front the same
   }
   part(turret, 1.2, 0.35, 3.9, BLUE, 0, top - 0.17, 0); // the end over the upper pixel
+  part(turret, 1.0, 1.7, 1.6, BLUE, 0, top / 2 + 0.3, 0); // the turret's mount, from its axis down to the bucket
   // the lock, on the back (on top when the bucket lies flat): a small servo with a knob that goes down through the slit into the hole of the
   // lower pixel and holds it by its centre
   const gate = new Group();
