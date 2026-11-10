@@ -249,7 +249,8 @@ export function csRobotModel(): Group {
   }
   part(g, 0.5, 0.5, 2 * ARM_Z, BLUE, PIVOT.x, 0.5, 0);
 
-  // ---- the slide: three stages, a pair of rails each, leaning back at CS.lean; the foot of the lowest is at CS.slide
+  // ---- the slide: three stages stacked side by side, one stack against each inner plate (the lowest stage fixed to the plate, the next beside it, and
+  // the highest, which carries the arm, innermost), leaning back at CS.lean; the foot of the lowest is at CS.slide
   const slide = new Group();
   slide.name = "cs-slide";
   slide.position.set(CS.slide.x, CS.slide.y, 0);
@@ -257,30 +258,36 @@ export function csRobotModel(): Group {
   g.add(slide);
   const stages: Group[] = [];
   const shades = [STEEL, SILVER, "#e2e5ec"];
+  const stageZ = (k: number) => CS.slide.rails + (2 - k) * CS.slide.pitch;
   for (let k = 0; k < 3; k++) {
     const stage = new Group();
+    const w = 1.2 - 0.1 * k;
     for (const s of [-1, 1]) {
-      part(stage, 1.2 - 0.3 * k, CS.slide.len, 1 - 0.1 * k, shades[k], 0.3 * k, CS.slide.len / 2, s * CS.slide.rails);
-      part(stage, 0.15, CS.slide.len - 0.6, 1.1 - 0.1 * k, "#6d717e", 0.3 * k + 0.5 - 0.15 * k, CS.slide.len / 2, s * CS.slide.rails); // a dark runner down its face
+      part(stage, w, CS.slide.len, CS.slide.pitch - 0.08, shades[k], 0, CS.slide.len / 2, s * stageZ(k));
+      part(stage, 0.12, CS.slide.len - 0.6, CS.slide.pitch - 0.3, "#6d717e", -w / 2, CS.slide.len / 2, s * stageZ(k)); // a dark runner down its rear face
     }
     if (k === 2) {
-      // the arm's pivot: an axle across, out behind the slide's rear face and down from the top of the highest stage, held by an aluminium plate
-      // on the outside of each rail that reaches back to it
+      // the arm's pivot: an axle across between the two stacks, out behind the slide's rear face and down from the top of the highest stage, held by
+      // an aluminium plate on the inner side of each highest stage that reaches back to it
       const px = -CS.pivot.out;
       const py = CS.slide.len + CS.pivot.along;
-      const hinge = cyl(0.3, 0.3, 2 * CS.slide.rails + 1.6, STEEL, 0, 0, 0, 8);
+      const zi = stageZ(2) - CS.slide.pitch / 2 - 0.2; // the plate's middle, just inside the stage
+      const hinge = cyl(0.3, 0.3, 2 * zi + 0.4, STEEL, 0, 0, 0, 8);
       hinge.rotation.x = Math.PI / 2;
       hinge.position.set(px, py, 0);
       stage.add(hinge);
       for (const s of [-1, 1]) {
-        part(stage, -px + 1.0, 3.6, 0.35, "#c9ced6", (px - 0.8) / 2 + 0.1, CS.slide.len - 1.6, s * 3.4); // the plate, on the outside of the rail
-        part(stage, 0.5, 0.5, 0.5, STEEL, px, py, s * 3.8); // the pivot's bolt head
+        part(stage, -px + 1.0, 3.6, 0.35, "#c9ced6", (px - 0.8) / 2 + 0.1, CS.slide.len - 1.6, s * zi); // the plate
+        part(stage, 1.0, 0.8, 0.6, STEEL, -0.2, CS.slide.len - 0.4, s * (zi + 0.2)); // and the bracket that joins it to the stage
       }
     }
     slide.add(stage);
     stages.push(stage);
   }
-  g.add(box(2.6, 0.25, 2 * CS.slide.rails + 1.4, PANEL, CS.slide.x - 0.4, 0.9, 0)); // the slide's foot plate on the chassis
+  for (const s of [-1, 1]) {
+    for (const y of [1.2, 4.0]) part(slide, 1.4, 0.6, 0.5, STEEL, 0, y, s * (IN_Z - 0.0)); // clamps holding the lowest stage to the inner plate
+    g.add(box(2.6, 0.25, 1.2, PANEL, CS.slide.x - 0.4, 0.9, s * (IN_Z - 0.55))); // and its foot on the chassis, under the stack
+  }
 
   // ---- the arm on the top of the slide: its frame has local y up the bucket and -x out towards the backdrop
   const arm = new Group();
@@ -288,13 +295,13 @@ export function csRobotModel(): Group {
   g.add(arm);
   // the arm: a printed bar from the pivot out to the turret's servo on the bucket's back (hanging straight down at rest, where the pillar of it shows)
   part(arm, CS.arm.out - 0.9, 0.9, 3, BLUE, (1.5 - CS.arm.out) / 2, 0, 0);
-  const servo = cyl(0.9, 0.9, 4.4, BLACK, 0, 0, 0, 10); // the arm's servo, on its hinge
+  const servo = cyl(0.9, 0.9, 3.9, BLACK, 0, 0, 0, 10); // the arm's servo, on its hinge
   servo.rotation.x = Math.PI / 2;
   servo.position.set(0, 0, 0);
   arm.add(servo);
   const disc = cyl(1.3, 1.3, 0.35, BLUE, 0, 0, 0, 16); // the sprung wiring holder, a blue disc on the hinge's side
   disc.rotation.x = Math.PI / 2;
-  disc.position.set(0.3, 0.7, 4.2);
+  disc.position.set(0.3, 0.7, 2.15);
   arm.add(disc);
 
   // ---- the turret turns the bucket about the axis out of the arm's end (local x); the bucket hangs below it, a back plate with side rails,
