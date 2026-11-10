@@ -107,27 +107,31 @@ function perforated() {
   return nearestTexture(c);
 }
 
+/** A wheel is as wide as the gap it stands in: the pod between an outer plate and an inner plate is only just wider. */
+const WHEEL_Z = 6.0;
+const WHEEL_W = 1.5;
+
 /** A mecanum wheel with its axle along z: black body, grey hub. */
 function wheel(x: number, z: number): Group {
   const g = new Group();
-  const body = cyl(1.5, 1.5, 1.3, "#17171c", 0, 0, 0, 12);
+  const body = cyl(1.5, 1.5, WHEEL_W, "#17171c", 0, 0, 0, 12);
   body.rotation.x = Math.PI / 2;
   body.position.set(0, 0, 0);
   g.add(body);
   // the mecanum rollers round the rim, each set at 45 degrees to the axle, so the wheel reads as one from above
   for (let k = 0; k < 10; k++) {
     const a = (k * Math.PI) / 5;
-    const roller = mesh(new BoxGeometry(0.5, 0.55, 1.2), toon(k % 2 ? "#4a4d58" : "#2f323c"), Math.cos(a) * 1.5, Math.sin(a) * 1.5, 0);
+    const roller = mesh(new BoxGeometry(0.5, 0.55, WHEEL_W - 0.1), toon(k % 2 ? "#4a4d58" : "#2f323c"), Math.cos(a) * 1.5, Math.sin(a) * 1.5, 0);
     roller.rotation.order = "ZXY";
     roller.rotation.z = a;
     roller.rotation.x = Math.PI / 4;
     g.add(roller);
   }
-  const hub = cyl(0.8, 0.8, 1.5, SILVER, 0, 0, 0, 8);
+  const hub = cyl(0.8, 0.8, WHEEL_W + 0.1, SILVER, 0, 0, 0, 8);
   hub.rotation.x = Math.PI / 2;
   hub.position.set(0, 0, 0);
   g.add(hub);
-  const cap = cyl(0.35, 0.35, 1.7, "#7d818c", 0, 0, 0, 8); // the axle's end
+  const cap = cyl(0.35, 0.35, WHEEL_W + 0.2, "#7d818c", 0, 0, 0, 8); // the axle's end
   cap.rotation.x = Math.PI / 2;
   cap.position.set(0, 0, 0);
   g.add(cap);
@@ -143,12 +147,12 @@ export function csRobotModel(): Group {
   // ---- the chassis: a floor plate, and the four mecanum wheels, each pair between an outer and an inner plate (clear acrylic edged in
   // aluminium, so they read from above), tied across the top of each pod by rods
   g.add(box(11.6, 0.4, 11.4, PANEL, -0.5, 0.5, 0)); // its top is at 0.9
-  for (const sx of [-4.6, 4.2]) for (const sz of [-5.1, 5.1]) g.add(wheel(sx, sz));
+  for (const sx of [-4.6, 4.2]) for (const sz of [-WHEEL_Z, WHEEL_Z]) g.add(wheel(sx, sz));
   const clear = new MeshLambertMaterial({ color: "#cfe9f2", transparent: true, opacity: 0.28, depthWrite: false });
   const inner = new MeshLambertMaterial({ color: "#b9dbe6", transparent: true, opacity: 0.45, depthWrite: false });
   const sideTex = sideTexture();
   const plateTex = plateTexture();
-  const IN_Z = 3.9; // the inner plates stand this far either side of the middle, just inside the wheels
+  const IN_Z = WHEEL_Z - WHEEL_W / 2 - 0.2; // the inner plates stand just inside the wheels, so each wheel is packed between its two plates
   const IN_H = 5.6;
   for (const s of [-1, 1]) {
     g.add(mesh(new BoxGeometry(2 * HALF, H - 0.3, 0.25), clear, 0, 0.3 + (H - 0.3) / 2, s * (HALF - 0.125))); // the outer plate
@@ -169,25 +173,25 @@ export function csRobotModel(): Group {
     part(g, 12.4, 0.3, 0.45, STEEL, -0.4, IN_H, s * IN_Z); // with its rim
     for (const rx of [-5.2, -2.6, 0, 2.6, 5.2]) part(g, 0.3, 0.3, HALF - 0.25 - IN_Z, STEEL, rx, IN_H - 0.15, s * ((HALF - 0.25 + IN_Z) / 2)); // rods across the pod
     // in each pod, between the wheels: a deck over the motors, with the electronics on it
-    part(g, 2.6, 0.25, HALF - 0.25 - IN_Z - 0.3, "#2a2d36", -1.2, 3.6, s * ((HALF - 0.25 + IN_Z) / 2));
+    part(g, 3.4, 0.25, HALF - 0.25 - IN_Z - 0.3, "#2a2d36", -1.2, 3.6, s * ((HALF - 0.25 + IN_Z) / 2));
     for (const mx of [-1.9, -0.4]) {
-      const motor = cyl(0.7, 0.7, 1.7, "#2a2d36", mx, 0, s * 5.2, 10);
+      const motor = cyl(0.7, 0.7, 1.4, "#2a2d36", mx, 0, s * WHEEL_Z, 10);
       motor.rotation.x = Math.PI / 2;
-      motor.position.set(mx, 2.1, s * 5.2);
+      motor.position.set(mx, 2.1, s * WHEEL_Z);
       g.add(motor);
-      part(g, 0.3, 1.4, 1, "#3a3d48", mx + 0.9, 2.4, s * 5.2);
+      part(g, 0.3, 1.4, 0.9, "#3a3d48", mx + 0.9, 2.4, s * WHEEL_Z);
     }
   }
   g.add(mesh(new BoxGeometry(0.25, H - 0.3, 2 * HALF), clear, HALF - 0.125, 0.3 + (H - 0.3) / 2, 0)); // the front
   g.add(box(0.5, 0.3, 2 * HALF, STEEL, HALF - 0.25, H - 0.15, 0)); // its rim
   // the electronics on the decks: the battery on the left, the control and expansion hubs on the right, wires across the ramp between them
-  part(g, 2.4, 1.7, 1.9, PANEL, -1.3, 4.6, -5.6);
-  part(g, 1.6, 0.12, 0.8, YELLOW, -1.3, 5.5, -5.6); // its strap
-  part(g, 0.5, 0.5, 0.5, RED, -0.05, 4.1, -5.6); // the connector
-  part(g, 2.4, 0.5, 2.0, BLACK, -1.3, 3.95, 5.6); // the control hub
-  part(g, 2.0, 0.08, 1.2, "#4a4d58", -1.3, 4.23, 5.6); // its label
-  part(g, 2.4, 0.5, 2.0, "#1b1d24", -1.3, 4.5, 5.6); // the expansion hub stacked on it
-  part(g, 0.5, 0.35, 0.5, TEAL, -0.2, 4.9, 5.6); // a power switch
+  part(g, 3.2, 1.7, 1.4, PANEL, -1.2, 4.6, -WHEEL_Z);
+  part(g, 2.2, 0.12, 0.8, YELLOW, -1.2, 5.5, -WHEEL_Z); // its strap
+  part(g, 0.5, 0.5, 0.5, RED, 0.7, 4.1, -WHEEL_Z); // the connector
+  part(g, 3.2, 0.5, 1.4, BLACK, -1.2, 3.95, WHEEL_Z); // the control hub
+  part(g, 2.6, 0.08, 1.0, "#4a4d58", -1.2, 4.23, WHEEL_Z); // its label
+  part(g, 3.2, 0.5, 1.4, "#1b1d24", -1.2, 4.5, WHEEL_Z); // the expansion hub stacked on it
+  part(g, 0.5, 0.35, 0.5, TEAL, 0.2, 4.9, WHEEL_Z); // a power switch
   for (const wx of [-3.2, -2.4]) part(g, 0.14, 0.14, 2 * IN_Z + 0.6, BLACK, wx, 1.5, 0); // black wires and servo leads across, under the bucket
 
   // ---- the ramp: a plate from the intake's mouth up to the bucket, with rows of yellow fingers across it
