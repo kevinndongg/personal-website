@@ -1,12 +1,12 @@
 // The Center Stage robot's loop, forever, starting at the east wall: one job, the two pixels there to the backdrop.
 //
-// It stands facing east with the intake arm down, takes the yellow pixel in (the roller pulls it in and up the ramp into the bucket's upper
-// place), creeps forward and takes the white one in behind it (the lower place), then backs off west with the arm coming up, spins to face
-// south and reverses north under the Stage Door to the backdrop, rear first. Once its front is clear of the door the slides rise; at the
-// backdrop the arm swings back (parallel to the backdrop), the turret turns and the lock lets go: the white pixel drops in the second row,
-// just left of the green one. The yellow slides down to the lower place and the lock holds it; the slides rise, the turret turns the other way
-// and the lock lets go: the yellow one drops on the purple and the green, a mosaic. Then it retracts (slides up a little and the turret
-// centres, the arm folds, the slides go down) while it drives forward again, and back round to the wall.
+// It is one smooth run each way. Away from the backdrop it drives straight south under the Stage Door (the arm folds and the slides go down as
+// it goes), then turns in one long curve to the east and drives up to the pixels, the intake coming down and the roller starting as it
+// approaches: the yellow pixel is pulled in (up the ramp into the bucket's upper place) and the white one behind it, as it comes to rest. Then it
+// reverses along the same path, the intake lifting, turning as it goes and running north under the door; once its front is clear it slows, and
+// as it slows the slides rise and the arm swings back (parallel to the backdrop). It then stands in one place, and only the turret and the slides
+// move: the turret turns, the lock lets go and the white pixel drops in the second row, just left of the green one; the yellow slides down to the
+// lower place and is held; the slides rise, the turret turns the other way and the yellow one drops on the purple and the green, a mosaic.
 //
 // The game pieces are persistent. The two pixels at the wall shrink away as the roller takes them and fresh ones grow back once the robot
 // has driven off; the two it places show on the backdrop until it has driven away, and then shrink, so the next lap can do it again. That is
@@ -27,7 +27,6 @@ const SPIN = 10; // the roller's speed (rad/s)
 const DOOR_CLEAR = CS.reachUp + 0.8; // the robot's centre has to be this far past the Stage Door for the raised intake to be clear of it
 const FOLD_AT = 4; // how far (px) it has driven back off the backdrop before the arm folds,
 const DOWN_AT = 8; // and before the slides go down
-const APPROACH = 3; // how far (px) short of the backdrop's stand it stops to raise the slides and swing the arm, before creeping in
 
 const smooth = (k: number) => {
   const c = Math.min(1, Math.max(0, k));
@@ -69,8 +68,8 @@ interface Phase {
   /** Where the robot stands (a stop), turning to `turn` by the end of the phase if it is given. */
   at?: Pose;
   turn?: number;
-  /** Or the route it drives, with the heading it sets off with and the one it stops with, and its speed profile (the default eases in and out). */
-  route?: { curve: CatmullRomCurve3; h0: number; h1: number; ease?: (u: number) => number };
+  /** Or the route it drives, with the heading it sets off with and the one it stops with (or, `follow`, its heading following the path, nose first or tail first), and its speed profile (the default eases in and out). */
+  route?: { curve: CatmullRomCurve3; h0: number; h1: number; follow?: 1 | -1; ease?: (u: number) => number };
   arm: [Arm, Arm];
   /** When, as a fraction of the phase, each joint moves (the rest move throughout), so that one joint can follow another. */
   when?: Partial<Record<Channel, [number, number]>>;
@@ -83,46 +82,79 @@ const FADE = { pick: 0.06, spawn: 0.4, drop: 0.5, clear: 0.4 };
 export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   const A0 = CS.half + CS.ahead; // how far ahead of the robot's centre a pixel lies when the roller has it
 
-  // ---- where it stands
+  // ---- where it stands, and the one smooth path between the backdrop and the wall
   const yStand: Pose = { x: cfg.yellow.x - A0, y: cfg.yellow.y, h: 0 }; // the yellow pixel straight ahead
   const wStand: Pose = { x: cfg.white.x - A0, y: cfg.white.y, h: 0 };
-  const lane: Pose = { x: cfg.door.x, y: cfg.yellow.y, h: 0 }; // where it turns, in the lane under the door and on the pixels' row
   const SOUTH = Math.PI / 2;
 
-  // the two deposits: the turret's angle and the slide's extension for each pixel's place on the backdrop
+  // the two deposits, from one stand between them: the turret's angle and the slide's extension for each pixel's place on the backdrop
   const cell = (n: number) => backdropCell(BACKDROP_PLACE[n].row, BACKDROP_PLACE[n].col);
-  // the lower pixel is only 3.9 px from the turret's axis, so the turret alone (60 degrees) reaches 3.4 px to either side: it stands a little off the
-  // backdrop's middle for the white (left of centre) and strafes right, across the board, for the yellow
-  const OFF = { w: -0.55, y: 2.0 };
-  const dW = csDeposit(cell(0).u - OFF.w, cell(0).v);
-  const dY = csDeposit(cell(1).u - OFF.y, cell(1).v);
-  const stand: Pose = { x: cfg.backdrop.x + OFF.w, y: cfg.backdrop.y + dW.z, h: SOUTH }; // facing south, rear to the backdrop
-  const standY: Pose = { ...stand, x: cfg.backdrop.x + OFF.y };
-  const approach: Pose = { ...stand, y: stand.y + APPROACH };
+  const OFF = (cell(0).u + cell(1).u) / 2; // across the board, halfway between the two places, so the turret reaches both from where it stands
+  const dW = csDeposit(cell(0).u - OFF, cell(0).v);
+  const dY = csDeposit(cell(1).u - OFF, cell(1).v);
+  const stand: Pose = { x: cfg.backdrop.x + OFF, y: cfg.backdrop.y + dW.z, h: SOUTH }; // facing south, rear to the backdrop
   const phiW = dW.phi; // + = to the robot's right (west when it faces south)
   const phiY = dY.phi;
 
+  // the path out from the backdrop: straight south under the door, then one long turn to the east and in a straight line to the pixels (the way
+  // back is the same path travelled in reverse)
+  const ROW = cfg.yellow.y;
+  const yClear = cfg.door.y - DOOR_CLEAR; // how far north its front is clear of the door
+  const ySplit = stand.y + 9; // and where it begins to slow for the stand
+  const TURN = 16; // how long the turn is (px of path): its heading eases from south to east, so it begins and ends without a jolt of the steering
+  const bend: { x: number; y: number }[] = [];
+  {
+    let x = 0;
+    let y = 0;
+    let prev = Math.PI / 2;
+    bend.push({ x, y });
+    for (let i = 1; i <= 20; i++) {
+      const th = (Math.PI / 2) * (1 - smooth(i / 20)); // the heading, from south (pi/2) to east (0)
+      x += Math.cos((th + prev) / 2) * (TURN / 20);
+      y += Math.sin((th + prev) / 2) * (TURN / 20);
+      prev = th;
+      bend.push({ x, y });
+    }
+  }
+  const bendEnd = bend[bend.length - 1];
+  const arc = bend.map((q) => ({ x: stand.x + q.x, y: ROW - bendEnd.y + q.y }));
+  const outward = [{ x: stand.x, y: cfg.door.y + 2 }, ...arc, yStand, wStand]; // from the door to the pixels
+  const pathA = [stand, ...outward];
+  const pathB1 = [...outward].reverse().concat({ x: stand.x, y: ySplit }); // reversing, to where it begins to slow
+  const pathB2 = [{ x: stand.x, y: ySplit }, stand];
+
+  /** `pts` with more points between any two that are far apart, so the spline through them has no sudden change of pace. */
+  const fill = (pts: { x: number; y: number }[], step = 2.5) => {
+    const out = [pts[0]];
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1];
+      const b = pts[i];
+      const n = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / step);
+      for (let k = 1; k <= n; k++) out.push({ x: lerp(a.x, b.x, k / n), y: lerp(a.y, b.y, k / n) });
+    }
+    return out;
+  };
   const curve = (pts: { x: number; y: number }[]) => {
     const c = new CatmullRomCurve3(
-      pts.map((p) => new Vector3(p.x, 0, p.y)),
+      fill(pts).map((p) => new Vector3(p.x, 0, p.y)),
       false,
       "centripetal"
     );
-    c.arcLengthDivisions = 600;
+    c.arcLengthDivisions = 1600;
     return c;
   };
-  /** A run along `pts` taking `dur`, leaving at `v0` px/s and arriving at `v1`; the heading goes from `h0` to `h1`. */
-  const leg = (pts: { x: number; y: number }[], h0: number, h1: number, dur: number, v0: number, v1: number) => {
+  /** A run along `pts` taking `dur`, leaving at `v0` px/s and arriving at `v1`, its heading following the path (`dir` 1: forwards; -1: reversing). */
+  const run = (pts: { x: number; y: number }[], dur: number, v0: number, v1: number, dir: 1 | -1) => {
     const c = curve(pts);
     const d = c.getLength();
-    return { dur, route: { curve: c, h0, h1, ease: hermite((v0 * dur) / d, (v1 * dur) / d) } };
+    return { dur, route: { curve: c, h0: 0, h1: 0, follow: dir, ease: hermite((v0 * dur) / d, (v1 * dur) / d) } };
   };
   type Drive = { dur: number; route: { curve: CatmullRomCurve3; ease?: (u: number) => number } };
   const pointAt = (ph: Drive, u: number) => ph.route.curve.getPointAt(Math.min(1, Math.max(0, ph.route.ease ? ph.route.ease(u) : smooth(u))));
   /** How far into a driving phase (0..1) the robot first satisfies `test` (the end if it never does). */
   const firstU = (ph: Drive, test: (p: { x: number; y: number }) => boolean) => {
-    for (let n = 0; n <= 400; n++) {
-      const u = n / 400;
+    for (let n = 0; n <= 800; n++) {
+      const u = n / 800;
       const q = pointAt(ph, u);
       if (test({ x: q.x, y: q.z })) return u;
     }
@@ -144,51 +176,48 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   const clear1: Arm = { ...openY, slide: Math.min(CS.slide.travel, dY.e + 0.9), turret: 0, gate: 0 }; // slides up slightly and the turret centred
 
   const loop: Phase[] = [];
-  // the yellow pixel in, then a short creep to the white one and the same
-  loop.push({ dur: 0.9, at: yStand, arm: [S, S], marks: [{ what: "pick", index: 0, offset: 0.1 }] });
-  loop.push({ ...leg([yStand, wStand], 0, 0, 1.0, 0, 0), arm: [S, S], marks: [{ what: "pick", index: 1, offset: 0.9 }] });
-  loop.push({ dur: 0.7, at: wStand, arm: [S, S] });
-  // backing west with the arm coming up; the new pixels at the wall appear once it is well away
-  const backWest = leg([wStand, lane], 0, 0, 2.1, 0, 0);
+  // at the backdrop, the last pixel let go: the lock closes, the turret centres and the slides rise a little
+  loop.push({ dur: 1.0, at: stand, arm: [openY, clear1], when: { gate: [0.5, 1] } });
+  // away from the backdrop in one run: the arm folds once it has backed off the board and the slides go down before the rear reaches the door,
+  // then one long turn, the intake coming down as it drives up to the pixels, the yellow taken first and the white as it comes to rest
+  const A = run(pathA, 6.8, 0, 0, 1);
+  const uFold = firstU(A, (p) => p.y > stand.y + FOLD_AT);
+  const uDown = firstU(A, (p) => p.y > stand.y + DOWN_AT);
+  const toPixels = (p: { x: number; y: number }) => Math.hypot(p.x - yStand.x, p.y - yStand.y);
+  const uI0 = firstU(A, (p) => toPixels(p) < 24);
+  const uI1 = firstU(A, (p) => toPixels(p) < 12);
   loop.push({
-    ...backWest,
-    arm: [S, driving],
-    when: { intake: [0.05, 0.45] },
+    ...A,
+    arm: [clear1, S],
+    when: { arm: [uFold, uFold + 0.1], slide: [uDown, Math.min(1, uDown + 0.15)], intake: [uI0, uI1] },
     marks: [
-      { what: "spawn", index: 0, offset: farOffset(backWest, wStand, GONE) },
-      { what: "spawn", index: 1, offset: farOffset(backWest, wStand, GONE) + 0.25 },
+      { what: "clear", index: 0, offset: farOffset(A, stand, GONE) },
+      { what: "clear", index: 1, offset: farOffset(A, stand, GONE) + 0.2 },
+      { what: "pick", index: 0, offset: firstU(A, (p) => p.x >= yStand.x - 0.01) * A.dur },
+      { what: "pick", index: 1, offset: A.dur },
     ],
   });
-  loop.push({ dur: 0.8, at: lane, turn: SOUTH, arm: [driving, driving] });
-  // reversing north, under the door: the slides rise only once the front is clear of it
-  const north = leg([{ x: lane.x, y: lane.y }, approach], SOUTH, SOUTH, 4.4, 0, 0);
-  const uClear = firstU(north, (p) => p.y < cfg.door.y - DOOR_CLEAR);
-  loop.push({ ...north, arm: [driving, lifted], when: { slide: [uClear, Math.min(1, uClear + 0.3)] } });
-  loop.push({ dur: 0.9, at: approach, arm: [lifted, armBack] });
-  loop.push({ ...leg([approach, stand], SOUTH, SOUTH, 1.0, 0, 0), arm: [armBack, lined], when: { turret: [0.1, 0.95] } });
-  // the white pixel: the lock draws back and it drops; the yellow slides down and is held; then the slides, the turret and the lock for the yellow one
+  loop.push({ dur: 0.6, at: wStand, arm: [S, S] }); // the roller finishes taking the white one in
+  // back to the backdrop in one run, reversing: the intake lifts, the new pixels appear at the wall once it is away, it turns as it goes and runs
+  // north under the door; once its front is clear the slides rise, and as it slows to a stop the arm swings back
+  const B1 = run(pathB1, 5.8, 0, 6, -1);
+  const uClear = firstU(B1, (p) => p.y < yClear);
+  loop.push({
+    ...B1,
+    arm: [S, lifted],
+    when: { intake: [0.1, 0.3], slide: [uClear, 1] },
+    marks: [
+      { what: "spawn", index: 0, offset: farOffset(B1, wStand, GONE) },
+      { what: "spawn", index: 1, offset: farOffset(B1, wStand, GONE) + 0.25 },
+    ],
+  });
+  loop.push({ ...run(pathB2, 3.0, 6, 0, -1), arm: [lifted, armBack], when: { arm: [0.2, 0.9] } });
+  // then it stands there, and only the turret and the slides move: the white pixel, the yellow one down to the lower place, then the yellow
+  loop.push({ dur: 0.9, at: stand, arm: [armBack, lined] });
   loop.push({ dur: 0.6, at: stand, arm: [lined, open], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 0, offset: 0.3, turn: -phiW }] });
   loop.push({ dur: 0.9, at: stand, arm: [open, lowered], when: { yellowLow: [0, 0.6], gate: [0.6, 1] } });
-  loop.push({ ...leg([stand, standY], SOUTH, SOUTH, 1.8, 0, 0), arm: [lowered, raised], when: { slide: [0, 0.5], turret: [0.5, 1] } });
-  loop.push({ dur: 0.6, at: standY, arm: [raised, openY], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 1, offset: 0.3, turn: -phiY }] });
-  // retract: slides up a little and the turret centred together, then the arm folds
-  loop.push({ dur: 1.0, at: standY, arm: [openY, clear1], when: { gate: [0.5, 1] } });
-  // forward again: once it has backed off the board the arm folds, and once the bucket is out from over the backdrop's platform the slides go
-  // all the way down, well before the rear reaches the door
-  const exit = leg([standY, lane], SOUTH, SOUTH, 5.0, 0, 0);
-  const uFold = firstU(exit, (p) => p.y > stand.y + FOLD_AT);
-  const uDown = firstU(exit, (p) => p.y > stand.y + DOWN_AT);
-  loop.push({
-    ...exit,
-    arm: [clear1, driving],
-    when: { arm: [uFold, uFold + 0.12], slide: [uDown, Math.min(1, uDown + 0.2)] },
-    marks: [
-      { what: "clear", index: 0, offset: farOffset(exit, stand, GONE) },
-      { what: "clear", index: 1, offset: farOffset(exit, stand, GONE) + 0.2 },
-    ],
-  });
-  loop.push({ dur: 0.8, at: { ...lane, h: SOUTH }, turn: 0, arm: [driving, driving] });
-  loop.push({ ...leg([lane, yStand], 0, 0, 1.7, 0, 0), arm: [driving, S], when: { intake: [0.35, 0.85] } });
+  loop.push({ dur: 2.0, at: stand, arm: [lowered, raised], when: { slide: [0, 0.5], turret: [0.5, 1] } });
+  loop.push({ dur: 0.6, at: stand, arm: [raised, openY], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 1, offset: 0.3, turn: -phiY }] });
   const loopTotal = loop.reduce((s, p) => s + p.dur, 0);
 
   // it starts where the loop does: standing at the wall with the intake down; reduced motion, which never animates it, leaves it there
@@ -207,6 +236,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   const pickAt = [find("pick", 0).at, find("pick", 1).at]; // yellow, white
   const dropAt = [find("drop", 0).at, find("drop", 1).at]; // white, yellow
   const clearAt = [find("clear", 0).at, find("clear", 1).at];
+  const start = pickAt[0] - 0.2; // it begins where it is just about to take the yellow pixel in, at the wall (no intro)
   const turnAt = [find("drop", 0).turn!, find("drop", 1).turn!];
 
   /** The field at `tl` seconds into the loop: a pixel taken is gone until its replacement grows in; a placed one falls, stays, and shrinks away. */
@@ -233,7 +263,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
 
     // which phase, and how far through it
     const list = loop;
-    const tl = t % loopTotal;
+    const tl = (t + start) % loopTotal;
     field(tl);
     let e = tl;
     let i = 0;
@@ -246,7 +276,12 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
     if (ph.route) {
       const s = Math.min(1, Math.max(0, ph.route.ease ? ph.route.ease(u) : k));
       const p = ph.route.curve.getPointAt(s);
-      at = { x: p.x, y: p.z, h: ph.route.h0 + wrap(ph.route.h1 - ph.route.h0) * s };
+      let h = ph.route.h0 + wrap(ph.route.h1 - ph.route.h0) * s;
+      if (ph.route.follow) {
+        const g = ph.route.curve.getTangentAt(s);
+        h = Math.atan2(g.z, g.x) + (ph.route.follow < 0 ? Math.PI : 0);
+      }
+      at = { x: p.x, y: p.z, h };
     } else if (ph.turn !== undefined) {
       at = { ...ph.at!, h: ph.at!.h + wrap(ph.turn - ph.at!.h) * k };
     } else {

@@ -247,7 +247,7 @@ export const CS = {
   arm: { along: 0, out: 4.9, fold: -Math.PI / 3 }, // from the pivot to the turret's axis: out square from the slide at the deposit position, straight down at rest
   // how far below the turret's axis the pixel nearer the opening and the one above it sit (one pixel's height apart); where the bucket's closed top
   // end is (above the axis: positive; this one starts below it). The bucket is just long enough for the two pixels, closed at the top, open at the bottom
-  bucket: { low: 3.9, high: 1.0, top: -(1.0 - PIXEL_SIZE.corner / 2 - 0.35) },
+  bucket: { low: 4.4, high: 1.5, top: -(1.5 - PIXEL_SIZE.corner / 2 - 0.35) },
   turret: Math.PI / 3, // the turret's range, each way
   gap: 1.7, // how far in front of the board the pixels' plane is held when it deposits (the bucket's front, 0.6 nearer, clears pixels already placed)
   height: 7.4, // the chassis's height, under the Stage Door's 12.6 px rail with the slide down
