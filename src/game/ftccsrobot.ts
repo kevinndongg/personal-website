@@ -42,7 +42,7 @@ const WAIT: CSPose = { ...CS_WAIT };
 
 /** The path a pixel takes in, in the robot's frame (x, y): lying on the floor ahead, in through the intake, up the ramp, and into the bucket. */
 const FLOOR_Y = 0.34; // the centre of a pixel on the floor sheet
-const IN = { a: [CS.half + CS.ahead, FLOOR_Y], b: [CS.half - 1.7, 1.1], c: [3.4, 2.0] } as const;
+const IN = { a: [CS.half + CS.ahead, FLOOR_Y], b: [CS.half - 1.7, 1.1], c: [3.4, 2.55] } as const;
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const ease = (t: number) => t * t * (3 - 2 * t);
