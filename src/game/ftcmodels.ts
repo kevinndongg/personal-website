@@ -14,7 +14,7 @@ import {
 } from "three";
 import { FLOOR } from "./ftc";
 import { markMoving } from "./bake";
-import { BACKDROP, BACKDROP_GRID, BACKDROP_PILE, BACKDROP_PLACE, CS, PIXEL_SIZE, PP, PP_HEIGHT, STAGE_DOOR_LEN, TAKEN, backdropCell, backdropRowSize, ftcField, poleTop, submersibleSamples } from "./ftcfield";
+import { BACKDROP, BACKDROP_GRID, BACKDROP_PILE, BACKDROP_PLACE, CS, PIXEL_DROP, PIXEL_SIZE, PP, PP_HEIGHT, STAGE_DOOR_LEN, TAKEN, backdropCell, backdropRowSize, ftcField, poleTop, submersibleSamples } from "./ftcfield";
 import { robotModel } from "./ftcrobot";
 import { csRobotModel } from "./ftccsrobot";
 import { ppCone, ppRobotModel } from "./ftcpprobot";
@@ -281,9 +281,6 @@ function backdropTexture(w: number, len: number): CanvasTexture {
   return tex;
 }
 
-/** How far in front of the face the robot's bucket holds a pixel when it lets it go (the same as the robot's own gap, ftcfield.ts). */
-const BACKDROP_GAP = CS.gap - PIXEL_SIZE.thick / 2 - 0.01;
-
 /**
  * The backdrop: a board tilted back against the wall on a platform a whole tile wide, its face with a few pixels at the bottom and
  * empty recesses above. Pixels are 3 in across, so six fit across (the tile is 24 in wide); each one is the same 3D ring as on the floor.
@@ -319,16 +316,18 @@ function backdropModel(w: number, d: number): Group {
     px.position.set(u, 0.46, faceLen / 2 - v);
     px.visible = false;
     board.add(px);
-    return { px, i };
+    return { px, i, z0: faceLen / 2 - v };
   });
   g.userData.animate = () => {
-    for (const { px, i } of placed) {
+    for (const { px, i, z0 } of placed) {
       const p = ftcField.px[i];
       px.visible = p > 0 && p < 1.999;
       if (!px.visible) continue;
       const fall = Math.min(1, p);
       const ease = fall * fall * (3 - 2 * fall);
-      px.position.y = 0.46 + (1 - fall * fall) * BACKDROP_GAP; // it drops onto the face from where the bucket let go...
+      const drop = 1 - fall * fall;
+      px.position.y = 0.46 + drop * PIXEL_DROP.n; // it falls onto the face from where the bucket let go, above its place...
+      px.position.z = z0 - drop * PIXEL_DROP.v;
       px.rotation.y = ftcField.pxTurn[i] * (1 - ease); // ...settling square to it
       px.scale.setScalar(Math.max(0.001, p > 1 ? 2 - p : 1));
     }

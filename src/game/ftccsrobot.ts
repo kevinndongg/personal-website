@@ -11,7 +11,7 @@ import { box, canvasOf, cyl, fillRect, mesh, nearestTexture, toon } from "./mode
 // A clear acrylic box (teal lettering, small yellow ducks and a cobblestone strip on its sides) with mecanum wheels inside. On the front an
 // intake arm pivots down to take pixels in and up to drive; a roller with yellow fingers pulls them in, and a ramp inside carries them back
 // to the bucket. At the back a slide of three stages leans back 30 degrees, parallel to the backdrop; at its top an arm swings through 30
-// degrees, and on the arm a turret (up to 60 degrees each way) carries the bucket, a closed box with a slit down its middle that holds two pixels one above the other, with a lock
+// degrees, and on the arm a turret (up to 60 degrees each way) carries the bucket, a box with a slit down its middle, just long enough for two pixels one above the other and open at the bottom, with a lock
 // (a knob through the slit into the lower pixel's hole). Nested pivots posed each frame through `userData.pose`; the model has no timeline of its own: cscycle.ts drives it.
 
 const BLUE = "#2f8bdc"; // the printed parts
@@ -285,7 +285,7 @@ export function csRobotModel(): Group {
   arm.add(disc);
 
   // ---- the turret turns the bucket about the axis out of the arm's end (local x); the bucket hangs below it, a back plate with side rails,
-  // a closed box with a slit down its middle, room for two pixels one above the other, and a lock
+  // a box with a slit down its middle, exactly the length of two pixels, open at the bottom, and a lock
   const turret = new Group();
   turret.position.set(-CS.arm.out, CS.arm.along, 0);
   arm.add(turret);
@@ -294,7 +294,7 @@ export function csRobotModel(): Group {
   turretServo.position.set(0.2, 0, 0);
   turret.add(turretServo); // (the turret's own servo stays put)
   const top = CS.bucket.top;
-  const bottom = CS.bucket.low + PIXEL_SIZE.corner / 2 + 0.3;
+  const bottom = CS.bucket.low + PIXEL_SIZE.corner / 2; // the lower pixel's lowest point: the bucket ends there, open, so the pixel falls out of it
   const len = top + bottom;
   const mid = (top - bottom) / 2;
   for (const s of [-1, 1]) {
@@ -303,7 +303,6 @@ export function csRobotModel(): Group {
     part(turret, 0.3, len, 1.6, BLUE, -0.5, mid, s * 1.15); // and the front the same
   }
   part(turret, 1.2, 0.35, 3.9, BLUE, 0, top - 0.17, 0); // the end over the upper pixel
-  part(turret, 1.2, 0.35, 3.9, BLUE, 0, -bottom + 0.17, 0); // and the one under the lower, so the box is closed all round
   // the lock, on the back (on top when the bucket lies flat): a small servo with a knob that goes down through the slit into the hole of the
   // lower pixel and holds it by its centre
   const gate = new Group();

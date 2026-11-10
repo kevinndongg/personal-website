@@ -238,16 +238,27 @@ export const CS = {
   ahead: 3, // how far past the front a pixel lies, centre, when the roller takes it
   reachUp: 9, // how far the intake sticks out ahead of the robot's centre when it is raised for driving
   lean: Math.PI / 6, // the slide's lean from vertical
-  slide: { x: -4, y: 1, len: 6.6, travel: 12, rails: 2.8 }, // its foot, the length of each stage, how far it extends at most (three stages) and how far the two rails stand either side of the middle (the arm and bucket pass between them)
+  slide: { x: -4, y: 1, len: 6.6, travel: 13.6, rails: 2.8 }, // its foot, the length of each stage, how far it extends at most (three stages) and how far the two rails stand either side of the middle (the arm and bucket pass between them)
   // the arm from the top of the slide to the turret: along the slide (negative: down it) and out towards the backdrop. Arm and bucket are one piece
   // turning about the slide's top. At rest (`fold`, 60 degrees on) they lie flat inside the robot, the bucket forward of the turret's axis; they swing
   // back through 60 degrees, out of the robot's back, to the deposit position, where the bucket is parallel to the backdrop.
   arm: { along: -1.9, out: 3.12, fold: -Math.PI / 3 },
-  bucket: { low: 5.8, high: 2.9, top: 0.7 }, // how far below the turret's axis the pixel nearer the opening and the one above it sit; how far the bucket reaches above it
+  // how far below the turret's axis the pixel nearer the opening and the one above it sit (one pixel's height apart); where the bucket's closed top
+  // end is (above the axis: positive; this one starts below it). The bucket is just long enough for the two pixels, closed at the top, open at the bottom
+  bucket: { low: 5.8, high: 2.9, top: -(2.9 - PIXEL_SIZE.corner / 2 - 0.35) },
   turret: Math.PI / 3, // the turret's range, each way
   gap: 1.7, // how far in front of the board the pixels' plane is held when it deposits (the bucket's front, 0.6 nearer, clears pixels already placed)
   height: 7.4, // the chassis's height, under the Stage Door's 12.6 px rail with the slide down
 } as const;
+
+/**
+ * Where the bucket's lower pixel is when the lock lets it go: it falls out of the open bottom of the bucket, which hangs above its place, so it
+ * starts `n` out from its resting place on the face and `v` up the face from it (it falls straight down: the face leans back 60 degrees).
+ */
+export const PIXEL_DROP = (() => {
+  const n = CS.gap - PIXEL_SIZE.thick / 2 - 0.01;
+  return { n, v: n * Math.tan(BACKDROP.tilt) };
+})();
 
 /** How the robot waits: intake up, slide down, arm folded with the bucket flat inside the robot, turret straight, gate shut, nothing in it. */
 export const CS_WAIT = { intake: 0, spin: 0, slide: 0, arm: CS.arm.fold, turret: 0, gate: 0, yellow: -1, white: -1, yellowLow: 0 } as const;
@@ -289,6 +300,6 @@ export function csDeposit(u: number, v: number) {
     return (z + p[0] - b.z) * -ct + (p[1] - b.h) * st; // how far up the face the turret's axis is
   };
   const phi = Math.asin(Math.max(-1, Math.min(1, -u / CS.bucket.low))); // the middle of the robot is across from the face's middle
-  const e = v + CS.bucket.low * Math.cos(phi) - vOf(0);
+  const e = v + PIXEL_DROP.v + CS.bucket.low * Math.cos(phi) - vOf(0); // the pixel is let go above its place and falls into it
   return { z, phi, e, ok: Math.abs(phi) <= CS.turret + 1e-6 && e >= 0 && e <= CS.slide.travel + 1e-6 };
 }
