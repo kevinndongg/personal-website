@@ -247,7 +247,9 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
     }
     for (let i = 0; i < 2; i++) {
       ftcField.wall[i] = Math.min(1, Math.max(0, wall[i]));
-      ftcField.px[i] = tl < dropAt[i] ? 0 : Math.min(2, Math.max(0, ramp(tl, dropAt[i], FADE.drop) + ramp(tl, clearAt[i], FADE.clear)));
+      // a placed pixel falls at its drop, stays on the board through the rest of the lap and, in the next, shrinks away once the robot has driven off
+      // (the loop begins at the wall, with the board bare, so by then the last lap's pixels have already gone)
+      ftcField.px[i] = tl < dropAt[i] ? Math.min(2, 1 + ramp(tl, clearAt[i], FADE.clear)) : ramp(tl, dropAt[i], FADE.drop);
       ftcField.pxTurn[i] = turnAt[i];
     }
   };
