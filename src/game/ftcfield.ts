@@ -238,7 +238,7 @@ export const CS = {
   ahead: 3, // how far past the front a pixel lies, centre, when the roller takes it
   reachUp: 9, // how far the intake sticks out ahead of the robot's centre when it is raised for driving
   lean: Math.PI / 6, // the slide's lean from vertical
-  slide: { x: -1.81, y: 1, len: 7.92, travel: 13.5, rails: 3.12, pitch: 0.7 }, // its foot, the length of each stage, how far it extends at most (three stages), and how far the innermost stage of each side's stack stands from the middle (the arm and bucket pass between the two stacks) and how far apart the stages are; the other stages stand outwards of it, the lowest against the inner plate
+  slide: { x: -2.16, y: 1, len: 7.22, travel: 13.5, rails: 3.12, pitch: 0.7 }, // its foot, the length of each stage, how far it extends at most (three stages), and how far the innermost stage of each side's stack stands from the middle (the arm and bucket pass between the two stacks) and how far apart the stages are; the other stages stand outwards of it, the lowest against the inner plate
   // the arm from the top of the slide to the turret: along the slide (negative: down it) and out towards the backdrop. Arm and bucket are one piece
   // turning about the slide's top. At rest (`fold`, 60 degrees on) they lie flat inside the robot, the bucket forward of the turret's axis; they swing
   // back through 60 degrees, out of the robot's back, to the deposit position, where the bucket is parallel to the backdrop.
