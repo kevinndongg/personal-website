@@ -20,9 +20,8 @@ import type { CSPose } from "./ftccsrobot";
 import type { AnimCtx } from "./models";
 import type { CenterStageCycle } from "./scenes";
 
-const CRUISE = 14; // px/s, the most the robot cruises at (the drive to the backdrop peaks a little above)
 const GONE = 14; // how far (px) the robot has driven from a stop before the pixel it leaves there changes (a placed one shrinks, a taken one is replaced)
-const FEED = 1.3; // how long a pixel takes to ride in from the floor to its place in the bucket (s)
+const FEED = 1.0; // how long a pixel takes to ride in from the floor to its place in the bucket (s)
 const SPIN = 10; // the roller's speed (rad/s)
 const DOOR_CLEAR = CS.reachUp + 0.8; // the robot's centre has to be this far past the Stage Door for the raised intake to be clear of it
 const FOLD_AT = 4; // how far (px) it has driven back off the backdrop before the arm folds,
@@ -177,10 +176,10 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
 
   const loop: Phase[] = [];
   // at the backdrop, the last pixel let go: the lock closes, the turret centres and the slides rise a little
-  loop.push({ dur: 1.0, at: stand, arm: [openY, clear1], when: { gate: [0.5, 1] } });
+  loop.push({ dur: 0.7, at: stand, arm: [openY, clear1], when: { gate: [0.5, 1] } });
   // away from the backdrop in one run: the arm folds once it has backed off the board and the slides go down before the rear reaches the door,
   // then one long turn, the intake coming down as it drives up to the pixels, the yellow taken first and the white as it comes to rest
-  const A = run(pathA, 6.8, 0, 0, 1);
+  const A = run(pathA, 5.0, 0, 0, 1);
   const uFold = firstU(A, (p) => p.y > stand.y + FOLD_AT);
   const uDown = firstU(A, (p) => p.y > stand.y + DOWN_AT);
   const toPixels = (p: { x: number; y: number }) => Math.hypot(p.x - yStand.x, p.y - yStand.y);
@@ -197,27 +196,27 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
       { what: "pick", index: 1, offset: A.dur },
     ],
   });
-  loop.push({ dur: 0.6, at: wStand, arm: [S, S] }); // the roller finishes taking the white one in
+  loop.push({ dur: 0.45, at: wStand, arm: [S, S] }); // the roller finishes taking the white one in
   // back to the backdrop in one run, reversing: the intake lifts, the new pixels appear at the wall once it is away, it turns as it goes and runs
   // north under the door; once its front is clear the slides rise, and as it slows to a stop the arm swings back
-  const B1 = run(pathB1, 5.8, 0, 6, -1);
+  const B1 = run(pathB1, 4.3, 0, 8, -1);
   const uClear = firstU(B1, (p) => p.y < yClear);
   loop.push({
     ...B1,
     arm: [S, lifted],
-    when: { intake: [0.1, 0.3], slide: [uClear, 1] },
+    when: { intake: [0.14, 0.34], slide: [uClear, 1] },
     marks: [
       { what: "spawn", index: 0, offset: farOffset(B1, wStand, GONE) },
       { what: "spawn", index: 1, offset: farOffset(B1, wStand, GONE) + 0.25 },
     ],
   });
-  loop.push({ ...run(pathB2, 3.0, 6, 0, -1), arm: [lifted, armBack], when: { arm: [0.2, 0.9] } });
+  loop.push({ ...run(pathB2, 2.2, 8, 0, -1), arm: [lifted, armBack], when: { arm: [0.2, 0.9] } });
   // then it stands there, and only the turret and the slides move: the white pixel, the yellow one down to the lower place, then the yellow
-  loop.push({ dur: 0.9, at: stand, arm: [armBack, lined] });
-  loop.push({ dur: 0.6, at: stand, arm: [lined, open], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 0, offset: 0.3, turn: -phiW }] });
-  loop.push({ dur: 0.9, at: stand, arm: [open, lowered], when: { yellowLow: [0, 0.6], gate: [0.6, 1] } });
-  loop.push({ dur: 2.0, at: stand, arm: [lowered, raised], when: { slide: [0, 0.5], turret: [0.5, 1] } });
-  loop.push({ dur: 0.6, at: stand, arm: [raised, openY], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 1, offset: 0.3, turn: -phiY }] });
+  loop.push({ dur: 0.7, at: stand, arm: [armBack, lined] });
+  loop.push({ dur: 0.5, at: stand, arm: [lined, open], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 0, offset: 0.25, turn: -phiW }] });
+  loop.push({ dur: 0.7, at: stand, arm: [open, lowered], when: { yellowLow: [0, 0.6], gate: [0.6, 1] } });
+  loop.push({ dur: 1.5, at: stand, arm: [lowered, raised], when: { slide: [0, 0.5], turret: [0.5, 1] } });
+  loop.push({ dur: 0.5, at: stand, arm: [raised, openY], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 1, offset: 0.25, turn: -phiY }] });
   const loopTotal = loop.reduce((s, p) => s + p.dur, 0);
 
   // it starts where the loop does: standing at the wall with the intake down; reduced motion, which never animates it, leaves it there
