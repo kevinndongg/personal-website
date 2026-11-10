@@ -311,11 +311,11 @@ export function csRobotModel(): Group {
   const len = top + bottom;
   const mid = (top - bottom) / 2;
   for (const s of [-1, 1]) {
-    part(turret, 1.2, len, 0.35, BLUE, 0, mid, s * 1.95); // the sides
+    part(turret, 1.5, len, 0.35, BLUE, 0, mid, s * 1.95); // the sides
     part(turret, 0.35, len, 1.6, BLUE, 0.55, mid, s * 1.15); // the back, in two halves with a slit between them down the middle: the pixels show through it
-    part(turret, 0.3, len, 1.6, BLUE, -0.5, mid, s * 1.15); // and the front the same
+    part(turret, 0.3, len, 1.6, BLUE, -0.6, mid, s * 1.15); // and the front the same, as near the board as the pixels already on it let it come
   }
-  part(turret, 1.2, 0.35, 3.9, BLUE, 0, top - 0.17, 0); // the end over the upper pixel
+  part(turret, 1.5, 0.35, 3.9, BLUE, 0, top - 0.17, 0); // the end over the upper pixel
   // the lock, on the back (on top when the bucket lies flat): a small servo with a knob that goes down through the slit into the hole of the
   // lower pixel and holds it by its centre
   const gate = new Group();

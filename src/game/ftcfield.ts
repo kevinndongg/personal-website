@@ -249,7 +249,7 @@ export const CS = {
   // end is (above the axis: positive; this one starts below it). The bucket is just long enough for the two pixels, closed at the top, open at the bottom
   bucket: { low: 4.4, high: 1.5, top: -(1.5 - PIXEL_SIZE.corner / 2 - 0.35) },
   turret: Math.PI / 3, // the turret's range, each way
-  gap: 1.7, // how far in front of the board the pixels' plane is held when it deposits (the bucket's front, 0.6 nearer, clears pixels already placed)
+  gap: 1.7, // how far in front of the board the pixels' plane is held when it deposits (the bucket's front, 0.75 nearer, clears the tops of pixels already placed by 0.07)
   height: 7.4, // the chassis's height, under the Stage Door's 12.6 px rail with the slide down
 } as const;
 
