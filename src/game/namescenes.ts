@@ -21,8 +21,8 @@ export function nameScene(ox: number, oy: number): Scene {
     labelAt: { x: ox + z.w / 2, y: oy + m },
     labelHeight: 22,
     height: 14,
-    // the name is the picture over its card (a bottom card): let it fill the top of the screen
-    focusFill: 0.94,
+    // the name is the picture over its card (a bottom card): it takes the top of the screen, with ground showing round it
+    focusFill: 0.6,
     // the letters rise on hover, and a soft oval pool of light comes up on the ground under them (nameglow.ts); no square patch of light
     hover: { glow: 0 },
     props,

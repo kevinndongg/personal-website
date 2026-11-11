@@ -145,7 +145,7 @@ export class Panel {
     // the photography page has no card, so the scene may use the whole screen
     if (zone && isLinkOnly(zone)) return 0;
     // the about card is short: the name above it gets the rest of the screen
-    if (side === "bottom") return zone?.kind === "about" ? 0.36 : 0.5;
+    if (side === "bottom") return zone?.kind === "about" ? 0.4 : 0.5;
     const scale = cardScale();
     const w = Math.min(CARD_WIDTH * scale, innerWidth * 0.5) + (CLOSE_SIZE + CLOSE_GAP) * scale; // (the close button sits beside the card)
     return Math.min(0.55, (w + Math.max(24, innerWidth * 0.03) + 16) / innerWidth);
