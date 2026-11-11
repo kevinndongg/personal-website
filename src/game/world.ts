@@ -46,6 +46,8 @@ export interface ZoneInput {
   /** Photos and videos shown at the bottom of the card, in order. */
   media?: ZoneMedia[];
   image?: string;
+  /** A photo of the person, shown beside the text on the about card. */
+  portrait?: string;
   /** The photos the light table cycles through, in order, photodesk variant only. */
   photos?: ZonePhoto[];
 }

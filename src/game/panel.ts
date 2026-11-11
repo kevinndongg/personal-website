@@ -70,6 +70,7 @@ export class Panel {
   private tags: HTMLElement;
   private media: HTMLElement;
   private actions: HTMLElement;
+  private portrait: HTMLImageElement;
   private grip: HTMLElement;
   private closeTimer = 0;
   /** How far the side card has been dragged from where it rests (it is put back on every open). */
@@ -105,6 +106,7 @@ export class Panel {
     this.tags = root.querySelector("[data-tags]")!;
     this.media = root.querySelector("[data-media]")!;
     this.actions = root.querySelector("[data-actions]")!;
+    this.portrait = root.querySelector("[data-portrait]")!;
     this.grip = root.querySelector("[data-grip]")!;
     addEventListener(
       "resize",
@@ -380,6 +382,7 @@ export class Panel {
     // the link sits over a scene that stays clickable (the camera's controls, the table), so nothing is dimmed or blocked
     this.root.setAttribute("aria-modal", String(!linkOnly));
     if (linkOnly && !empty) this.root.setAttribute("aria-label", `${zone.label}: link to the full gallery`);
+    else if (zone.kind === "about") this.root.setAttribute("aria-label", zone.label); // (the card prints no title: the name on the map is it)
     else this.root.removeAttribute("aria-label");
     this.sheet.scrollTop = 0;
     this.root.hidden = empty;
@@ -457,8 +460,11 @@ export class Panel {
     this.org.classList.toggle("is-title", brandTitle);
     if (brandTitle) this.org.setAttribute("role", "heading"), this.org.setAttribute("aria-level", "2");
     else this.org.removeAttribute("role"), this.org.removeAttribute("aria-level");
-    this.root.setAttribute("aria-labelledby", brandTitle ? "panel-brand" : "panel-title");
-    this.title.textContent = brandTitle ? (zone.subtitle ?? "") : zone.label;
+    // the about card has no title of its own: the name lying on the map above it is the title (it is labelled by `open`)
+    const untitled = zone.kind === "about";
+    if (untitled) this.root.removeAttribute("aria-labelledby");
+    else this.root.setAttribute("aria-labelledby", brandTitle ? "panel-brand" : "panel-title");
+    this.title.textContent = untitled ? "" : brandTitle ? (zone.subtitle ?? "") : zone.label;
     this.title.hidden = !this.title.textContent;
     this.title.classList.toggle("sub", brandTitle);
     if (brandTitle) this.title.setAttribute("role", "doc-subtitle");
@@ -483,6 +489,10 @@ export class Panel {
     this.stopMedia = media?.stop;
     this.media.replaceChildren(...(media?.nodes ?? []));
     this.media.hidden = !media;
+
+    if (zone.portrait) this.portrait.src = zone.portrait;
+    else this.portrait.removeAttribute("src");
+    this.portrait.hidden = !zone.portrait;
 
     this.actions.replaceChildren();
     const actions: ZoneAction[] = zone.actions ?? [];

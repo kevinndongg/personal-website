@@ -5,6 +5,7 @@ import sharp from "sharp";
 import { statSync } from "node:fs";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import FilmCanister from "../components/FilmCanister.astro";
+import aboutPhoto from "../assets/about-me.jpg";
 import { withBase } from "../lib/url";
 import type { ZoneMedia } from "../game/world";
 import { contactLinks } from "../lib/contact";
@@ -124,6 +125,9 @@ async function cardMedia(items: NonNullable<(typeof projects)[number]["data"]["m
   );
 }
 
+// the about card's photo: shown at most about 300px wide (170px at the card's base size, scaled up on a big window)
+const portrait = (await getImage({ src: aboutPhoto, width: 600, format: "webp", quality: 80 })).src;
+
 const zones = [
   ...(await Promise.all(
     projects.map(async (p) => {
@@ -176,6 +180,7 @@ const zones = [
     role: "Computer Science at CMU",
     summary: "Robotics engineer building mechanical systems, autonomous flight, and vision models.",
     actions: contactLinks.map((l) => ({ ...l, external: !l.href.startsWith("mailto:") })),
+    portrait,
     accent: "#8a5a35",
   },
   // the contact links: a slab each, which opens its link when it is pressed (no card)
@@ -328,6 +333,7 @@ const zones = [
         </div>
         <div class="media" data-media hidden></div>
         <div class="actions" data-actions></div>
+        <img class="portrait" data-portrait alt="Kevin Dong" hidden />
       </div>
       </div>
     </aside>

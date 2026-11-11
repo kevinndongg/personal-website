@@ -710,6 +710,44 @@ html:has(.game) body {
   bottom: max(32px, 5vh);
 }
 
+/*
+ * The about card has no title (the name on the map is it): the text is on the left, with the buttons under it, and a photo on the
+ * right, as tall as both. Without a title the role is the card's first line, so it is set as a heading.
+ */
+.panel[data-kind="about"] .body {
+  grid-template-columns: minmax(0, 1fr) min(calc(170px * var(--card-scale, 1)), 34%);
+  column-gap: calc(22px * var(--card-scale, 1));
+  align-items: start;
+}
+
+.panel[data-kind="about"] .copy,
+.panel[data-kind="about"] .actions {
+  grid-column: 1;
+}
+
+.panel[data-kind="about"] .role {
+  font-family: var(--font-display, serif);
+  font-size: calc(clamp(20px, 1.8vw, 24px) * var(--card-scale, 1));
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+.portrait {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  object-position: 50% 30%;
+  border-radius: calc(12px * var(--card-scale, 1));
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.portrait[hidden] {
+  display: none;
+}
+
 /* pulled up by its handle: the sheet takes most of the screen for reading */
 .panel[data-side="bottom"].expanded {
   max-height: calc(100% - 64px);
