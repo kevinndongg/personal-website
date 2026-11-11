@@ -303,7 +303,9 @@ export function attachPowerPlay(model: Group, cfg: PowerPlayCycle) {
   model.position.set(A.at.x, model.position.y, A.at.y);
   model.rotation.y = -A.at.h;
   (model.userData.pose as ((p: PPPose) => void) | undefined)?.({ ...A.arm, carrying: false });
-  model.userData.stowed = { ...A.arm }; // (what robotvisit.ts folds the arm to while the robot is away from its loop)
+  // what robotvisit.ts brings the arm to while the robot is away from its loop: the claw closed, the wrist swung up and the arm raised, so that
+  // it parks on show for the viewer
+  model.userData.stowed = { lift: 24, yaw: 0, tilt: PP.tilt, twist: 0, claw: 0 };
 
   // when, in the loop, each thing happens to the field
   const events: { what: Mark["what"]; index: number; at: number; lean?: [number, number, number] }[] = [];

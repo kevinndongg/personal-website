@@ -63,7 +63,7 @@ function apart(points: Pt[], min = 1.5, keepEnd = false): Pt[] {
 
 /** The poses along a smooth curve through the points, about a pixel apart. */
 export function curvePoses(points: Pt[]): Pose[] {
-  const pts = apart(points);
+  const pts = apart(points, 1.5, true);
   if (pts.length < 2) return pts.map((p) => ({ x: p.x, z: p.y, h: 0 }));
   const curve = new CatmullRomCurve3(
     pts.map((p) => new Vector3(p.x, 0, p.y)),

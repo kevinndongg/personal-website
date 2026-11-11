@@ -17,9 +17,9 @@ export function nameScene(ox: number, oy: number): Scene {
   ];
   return {
     area: { x: ox, y: oy, w: z.w, h: z.h },
-    // the formula car comes to park in the margin to the left of the name (see racingScene), and the three FTC robots in the margin to the
-    // right (see ftcScene) after coming up the map from below it: they stay sharp, level with the letters and below them
-    sharpArea: { x: ox - 120, y: oy - 20, w: z.w + 240, h: z.h + 100 },
+    // the formula car comes to park in the margin to the left of the name (see racingScene), and the three FTC robots on show to the lower
+    // right, just north of their field (see ftcScene): they stay sharp, down to the row of robots
+    sharpArea: { x: ox - 120, y: oy - 20, w: z.w + 240, h: z.h + 140 },
     building: { x: ox + m, y: oy + m, w: NAME.letters, h: NAME_H },
     labelAt: { x: ox + z.w / 2, y: oy + m },
     labelHeight: 22,

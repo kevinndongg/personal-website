@@ -70,13 +70,13 @@ export interface CenterStageCycle {
 }
 
 /**
- * An FTC robot's trip to the name (world px). It leaves its loop where it is, joins `path` at the nearest stretch and follows it out of the
- * field through its gate and across the map to the stop; going home it follows the same stretch back to where it left its loop.
+ * An FTC robot's trip when the about card opens (world px). It leaves its loop where it is, joins `path` at the nearest stretch and follows it out of the
+ * field through its gate to its parking spot just north of the field; going home it follows the same stretch back to where it left its loop.
  */
 export interface RobotVisit {
   /** The way, in order: from inside the field (its lanes), through the gate, to the stop (the last point). */
   path: { x: number; y: number }[];
-  /** The way the robot faces at the stop (radians, world plane, y = south): toward the name. */
+  /** The way the robot faces when it is parked there (radians, world plane, y = south): toward the viewer. */
   heading: number;
   /** The gate in the field wall it goes out by (`ftcGates` in robotvisit.ts) and where that is. */
   gate: { id: number; at: { x: number; y: number } };

@@ -1,5 +1,4 @@
 import { CS, PIXEL_SIZE, PP, SAMPLE_COLORS, STAGE_DOOR_LEN, TAKEN, submersibleSamples } from "./ftcfield";
-import { nameRect } from "./name";
 import type { Decal, Footprint, Prop, Scene } from "./scenes";
 
 // The FTC area: one square competition field split into three wedges, one per season, with the duck mascot, the driver
@@ -102,18 +101,16 @@ export function ftcScene(ox: number, oy: number): Scene {
     block("ftc-wall", f(half + 1.5, 0), 3, FIELD.size)
   );
 
-  // Where the robots stop when they come to the name (world px: it is in the middle of the map, so these come from its footprint): in the
-  // margin to its right, a loose triangle facing the letters, with the car in the margin to the left. Each one's way there is its lane in the
-  // field, out through its gate, and up the map along the field's west side (the Center Stage robot, from the north gate, comes straight up).
-  const nm = nameRect();
-  const margin = nm.x + nm.w;
+  // Where the robots park when the about card opens (world px, relative to this area): just north of the field, so that they have not far to
+  // drive, and set out for the viewer, who looks from the south: two in front and one behind, all facing south. Each one's way there is its lane
+  // in the field, out through its gate and up to its spot. The Power Play robot's gate is north of the Into the Deep robot's, so it takes the
+  // inner lane and the nearer spot, and the other the outer lane and the spot behind, so that they never cross.
+  const SOUTH = Math.PI / 2;
   const STOP = {
-    pp: { x: margin + 34, y: nm.y + 64 }, // (the Power Play robot's gate is north of the Into the Deep robot's: it takes the inner lane
-    itd: { x: margin + 34, y: nm.y + 15 }, // and the nearer stop, the other the outer lane and the farther, so that they never cross)
-    cs: { x: margin + 58, y: nm.y + 42 },
+    pp: at(34, -20), // front left
+    cs: at(82, -20), // front right
+    itd: at(58, -44), // behind them, in the middle
   };
-  const FACING_NAME = Math.PI; // west
-  const below = nm.y + nm.h; // the bottom of the letters
 
   // ---- Power Play (left wedge): junction poles on the tile corners, cone stacks to feed them, and the robot that works them
   // The five-by-five junction pattern is ground / low / medium / high; only the columns that fall inside the wedge are here.
@@ -161,14 +158,14 @@ export function ftcScene(ox: number, oy: number): Scene {
         f(-62, 8),
         f(-69, 8),
         f(-70, -4),
-        at(-2, 0),
-        at(-2, below + 55 - oy),
-        { x: margin + 26, y: below + 32 },
+        at(-2, 28),
+        at(0, -6),
+        at(16, -20),
         STOP.pp,
       ],
-      heading: FACING_NAME,
+      heading: SOUTH,
       gate: { id: 0, at: GATE_PP },
-      delay: 0.2,
+      delay: 0.15,
     },
   });
 
@@ -212,14 +209,13 @@ export function ftcScene(ox: number, oy: number): Scene {
         f(50, -48),
         f(50, -WALL),
         f(52, -72),
-        { x: ox + 116, y: below + 78 },
-        { x: ox + 100, y: below + 32 },
-        { x: margin + 78, y: below + 4 },
+        at(112, -4),
+        at(96, -17),
         STOP.cs,
       ],
-      heading: FACING_NAME,
+      heading: SOUTH,
       gate: { id: 2, at: GATE_CS },
-      delay: 0.4, // (the shortest way: it sets off last)
+      delay: 0.3, // (the shortest way: it sets off last)
     },
   });
 
@@ -272,18 +268,17 @@ export function ftcScene(ox: number, oy: number): Scene {
         f(-32, 45),
         f(-46, 40),
         f(-58, 36),
+        GATE_ITD,
         f(-69, 36),
         f(-80, 28),
         at(-18, 70),
         at(-18, 0),
-        at(-18, below + 55 - oy),
-        { x: margin + 2, y: below + 24 },
-        { x: margin + 8, y: below + 2 },
-        { x: margin + 14, y: below - 18 },
-        { x: margin + 24, y: below - 38 },
+        at(-18, -26),
+        at(-6, -44),
+        at(26, -44),
         STOP.itd,
       ],
-      heading: FACING_NAME,
+      heading: SOUTH,
       gate: { id: 1, at: GATE_ITD },
       delay: 0, // (the longest way: it sets off first)
     },
