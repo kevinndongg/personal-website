@@ -46,6 +46,8 @@ export interface Prop {
   drive?: { x: number; y: number }[];
   /** A trip a prop with a `drive` lap makes to the name when the about card opens, and back when it closes. See visit.ts and drive.ts. */
   visit?: Visit;
+  /** A trip one of the FTC robots makes to the name when the about card opens, and back to where it was in its loop. See robotvisit.ts. */
+  robotVisit?: RobotVisit;
   /** A trip the prop makes now and then, one way (world px, from where it starts out of sight to where it stops). See errand.ts. */
   errand?: { x: number; y: number }[];
   /** A robot that works the field on its own, over and over (the Into the Deep robot). See robotcycle.ts. */
@@ -65,6 +67,21 @@ export interface CenterStageCycle {
   white: { x: number; y: number };
   backdrop: { x: number; y: number };
   door: { x: number; y: number };
+}
+
+/**
+ * An FTC robot's trip to the name (world px). It leaves its loop where it is, joins `path` at the nearest stretch and follows it out of the
+ * field through its gate and across the map to the stop; going home it follows the same stretch back to where it left its loop.
+ */
+export interface RobotVisit {
+  /** The way, in order: from inside the field (its lanes), through the gate, to the stop (the last point). */
+  path: { x: number; y: number }[];
+  /** The way the robot faces at the stop (radians, world plane, y = south): toward the name. */
+  heading: number;
+  /** The gate in the field wall it goes out by (`ftcGates` in robotvisit.ts) and where that is. */
+  gate: { id: number; at: { x: number; y: number } };
+  /** How long after the card opens it sets off (s): the three do not all leave at once. */
+  delay: number;
 }
 
 /** A cone the Power Play robot takes: where it stands on the floor, the height of its base, and the way the robot faces it (radians, world plane). */

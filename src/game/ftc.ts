@@ -1,4 +1,5 @@
 import { CS, PIXEL_SIZE, PP, SAMPLE_COLORS, STAGE_DOOR_LEN, TAKEN, submersibleSamples } from "./ftcfield";
+import { nameRect } from "./name";
 import type { Decal, Footprint, Prop, Scene } from "./scenes";
 
 // The FTC area: one square competition field split into three wedges, one per season, with the duck mascot, the driver
@@ -77,13 +78,42 @@ export function ftcScene(ox: number, oy: number): Scene {
 
   const props: Prop[] = [];
 
-  // ---- the wall round the field: four low runs just outside the tiles
+  // ---- the wall round the field: four low runs just outside the tiles. Three pieces of it are gates, one for each robot: when the about
+  // card opens the robots drive to the name and each goes out through its own (robotvisit.ts), and the piece lowers flat while it passes. The
+  // Power Play robot's is in the west wall at the row it picks its cones up on, the Into the Deep robot's in the same wall below the tape
+  // line, and the Center Stage robot's in the north wall just east of the backdrop.
+  const WALL = half + 1.5;
+  const GATE = 18; // how wide each is (a robot is about 13)
+  const GATE_PP = f(-WALL, 8);
+  const GATE_ITD = f(-WALL, 36);
+  const GATE_CS = f(50, -WALL);
   props.push(
-    block("ftc-wall", f(0, -half - 1.5), FIELD.size + 6, 3),
+    // north: the backdrop's end of it, the Center Stage gate (x 41 to 59 from the middle), and the corner
+    block("ftc-wall", f(-11, -WALL), 104, 3),
+    block("ftc-gate-2", GATE_CS, GATE, 3),
+    block("ftc-wall", f(61, -WALL), 4, 3),
     block("ftc-wall", f(0, half + 1.5), FIELD.size + 6, 3),
-    block("ftc-wall", f(-half - 1.5, 0), 3, FIELD.size),
+    // west: from the north corner to the Power Play gate, on to the Into the Deep gate, and down to the south corner
+    block("ftc-wall", f(-WALL, -30.5), 3, 59),
+    block("ftc-gate-0", GATE_PP, 3, GATE),
+    block("ftc-wall", f(-WALL, 22), 3, 10),
+    block("ftc-gate-1", GATE_ITD, 3, GATE),
+    block("ftc-wall", f(-WALL, 52.5), 3, 15),
     block("ftc-wall", f(half + 1.5, 0), 3, FIELD.size)
   );
+
+  // Where the robots stop when they come to the name (world px: it is in the middle of the map, so these come from its footprint): in the
+  // margin to its right, a loose triangle facing the letters, with the car in the margin to the left. Each one's way there is its lane in the
+  // field, out through its gate, and up the map along the field's west side (the Center Stage robot, from the north gate, comes straight up).
+  const nm = nameRect();
+  const margin = nm.x + nm.w;
+  const STOP = {
+    pp: { x: margin + 34, y: nm.y + 64 }, // (the Power Play robot's gate is north of the Into the Deep robot's: it takes the inner lane
+    itd: { x: margin + 34, y: nm.y + 15 }, // and the nearer stop, the other the outer lane and the farther, so that they never cross)
+    cs: { x: margin + 58, y: nm.y + 42 },
+  };
+  const FACING_NAME = Math.PI; // west
+  const below = nm.y + nm.h; // the bottom of the letters
 
   // ---- Power Play (left wedge): junction poles on the tile corners, cone stacks to feed them, and the robot that works them
   // The five-by-five junction pattern is ground / low / medium / high; only the columns that fall inside the wedge are here.
@@ -120,6 +150,26 @@ export function ftcScene(ox: number, oy: number): Scene {
       medium: { target: f(-20, -20), side: 1, top: "m", heading: NORTH },
       mediumRow: { target: f(-20, -20), side: 1, top: "m", heading: Math.PI },
     },
+    // to the name: down its lane and along its row to its gate in the west wall, then up the map beside the field's west side
+    robotVisit: {
+      path: [
+        f(-30, -47),
+        f(-30, -14),
+        f(-33, -4),
+        f(-42, 3),
+        f(-52, 7),
+        f(-62, 8),
+        f(-69, 8),
+        f(-70, -4),
+        at(-2, 0),
+        at(-2, below + 55 - oy),
+        { x: margin + 26, y: below + 32 },
+        STOP.pp,
+      ],
+      heading: FACING_NAME,
+      gate: { id: 0, at: GATE_PP },
+      delay: 0.2,
+    },
   });
 
   // ---- Center Stage (top right wedge): the backdrop against the wall, the truss, loose pixels
@@ -150,6 +200,27 @@ export function ftcScene(ox: number, oy: number): Scene {
   props.push({
     ...turned("ftc-robot-cs", f(HALF - 3 * PIXEL_HALF - (CS.half + CS.ahead), 10), 0, 6),
     csCycle: { yellow: f(HALF - 3 * PIXEL_HALF, 10), white: f(HALF - PIXEL_HALF, 10), backdrop: f(30, -55), door: f(30, -10) },
+    // to the name: its own lane (along the row to the pixels' lane under the Stage Door, up to the backdrop's stand), east along the north
+    // of the field to its gate, and across the map from there
+    robotVisit: {
+      path: [
+        f(46, 10),
+        f(30, 10),
+        f(30, -16),
+        f(30, -40),
+        f(42, -42),
+        f(50, -48),
+        f(50, -WALL),
+        f(52, -72),
+        { x: ox + 116, y: below + 78 },
+        { x: ox + 100, y: below + 32 },
+        { x: margin + 78, y: below + 4 },
+        STOP.cs,
+      ],
+      heading: FACING_NAME,
+      gate: { id: 2, at: GATE_CS },
+      delay: 0.4, // (the shortest way: it sets off last)
+    },
   });
 
   // ---- Into the Deep (front wedge): the submersible in the middle of the fifth tile row (counting from the back), and a basket in
@@ -191,6 +262,30 @@ export function ftcScene(ox: number, oy: number): Scene {
         [f(-30, 47), f(-10, 47)],
         [f(30, 48), f(0, 48), f(-18, 47), f(-33, 43), f(-34, 36)],
       ],
+    },
+    // to the name: along the south corridor to the west, up past the red basket to its gate in the west wall, then up the map beside the field
+    robotVisit: {
+      path: [
+        f(40, 46),
+        f(10, 47),
+        f(-20, 47),
+        f(-32, 45),
+        f(-46, 40),
+        f(-58, 36),
+        f(-69, 36),
+        f(-80, 28),
+        at(-18, 70),
+        at(-18, 0),
+        at(-18, below + 55 - oy),
+        { x: margin + 2, y: below + 24 },
+        { x: margin + 8, y: below + 2 },
+        { x: margin + 14, y: below - 18 },
+        { x: margin + 24, y: below - 38 },
+        STOP.itd,
+      ],
+      heading: FACING_NAME,
+      gate: { id: 1, at: GATE_ITD },
+      delay: 0, // (the longest way: it sets off first)
     },
   });
 

@@ -336,6 +336,7 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
   let lastT = -1;
   let spinning = 0; // 0..1, how fast the paddle is going
   let spin = 0; // its angle
+  model.userData.stowed = { ...STOWED }; // (what robotvisit.ts folds the arm to while the robot is away from its loop)
 
   model.userData.animate = ({ t }: AnimCtx) => {
     if (t <= 0) return; // reduced motion: at its first stop, the arm folded, every sample where it was

@@ -40,6 +40,7 @@ import { attachErrand } from "./errand";
 import { attachPowerPlay } from "./ppcycle";
 import { attachCenterStage } from "./cscycle";
 import { attachCycle } from "./robotcycle";
+import { attachRobotVisit } from "./robotvisit";
 import { GROUND_MARGIN, buildGroundLayer } from "./ground";
 import { createModel, tireModel, woodTexture } from "./models";
 import type { AnimCtx } from "./models";
@@ -591,6 +592,7 @@ export class Renderer3D {
         if (p.cycle) attachCycle(model, p.cycle);
         if (p.ppCycle) attachPowerPlay(model, p.ppCycle);
         if (p.csCycle) attachCenterStage(model, p.csCycle);
+        if (p.robotVisit) attachRobotVisit(model, p.robotVisit); // (after its cycle: it wraps that)
         model.traverse((o) => {
           if (typeof o.userData.animate === "function") {
             this.animators.push({ fn: o.userData.animate, zoneId: zone.id, pauseOnHover: !!zone.scene.animation?.pauseOnHover });

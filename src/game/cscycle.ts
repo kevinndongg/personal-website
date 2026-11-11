@@ -272,6 +272,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   model.position.set(yStand.x, model.position.y, yStand.y);
   model.rotation.y = -yStand.h;
   (model.userData.pose as ((p: CSPose) => void) | undefined)?.({ ...S, spin: 0, yellow: -1, white: -1 });
+  model.userData.stowed = { ...S }; // (what robotvisit.ts folds the arm to while the robot is away from its loop)
 
   // when, in the loop, each thing happens to the field
   const events: (Mark & { at: number })[] = [];

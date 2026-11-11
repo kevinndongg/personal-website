@@ -62,7 +62,7 @@ function apart(points: Pt[], min = 1.5, keepEnd = false): Pt[] {
 }
 
 /** The poses along a smooth curve through the points, about a pixel apart. */
-function curvePoses(points: Pt[]): Pose[] {
+export function curvePoses(points: Pt[]): Pose[] {
   const pts = apart(points);
   if (pts.length < 2) return pts.map((p) => ({ x: p.x, z: p.y, h: 0 }));
   const curve = new CatmullRomCurve3(
@@ -82,7 +82,7 @@ function curvePoses(points: Pt[]): Pose[] {
   return poses;
 }
 
-const spacing = (poses: Pose[]) => {
+export const spacing = (poses: Pose[]) => {
   let len = 0;
   for (let i = 1; i < poses.length; i++) len += Math.hypot(poses[i].x - poses[i - 1].x, poses[i].z - poses[i - 1].z);
   return len;

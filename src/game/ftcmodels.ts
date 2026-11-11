@@ -21,6 +21,7 @@ import { csRobotModel } from "./ftccsrobot";
 import { ppCone, ppRobotModel } from "./ftcpprobot";
 import { pixelMesh } from "./ftcpixel";
 import { centred, pixelText } from "./ftctext";
+import { ftcGates } from "./robotvisit";
 import { box, canvasOf, cyl, fillRect, mesh, nearestTexture, toon } from "./models";
 import type { AnimCtx } from "./models";
 
@@ -117,6 +118,28 @@ function wallModel(w: number, d: number): Group {
   const g = new Group();
   g.add(box(w, 5, d, "#cfd4de", 0, 0, 0));
   g.add(box(w + 0.4, 1, d + 0.4, "#8b909a", 0, 5, 0));
+  return g;
+}
+
+/**
+ * A piece of the wall that lowers flat into the floor while one of the robots drives out through it (robotvisit.ts) and rises again once
+ * it has gone. The piece is built inside an inner group, so that the zone's hover lift (which moves the model) and the lowering do not fight.
+ */
+function gateModel(id: number, w: number, d: number): Group {
+  const g = new Group();
+  const inner = new Group();
+  inner.add(wallModel(w, d));
+  g.add(inner);
+  let open = 0;
+  let lastT = -1;
+  g.userData.animate = ({ t }: AnimCtx) => {
+    if (t <= 0) return; // reduced motion: the wall stays up (and the robots stay where they are)
+    const dt = lastT < 0 ? 0 : Math.min(0.1, Math.max(0, t - lastT));
+    lastT = t;
+    open += ((ftcGates[id].want.size > 0 ? 1 : 0) - open) * (1 - Math.exp(-dt * 10));
+    ftcGates[id].open = open;
+    inner.position.y = -open * 6.6; // (the wall and its rim stand 6 high)
+  };
   return g;
 }
 
@@ -806,6 +829,10 @@ export function ftcModel(id: string, w: number, d: number): Group | null {
       return ppRobotModel();
     case "wall":
       return wallModel(w, d);
+    case "gate-0":
+    case "gate-1":
+    case "gate-2":
+      return gateModel(Number(key.slice(5)), w, d);
     case "pp-g":
       return ppJunction("g");
     case "pp-l":
