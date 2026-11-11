@@ -109,7 +109,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   // back is the same path travelled in reverse)
   const ROW = cfg.yellow.y;
   const yClear = cfg.door.y - DOOR_CLEAR; // how far north its front is clear of the door
-  const ySplit = stand.y + 9; // and where it begins to slow for the stand
+  const ySplit = stand.y + 5; // and where it begins to brake for the stand
   const TURN = 16; // how long the turn is (px of path): its heading eases from south to east, so it begins and ends without a jolt of the steering
   const bend: { x: number; y: number }[] = [];
   {
@@ -221,7 +221,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   // back to the backdrop in one flowing run, reversing: the intake lifts at once, the new pixels appear at the wall once it is away, it turns as it
   // goes and runs north under the door; once its front is clear the slides rise, and as it slows to a stop the arm swings back and the turret
   // swings out, so it arrives with the arm ready
-  const B1 = run(pathB1, 5.0, 0, 8, -1);
+  const B1 = run(pathB1, 5.2, 0, 12, -1);
   const uClear = firstU(B1, (p) => p.y < yClear);
   loop.push({
     ...B1,
@@ -235,13 +235,13 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
       { what: "spawn", index: 1, offset: farOffset(B1, wStand, GONE) + 0.25 },
     ],
   });
-  const B2dur = 2.0;
+  const B2dur = 1.0;
   loop.push({
-    ...run(pathB2, B2dur, 8, 0, -1),
+    ...run(pathB2, B2dur, 12, 0, -1),
     arm: [lifted, lined],
     keys: {
-      arm: key([0.12, CS.arm.fold], [0.12 + jointTime(CS.arm.fold) / B2dur, 0]),
-      turret: key([0.5, 0], [0.5 + jointTime(phiW) / B2dur, phiW]),
+      arm: key([0.06, CS.arm.fold], [0.06 + jointTime(CS.arm.fold) / B2dur, 0]),
+      turret: key([0.45, 0], [0.45 + jointTime(phiW) / B2dur, phiW]),
     },
   });
   // then it stands there: the lock draws back and the white pixel drops; the yellow slides down to the lower place and is held; the slides rise and
