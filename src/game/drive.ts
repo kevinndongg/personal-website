@@ -5,15 +5,14 @@ import { CatmullRomCurve3, Vector3, type Group } from "three";
 import type { AnimCtx } from "./models";
 import { legThrough, makeLeg, poseAt, pointsAhead, uTurn, type Leg, type Pose, type Visit } from "./visit";
 
-const SPEED = 60; // average px/s over a lap (it eases out of and into the parking spot, so it peaks at 1.5x)
+/** How fast the car goes: every straight stretch of every drive it makes, its laps included, tops out at this (px/s). */
+const CAR_SPEED = 130;
+const SPEED = CAR_SPEED / 1.5; // average px/s over a lap (it eases out of and into the parking spot, so it peaks at 1.5x: CAR_SPEED)
 const FIRST = [8, 14]; // seconds after the scene starts to the first lap
 const GAP = [20, 30]; // seconds from the end of one lap to the next
 const SETTLE = 0.08; // the last part of the lap (as a fraction of it) over which the heading eases to the parked one
 
 // the trip to the name
-const VISIT_SPEED = 90; // px/s on the way home
-const OUT_SPEED = 140; // px/s on the way out
-const U_SPEED = 60; // px/s round the U it pulls away in (it is gathering speed through it)
 const TURN_R = 16; // turning radius, px, of that U and of any other turn it makes (the lap's last arc is 14)
 const ACCEL = 300; // px/s^2 pulling away
 const BRAKE = 160; // px/s^2 stopping
@@ -132,8 +131,8 @@ export function attachLap(model: Group, path: { x: number; y: number }[], visit?
       const poses = uTurn(poseNow(), visit.join, TURN_R);
       const end = poses[poses.length - 1];
       tr.legs = [
-        makeLeg(poses, { speed: U_SPEED, brake: false }),
-        legThrough(end, pointsAhead(end, visit.laneTail), { speed: VISIT_SPEED, brake: true, park: true }),
+        makeLeg(poses, { speed: CAR_SPEED, brake: false }),
+        legThrough(end, pointsAhead(end, visit.laneTail), { speed: CAR_SPEED, brake: true, park: true }),
       ];
       tr.i = 0;
       tr.s = 0;
@@ -150,7 +149,7 @@ export function attachLap(model: Group, path: { x: number; y: number }[], visit?
       if (tr.s < leg.trackLen - 2) {
         // still on the cone track: the lap loops home from here, so it is simply a lap
         const rest = [...pointsAhead(here, visit.track), ...visit.lapRest];
-        tr.legs = [legThrough(here, rest, { speed: SPEED, brake: true, park: true })];
+        tr.legs = [legThrough(here, rest, { speed: CAR_SPEED, brake: true, park: true })];
         tr.i = 0;
         tr.s = 0;
         tr.phase = "back";
@@ -159,8 +158,8 @@ export function attachLap(model: Group, path: { x: number; y: number }[], visit?
         const poses = uTurn(here, visit.join, TURN_R);
         const end = poses[poses.length - 1];
         tr.legs = [
-          makeLeg(poses, { speed: VISIT_SPEED, brake: false }),
-          legThrough(end, pointsAhead(end, visit.laneTail), { speed: VISIT_SPEED, brake: true, park: true }),
+          makeLeg(poses, { speed: CAR_SPEED, brake: false }),
+          legThrough(end, pointsAhead(end, visit.laneTail), { speed: CAR_SPEED, brake: true, park: true }),
         ];
         tr.i = 0;
         tr.s = 0;
@@ -233,19 +232,23 @@ export function attachLap(model: Group, path: { x: number; y: number }[], visit?
           const onTrack = lapU < uFinish;
           const ahead = onTrack ? [...pointsAhead(here, visit.track), ...visit.toStop] : pointsAhead(here, visit.toStop);
           // (a car that points away from where it is going swings round on an arc first, so that it never kinks)
-          const swing = uTurn(here, ahead[0], TURN_R);
+          // (it aims at a point well along the way, not the next one: that one is so near that, once the car points at it, the way
+          // turns off again at once)
+          const aim = ahead.find((p) => Math.hypot(p.x - here.x, p.y - here.z) >= 45) ?? ahead[ahead.length - 1];
+          const swing = uTurn(here, aim, TURN_R);
           const from = swing[swing.length - 1];
           const finish = onTrack ? visit.track[visit.track.length - 1] : undefined;
-          const leg = legThrough(from, pointsAhead(from, ahead), { speed: OUT_SPEED, brake: true, finish });
+          // (after the swing the car points at `aim`: the way goes on from it, not back through the points it has cut across)
+          const leg = legThrough(from, ahead.slice(ahead.indexOf(aim)), { speed: CAR_SPEED, brake: true, finish });
           if (swing.length > 2) {
-            const arc = makeLeg(swing, { speed: OUT_SPEED, brake: false });
+            const arc = makeLeg(swing, { speed: CAR_SPEED, brake: false });
             beginTrip(arc, SPEED);
             trip!.legs.push(leg);
-          } else beginTrip(legThrough(here, ahead, { speed: OUT_SPEED, brake: true, finish }), SPEED);
+          } else beginTrip(legThrough(here, ahead, { speed: CAR_SPEED, brake: true, finish }), SPEED);
         }
       } else if (wanted && start < 0) {
         // parked, and the card is open: out through the cones, to the name
-        beginTrip(legThrough(null, [...visit.track, ...visit.toStop], { speed: OUT_SPEED, brake: true, finish: visit.track[visit.track.length - 1] }), 0);
+        beginTrip(legThrough(null, [...visit.track, ...visit.toStop], { speed: CAR_SPEED, brake: true, finish: visit.track[visit.track.length - 1] }), 0);
       }
     }
     if (trip) {
