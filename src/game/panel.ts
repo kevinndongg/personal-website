@@ -498,7 +498,8 @@ export class Panel {
     this.actions.replaceChildren();
     const actions: ZoneAction[] = zone.actions ?? [];
     actions.forEach((a, i) => {
-      const b = el("button", i === 0 ? "btn primary" : "btn", a.label);
+      // (the first button is the card's main action; on the about card the links are equals)
+      const b = el("button", i === 0 && zone.kind !== "about" ? "btn primary" : "btn", a.label);
       b.type = "button";
       b.addEventListener("click", () => openAction(a));
       this.actions.append(b);
