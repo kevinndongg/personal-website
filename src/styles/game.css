@@ -708,6 +708,32 @@ html:has(.game) body {
   width: min(calc(720px * var(--card-scale, 1)), calc(100% - 16px));
   margin-inline: auto;
   bottom: max(32px, 5vh);
+  /* leaving: no wait (it is the first thing to go as the camera pulls back), and a little slower than a project's card */
+  transition:
+    transform 460ms var(--ease),
+    opacity 400ms ease,
+    max-height 320ms var(--ease);
+}
+
+/*
+ * arriving: it waits while the camera starts its glide and the formula car sets out (800ms), then fades and rises in slowly (700ms),
+ * so that it lands as the camera settles, with the car still on its way. (Panel's hide timer after closing is 450ms: see `close`.)
+ */
+.panel[data-side="bottom"][data-kind="about"].open {
+  transition:
+    transform 800ms var(--ease) 800ms,
+    opacity 700ms ease 800ms,
+    max-height 320ms var(--ease);
+}
+
+/* reduced motion: the camera does not glide and the car stays parked, so there is nothing to wait for */
+@media (prefers-reduced-motion: reduce) {
+  .panel[data-side="bottom"][data-kind="about"].open {
+    transition:
+      transform 0s,
+      opacity 200ms ease,
+      max-height 320ms var(--ease);
+  }
 }
 
 /*

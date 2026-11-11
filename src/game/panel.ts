@@ -404,7 +404,8 @@ export class Panel {
     this.root.classList.remove("open");
     this.endDrag();
     this.backdrop.hidden = true;
-    this.closeTimer = window.setTimeout(() => (this.root.hidden = true), 320);
+    // (the about card's fade out is a little slower than the others': see game.css)
+    this.closeTimer = window.setTimeout(() => (this.root.hidden = true), this.root.dataset.kind === "about" ? 450 : 320);
     this.onClose();
   }
 
