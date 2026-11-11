@@ -249,10 +249,17 @@ export function csRobotModel(): Group {
     }
   }
   for (const s of [-1, 1]) part(intake, L - 1, 0.12, 0.12, BLACK, L / 2, 0.2, s * 2.2); // the black cords across the arms
-  // the lower bar: five yellow flippers on the axle low at the front, short, with their tips curling up
+  // the lower bar: five yellow flippers on the axle low at the front, short, with their tips curling up, each with a blade the other way too
   for (let k = -2; k <= 2; k++) {
     part(g, HALF + 0.3 - PIVOT.x, 0.3, 0.45, YELLOW, (PIVOT.x + HALF + 0.3) / 2, 0.4, k * 1.6);
     part(g, 0.35, 0.9, 0.45, YELLOW, HALF + 0.4, 0.75, k * 1.6);
+    // two-pronged: and a blade the other way through the bar, under the chassis, the same shape turned half a turn about it
+    const back = new Group();
+    back.position.set(PIVOT.x, 0.5, k * 1.6);
+    back.rotation.z = Math.PI;
+    part(back, HALF + 0.3 - PIVOT.x, 0.3, 0.45, YELLOW, (HALF + 0.3 - PIVOT.x) / 2, -0.1, 0);
+    part(back, 0.35, 0.9, 0.45, YELLOW, HALF + 0.4 - PIVOT.x, 0.25, 0);
+    g.add(back);
   }
   part(g, 0.5, 0.5, 2 * ARM_Z, BLUE, PIVOT.x, 0.5, 0);
 
