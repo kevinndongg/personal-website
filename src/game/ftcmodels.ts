@@ -10,13 +10,16 @@ import {
   MeshBasicMaterial,
   MeshLambertMaterial,
   PlaneGeometry,
+  Quaternion,
   Vector3,
 } from "three";
 import { FLOOR } from "./ftc";
 import { markMoving } from "./bake";
-import { PP, PP_HEIGHT, TAKEN, ftcField, poleTop, submersibleSamples } from "./ftcfield";
+import { BACKDROP, BACKDROP_GRID, BACKDROP_PILE, BACKDROP_PLACE, CS, PIXEL_DROP, PIXEL_SIZE, PP, PP_HEIGHT, STAGE_DOOR_LEN, TAKEN, backdropCell, backdropRowSize, ftcField, poleTop, submersibleSamples } from "./ftcfield";
 import { robotModel } from "./ftcrobot";
+import { csRobotModel } from "./ftccsrobot";
 import { ppCone, ppRobotModel } from "./ftcpprobot";
+import { pixelMesh } from "./ftcpixel";
 import { centred, pixelText } from "./ftctext";
 import { box, canvasOf, cyl, fillRect, mesh, nearestTexture, toon } from "./models";
 import type { AnimCtx } from "./models";
@@ -221,43 +224,118 @@ function samplePile(color: string, layers = 6): Group {
   return g;
 }
 
-// ---- Center Stage: the backdrop, the truss, the drone and the pixels
+// ---- Center Stage: the backdrop, the truss and the pixels
 
-/** The mosaic on the face of the backdrop: a lattice of pixels, some in place, the rest empty. */
+/**
+ * The face of the backdrop: the bare board with a lattice of hexagonal recesses, rows of six and five in turn, and a zigzag bottom
+ * edge following the points of the lowest row. The pixels are real 3D models lying on it (`backdropModel`). `w` x `len` px, at 16 texels
+ * a px and smoothed, so the hexagons keep clean edges.
+ */
 function backdropTexture(w: number, len: number): CanvasTexture {
-  const W = Math.round(w * 2);
-  const H = Math.round(len * 2);
+  const D = 16;
+  const W = Math.round(w * D);
+  const H = Math.round(len * D);
   const [c, ctx] = canvasOf(W, H);
   fillRect(ctx, 0, 0, W, H, "#2b2e38");
-  const palette = [PIXEL.y, PIXEL.p, PIXEL.w, PIXEL.g, "#3a3e4a", "#3a3e4a"];
-  const cols = Math.floor((W - 7) / 6);
-  const rows = Math.floor((H - 5) / 5);
-  for (let r = 0; r < rows; r++)
-    for (let q = 0; q < cols; q++) {
-      const x = 4 + q * 6 + (r % 2) * 3;
-      const y = 3 + r * 5;
-      ctx.fillStyle = palette[(q * 7 + r * 13 + ((q * r) % 5)) % palette.length];
-      ctx.fillRect(x + 1, y, 2, 4); // a hexagon, as much as four texels allow
-      ctx.fillRect(x, y + 1, 4, 2);
+  const hexagon = (u: number, v: number, shrink: number) => {
+    // a hexagon with two upright sides: points up and down
+    const cx = W / 2 + u * D;
+    const cy = H - v * D;
+    const r = (PIXEL_SIZE.corner / 2 - shrink) * D;
+    ctx.beginPath();
+    for (let k = 0; k < 6; k++) {
+      const a = Math.PI / 6 + (k * Math.PI) / 3;
+      const x = cx + Math.cos(a) * r;
+      const y = cy + Math.sin(a) * r;
+      if (k) ctx.lineTo(x, y);
+      else ctx.moveTo(x, y);
     }
-  return nearestTexture(c);
+    ctx.closePath();
+  };
+  // the bottom edge of the face follows the points of the lowest row's hexagons, a zigzag; below it is the bare board
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  for (let col = -3; col <= BACKDROP_GRID.cols + 1; col++) {
+    const u = (col - (backdropRowSize(0) - 1) / 2) * PIXEL_SIZE.across;
+    ctx.lineTo(W / 2 + (u - PIXEL_SIZE.across / 2) * D, H - (BACKDROP_GRID.margin + PIXEL_SIZE.corner / 4) * D);
+    ctx.lineTo(W / 2 + u * D, H - BACKDROP_GRID.margin * D);
+    ctx.lineTo(W / 2 + (u + PIXEL_SIZE.across / 2) * D, H - (BACKDROP_GRID.margin + PIXEL_SIZE.corner / 4) * D);
+  }
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  ctx.fillStyle = "#1b1d26";
+  ctx.fill();
+  for (let row = 0; row < BACKDROP_GRID.rows; row++) {
+    for (let col = 0; col < backdropRowSize(row); col++) {
+      const { u, v } = backdropCell(row, col);
+      hexagon(u, v, 0.1);
+      ctx.fillStyle = "#333745"; // a recess, where a pixel can come to rest
+      ctx.fill();
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = "rgba(0,0,0,0.3)";
+      ctx.stroke();
+    }
+  }
+  const tex = new CanvasTexture(c);
+  tex.minFilter = LinearFilter;
+  tex.generateMipmaps = false;
+  return tex;
 }
 
+/**
+ * The backdrop: a board tilted back against the wall on a platform a whole tile wide, its face with a few pixels at the bottom and
+ * empty recesses above. Pixels are 3 in across, so six fit across (the tile is 24 in wide); each one is the same 3D ring as on the floor.
+ */
 function backdropModel(w: number, d: number): Group {
   const g = new Group();
   g.add(box(w, 1.5, d, DARK, 0, 0, 0)); // the platform
-  const len = 14; // a narrow board, taller than it is wide
-  const tilt = 1.08; // 62 degrees: the top leans back to the wall
+  const len = BACKDROP.len; // taller than it is wide: eight rows of pixels
+  const tilt = BACKDROP.tilt; // 60 degrees from the floor, as in the manual: the top leans back to the wall
   const board = new Group();
-  board.position.set(0, 1.5 + (len * Math.sin(tilt)) / 2, 0);
+  board.position.set(0, BACKDROP.platform + (len * Math.sin(tilt)) / 2, 0);
   board.rotation.x = tilt;
-  board.add(box(w - 2, 0.8, len, "#1b1d26", 0, -0.4, 0));
-  const face = new Mesh(new PlaneGeometry(w - 2.6, len - 0.8), new MeshBasicMaterial({ map: backdropTexture(w - 2.6, len - 0.8) }));
+  board.add(box(w - 1, 0.8, len, "#1b1d26", 0, -0.4, 0));
+  const face = new Mesh(new PlaneGeometry(w - 1.6, len - 0.8), new MeshBasicMaterial({ map: backdropTexture(w - 1.6, len - 0.8) }));
   face.rotation.x = -Math.PI / 2;
   face.position.y = 0.45;
   board.add(face);
+  // the pixels that have slid down the board: real ring models lying on its face, each in its cell (the board's +z end is its bottom)
+  const faceLen = len - 0.8;
+  for (const p of BACKDROP_PILE) {
+    const { u, v } = backdropCell(p.row, p.col);
+    const px = pixelMesh(PIXEL[p.color], 0.46);
+    px.position.x = u;
+    px.position.z = faceLen / 2 - v;
+    board.add(px);
+  }
+  // the two the Center Stage robot puts on it (`ftcField.px`): let go a little in front of the board, turned the way the bucket was, and
+  // they drop onto the face and settle square; later they shrink away
+  const placed = BACKDROP_PLACE.map((spot, i) => {
+    const { u, v } = backdropCell(spot.row, spot.col);
+    const px = new Group();
+    px.add(pixelMesh(PIXEL[spot.color], 0));
+    px.position.set(u, 0.46, faceLen / 2 - v);
+    px.visible = false;
+    board.add(px);
+    return { px, i, z0: faceLen / 2 - v };
+  });
+  g.userData.animate = () => {
+    for (const { px, i, z0 } of placed) {
+      const p = ftcField.px[i];
+      px.visible = p > 0 && p < 1.999;
+      if (!px.visible) continue;
+      const fall = Math.min(1, p);
+      const ease = fall * fall * (3 - 2 * fall);
+      const drop = 1 - fall * fall;
+      px.position.y = 0.46 + drop * PIXEL_DROP.n; // it falls onto the face from where the bucket let go, above its place...
+      px.position.z = z0 - drop * PIXEL_DROP.v;
+      px.rotation.y = ftcField.pxTurn[i] * (1 - ease); // ...settling square to it
+      px.scale.setScalar(Math.max(0.001, p > 1 ? 2 - p : 1));
+    }
+  };
+  markMoving(g, ...placed.map((q) => q.px));
   g.add(board);
-  for (const sx of [-1, 1]) g.add(box(1, 10, 1, STEEL, sx * (w / 2 - 2.5), 1.5, -3.2)); // props behind
+  for (const sx of [-1, 1]) g.add(box(1, 12, 1, STEEL, sx * (w / 2 - 2.5), 1.5, -d / 2 + 1)); // props behind
   return g;
 }
 
@@ -286,32 +364,54 @@ function trussModel(): Group {
   return g;
 }
 
-/** A paper-plane drone, nose up on its launcher. */
-function droneModel(): Group {
+/**
+ * The Stage Door: the yellow barrier that spans the gap between the trusses, seen from the side of the field the robots start on. It is a
+ * frame of pipes hung from a top rail (a lower rail, and uprights at its ends and quarters), with clamps at the joints;
+ * a robot shorter than its lower rail drives under it. Its length runs along x, centred.
+ */
+function stageDoorModel(): Group {
   const g = new Group();
-  g.add(box(3, 0.6, 3, DARK, 0, 0, 0));
-  g.add(cyl(0.5, 0.5, 3.4, STEEL, 0, 0.6, 0, 6));
-  const plane = new Group();
-  plane.position.set(0, 4.4, 0);
-  plane.rotation.z = 0.18;
-  plane.add(box(8, 0.5, 1.6, "#f4f4f4", 0, 0, 0)); // body
-  for (const s of [-1, 1]) {
-    const wing = box(3.8, 0.3, 3.4, "#f4f4f4", 0.6, 0.2, s * 2.2);
-    wing.rotation.y = -s * 0.55;
-    plane.add(wing);
+  const L = STAGE_DOOR_LEN;
+  const TOP = 19.1; // the hinged rail's centre
+  const LOW = 12.6; // the lower rail's: a robot taller than this does not fit under it
+  g.add(box(L, 0.9, 0.9, GOLD, 0, TOP - 0.45, 0));
+  g.add(box(L, 0.9, 0.9, GOLD, 0, LOW - 0.45, 0));
+  for (const x of [-L / 2 + 0.45, -L / 4, 0, L / 4, L / 2 - 0.45]) {
+    g.add(box(0.9, TOP - LOW, 0.9, GOLD, x, LOW, 0)); // the uprights of the frame
+    g.add(box(1.3, 1.3, 1.3, DARK, x, TOP - 0.65, 0)); // a clamp at each joint with the top rail
+    g.add(box(1.3, 1.3, 1.3, DARK, x, LOW - 0.65, 0));
   }
-  plane.add(box(1.2, 2, 0.3, RED, -3.4, 0.5, 0)); // tail fin
-  g.add(plane);
   return g;
 }
 
-/** A hexagonal pixel, two stacked and a little askew. */
+/** The post at the free end of the Stage Door: a foot, a pipe up to the height of the truss's top bar, and a cap. */
+function doorPostModel(): Group {
+  const g = new Group();
+  g.add(box(3, 0.6, 3, DARK, 0, 0, 0));
+  g.add(box(1.2, 21, 1.2, STEEL, 0, 0.6, 0));
+  g.add(box(1.6, 1.2, 1.6, DARK, 0, 21.6 - 0.6, 0));
+  g.add(box(0.9, 0.9, 3.4, GOLD, 0, 12.6 - 0.45, 0)); // the stub the lower rail clamps to
+  return g;
+}
+
+/** One of the two pixels at the east wall that the Center Stage robot takes (`ftcField.wall[index]`): taken, then a fresh one appears. */
+function wallPixel(color: string, index: number): Group {
+  const g = new Group();
+  const px = pixelMesh(color, SHEET_Y);
+  g.add(px);
+  g.userData.animate = () => {
+    const p = ftcField.wall[index];
+    px.visible = p > 0.02;
+    px.scale.setScalar(Math.max(0.001, p));
+  };
+  markMoving(g, px);
+  return g;
+}
+
+/** A pixel lying on the floor sheet. */
 function pixelModel(color: string): Group {
   const g = new Group();
-  g.add(cyl(2.6, 2.6, 0.9, color, 0, 0, 0, 6));
-  const top = cyl(2.6, 2.6, 0.9, color, 0.4, 0.9, 0.2, 6);
-  top.rotation.y = 0.5;
-  g.add(top);
+  g.add(pixelMesh(color, SHEET_Y));
   return g;
 }
 
@@ -410,11 +510,33 @@ function basketModel(stripe: string, index: number, held: string[], dropped: str
   // (lying across the way the robot's head points, as it was on the scoop, so along the bucket's width)
   const top = lie(dropped, 18.5, 0, Math.PI / 2 + 0.12);
   top.visible = false;
+  const restAt = new Vector3(4.4, 19.3, 0); // where it lies on the pile (the middle of the box)
+  const restQuat = top.quaternion.clone();
+  const fromAt = new Vector3();
+  const fromQuat = new Quaternion();
+  const inv = new Quaternion();
   g.userData.animate = () => {
     const p = ftcField.dropped[index];
-    top.visible = p > 0.02;
-    top.scale.setScalar(Math.max(0.001, p));
-    top.position.y = 18.5 + 0.8 * p + (1 - p) * 3;
+    top.visible = p > 0.002 && p < 1.999;
+    if (!top.visible) return;
+    if (p >= 1) {
+      // in place, and then shrinking away when it is taken
+      top.position.copy(restAt);
+      top.quaternion.copy(restQuat);
+      top.scale.setScalar(Math.max(0.001, 2 - p));
+      return;
+    }
+    // falling from the scoop into the bucket: across at an easing pace, down at the pace of a fall, turning to lie as it will on the pile
+    const f = ftcField.flight[index];
+    g.updateWorldMatrix(true, false);
+    fromAt.set(f.from[0], f.from[1], f.from[2]);
+    g.worldToLocal(fromAt);
+    g.getWorldQuaternion(inv).invert();
+    fromQuat.set(f.quat[0], f.quat[1], f.quat[2], f.quat[3]).premultiply(inv);
+    const across = p * p * (3 - 2 * p);
+    top.position.set(fromAt.x + (restAt.x - fromAt.x) * across, fromAt.y + (restAt.y - fromAt.y) * p * p, fromAt.z + (restAt.z - fromAt.z) * across);
+    top.quaternion.slerpQuaternions(fromQuat, restQuat, across);
+    top.scale.setScalar(1);
   };
   markMoving(g, top);
   return g;
@@ -702,8 +824,16 @@ export function ftcModel(id: string, w: number, d: number): Group | null {
       return backdropModel(w, d);
     case "truss":
       return trussModel();
-    case "drone":
-      return droneModel();
+    case "stage-door":
+      return stageDoorModel();
+    case "door-post":
+      return doorPostModel();
+    case "wall-pixel-y":
+      return wallPixel(PIXEL.y, 0);
+    case "wall-pixel-w":
+      return wallPixel(PIXEL.w, 1);
+    case "robot-cs":
+      return csRobotModel();
     case "pixel-y":
       return pixelModel(PIXEL.y);
     case "pixel-p":
