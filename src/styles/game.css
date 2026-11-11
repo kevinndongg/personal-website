@@ -816,7 +816,8 @@ html:has(.game) body {
  * are not painted inside the circle, so it stays see-through.)
  */
 .panel[data-side="right"] .close,
-.panel[data-side="left"] .close {
+.panel[data-side="left"] .close,
+.panel[data-kind="about"] .close {
   color: var(--paper);
   background: transparent;
   /*
@@ -832,12 +833,14 @@ html:has(.game) body {
 }
 
 .panel[data-side="right"] .close svg,
-.panel[data-side="left"] .close svg {
+.panel[data-side="left"] .close svg,
+.panel[data-kind="about"] .close svg {
   filter: drop-shadow(0 1px 2px rgba(20, 10, 4, 0.55));
 }
 
 .panel[data-side="right"] .close:hover,
-.panel[data-side="left"] .close:hover {
+.panel[data-side="left"] .close:hover,
+.panel[data-kind="about"] .close:hover {
   color: var(--ink);
   background: var(--paper);
   /* the fill and the dark cross arrive together, at once: any fade in has a moment when the cross matches the fill and flickers */
@@ -846,7 +849,8 @@ html:has(.game) body {
 
 /* focus: the ring itself gets bolder and brighter. (A separate outline would be a second circle: the card focuses the button when it opens.) */
 .panel[data-side="right"] .close:focus-visible,
-.panel[data-side="left"] .close:focus-visible {
+.panel[data-side="left"] .close:focus-visible,
+.panel[data-kind="about"] .close:focus-visible {
   outline: none;
   box-shadow:
     0 0 0 2.5px var(--paper),
@@ -860,6 +864,18 @@ html:has(.game) body {
 .panel[data-side="left"] .close {
   right: auto;
   left: calc(100% + 10px * var(--card-scale, 1));
+}
+
+/* the about card is a bottom card: its close button sits outside it too, above its top-right corner */
+.panel[data-kind="about"] .close {
+  top: auto;
+  right: 0;
+  bottom: calc(100% + 10px * var(--card-scale, 1));
+}
+
+/* the card is as tall as its text, so there is nothing for the handle to pull up */
+.panel[data-kind="about"] .grip {
+  display: none;
 }
 
 /* the expand button: inside the card's top-right corner (fixed there while the card scrolls); only projects marked expandable have it */
