@@ -2,7 +2,8 @@
 // does two jobs in turn. Each job: extend the arm forward to a sample lying in the submersible (the arm lies flat when
 // empty, so it only has to extend) and roll it onto the scoop, retract, pivot the arm up to stand upright with the sample lying
 // on top of it, drive like that to a basket and stop diagonally with its back to the bucket, extend the arm straight up and
-// lean it back over the robot to tip the sample into the bucket behind it, then lay the arm back down flat. The first job takes
+// lean it back over the robot to tip the sample into the bucket behind it, then lay the arm back down flat. The robot sets off while the
+// arm is still moving: it drives away from the sample as the arm stands upright, and away from the basket as the arm pivots down and retracts. The first job takes
 // a red sample to the red basket; the second takes a yellow one
 // from the south side of the submersible to the blue basket. The robot never has to turn round: the sample goes over the top.
 //
@@ -84,6 +85,8 @@ interface Phase {
   /** Or the route it drives, turning from the heading it sets off with to the one it stops with. */
   route?: { curve: CatmullRomCurve3; h0: number; h1: number };
   arm: [ArmPose, ArmPose];
+  /** For a drive, how long the arm takes to go from the first pose to the second, from the start of the phase (it eases over the whole phase if this is not given). */
+  armTime?: number;
   spin?: boolean;
   /** Whether a sample is on the scoop, through the phase, its colour, and how far it has rolled onto the scoop. */
   carry: (u: number) => boolean;
@@ -155,8 +158,6 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
       },
       { dur: 0.3, at: j.intakeAt, arm: [j.intakeArm, j.reachedArm], carry: always, color }, // the head curls up, out in front of the robot
       { dur: 0.45, at: j.intakeAt, arm: [j.reachedArm, STOWED], carry: always, color }, // and then the slide retracts
-      // and with the sample on it the arm stands upright, ready to go straight up at the basket, and drives like that
-      { dur: 0.5, at: j.intakeAt, arm: [STOWED, j.vertArm], carry: always, color },
     ];
   };
 
@@ -175,7 +176,6 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
         mark: { what: "drop", index: j.job.score.basket, offset: 0.55 * 0.8 },
       },
       { dur: 0.45, at: j.scoreAt, arm: [j.tipArm, j.turnedArm], carry: never }, // the head turns back the short way, still up in the air
-      { dur: 0.65, at: j.scoreAt, arm: [j.turnedArm, STOWED], carry: never }, // and then the arm pivots down and retracts
     ];
   };
 
@@ -190,18 +190,20 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
     loop.push({
       dur: drive(over),
       route: { curve: over, h0: j.intakeAt.h, h1: j.scoreAt.h },
-      arm: [j.vertArm, j.vertArm], // upright, with the sample on top
+      arm: [STOWED, j.vertArm], // with the sample on it the arm stands upright, ready to go straight up at the basket, while the robot sets off
+      armTime: 0.5,
       carry: always,
       color,
-      mark: { what: "spawn", index: j.job.intake.slot, offset: 0.2 }, // a new sample grows back once the robot has set off with this one
+      mark: { what: "spawn", index: j.job.intake.slot, offset: 0.7 }, // a new sample grows back once the robot has set off with this one
     });
     loop.push(...depositPhases(j));
     loop.push({
       dur: drive(between),
       route: { curve: between, h0: j.scoreAt.h, h1: next.intakeAt.h },
-      arm: [STOWED, STOWED],
+      arm: [j.turnedArm, STOWED], // the arm pivots down and retracts as the robot drives off
+      armTime: 0.65,
       carry: never,
-      mark: { what: "clear", index: j.job.score.basket, offset: 0.1 }, // and the sample it dropped goes once the robot has driven off
+      mark: { what: "clear", index: j.job.score.basket, offset: 0.75 }, // and the sample it dropped goes once the robot has driven off
     });
   });
   const loopTotal = loop.reduce((s, p) => s + p.dur, 0);
@@ -268,7 +270,7 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
     spin += dt * SPIN_RATE * spinning;
     const pose = model.userData.pose as ((p: RobotPose) => void) | undefined;
     pose?.({
-      ...mix(ph.arm[0], ph.arm[1], k),
+      ...mix(ph.arm[0], ph.arm[1], ph.armTime ? smooth(e / ph.armTime) : k),
       spin,
       carrying: ph.carry(u),
       carryColor: ph.color ?? YELLOW,
