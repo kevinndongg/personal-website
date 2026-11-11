@@ -52,6 +52,19 @@ export interface Prop {
   cycle?: RobotCycle;
   /** A robot that works the Power Play wedge on its own, over and over. See ppcycle.ts. */
   ppCycle?: PowerPlayCycle;
+  /** A robot that takes two pixels from the east wall to the backdrop, over and over (the Center Stage robot). See cscycle.ts. */
+  csCycle?: CenterStageCycle;
+}
+
+/**
+ * What the Center Stage robot does, in world px: pick the two pixels up off the wall (centres), drive under the Stage Door's gap along the lane
+ * at `door.x` (the door lies along the row `door.y`) to the backdrop, and put them on it.
+ */
+export interface CenterStageCycle {
+  yellow: { x: number; y: number };
+  white: { x: number; y: number };
+  backdrop: { x: number; y: number };
+  door: { x: number; y: number };
 }
 
 /** A cone the Power Play robot takes: where it stands on the floor, the height of its base, and the way the robot faces it (radians, world plane). */

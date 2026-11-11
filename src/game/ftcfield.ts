@@ -59,7 +59,8 @@ export function submersibleSamples(w: number, d: number): SampleSpot[] {
 /**
  * The state the robots write every frame, as a function of where they are in their loops (see robotcycle.ts, ppcycle.ts), and the
  * models read. Into the Deep: how much of each of the two samples the robot takes is on the floor (1 there, 0 gone), and how
- * much of the sample it has just dropped in each basket is showing on top (0 not at all, 1 in place); red basket / blue basket,
+ * far the sample it has just dropped in each basket has come on its way from the scoop to the top of the pile (0 not at all, 0..1 falling,
+ * 1 in place, 1..2 shrinking away: see `flight` for where it starts); red basket / blue basket,
  * left / right sample. Power Play: how much of the red stack's top cone and of the human player's cone is there (1 there, 0 taken),
  * and the cone just placed on the high / medium junction (0 not at all, 0..1 sliding down the pole, 1 at rest, 1..2 shrinking away).
  * The rest state, and the one reduced motion leaves, is every game piece where it was and nothing placed.
@@ -67,6 +68,11 @@ export function submersibleSamples(w: number, d: number): SampleSpot[] {
 export const ftcField = {
   sample: [1, 1],
   dropped: [0, 0],
+  /** Into the Deep: where each dropped sample is let go from, in the world (x east, y up, z south), and how it lies (a quaternion x, y, z, w). */
+  flight: [
+    { from: [0, 0, 0], quat: [0, 0, 0, 1] },
+    { from: [0, 0, 0], quat: [0, 0, 0, 1] },
+  ] as { from: number[]; quat: number[] }[],
   cone: [1, 1],
   placed: [0, 0],
   /** The way the cone just placed on the high / medium junction leans as it is let go (base to tip, world x east, y up, z south). */
@@ -74,6 +80,12 @@ export const ftcField = {
     [0, 1, 0],
     [0, 1, 0],
   ],
+  /** Center Stage: the two pixels at the east wall, yellow then white (1 there, 0 taken), ... */
+  wall: [1, 1],
+  /** ...and the two the robot puts on the backdrop, white then yellow (0 not there, 0..1 let go and settling, 1..2 shrinking away). */
+  px: [0, 0],
+  /** How far each of those was turned (radians) as it was let go: it settles square to the board as it lands. */
+  pxTurn: [0, 0],
 };
 
 // ---------------------------------------------------------------- Power Play
@@ -147,4 +159,176 @@ export function clawDir(v: readonly [number, number, number], tilt: number, twis
 export function heldBase(tilt: number, twist: number): [number, number, number] {
   const c = clawToArm([0, -PP.hold, 0], tilt, twist);
   return [PP.arm + c[0], c[1], c[2]];
+}
+
+// ---------------------------------------------------------------- Center Stage
+
+/**
+ * A Center Stage pixel to scale. The game manual gives its size as a hexagon 3 in across and 0.5 in thick, at the field's 1.2 in per px;
+ * `across` is the hexagon's width between two parallel sides and `corner` its height from point to point with those sides upright.
+ * It is a ring: the manual's drawings (appendix C) show a hexagonal hole through the middle, which I read as about 0.45 of the width.
+ */
+export const PIXEL_SIZE = { across: 3 / 1.2, corner: 3 / 1.2 / Math.cos(Math.PI / 6), thick: 0.5 / 1.2, hole: 0.45 } as const;
+
+/**
+ * How the pixels lie on the backdrop's face: rows of hexagons, six across and five across in turn, the bottom row being the six
+ * (each row sits in the gaps of the one below, so the fives leave half a pixel of space at each side).
+ */
+export const BACKDROP_GRID = {
+  cols: 6,
+  rows: 8,
+  rowPitch: PIXEL_SIZE.corner * 0.75,
+  margin: 0.45, // from the board's bottom edge to the lowest hexagon's lowest point
+} as const;
+
+/** How many pixels fit in `row` (0 is the bottom one). */
+export const backdropRowSize = (row: number) => (row % 2 === 0 ? BACKDROP_GRID.cols : BACKDROP_GRID.cols - 1);
+
+/** The centre of the pixel at `row` (0 is the bottom one) and `col` on the face: `u` across from its middle, `v` up from its bottom edge. */
+export function backdropCell(row: number, col: number): { u: number; v: number } {
+  return {
+    u: (col - (backdropRowSize(row) - 1) / 2) * PIXEL_SIZE.across,
+    v: BACKDROP_GRID.margin + PIXEL_SIZE.corner / 2 + row * BACKDROP_GRID.rowPitch,
+  };
+}
+
+/**
+ * The pixels on the backdrop to start with: a few that have slid down into the bottom right corner, each resting on the two beneath it
+ * (the one at the board's right edge on one and the side). Bottom row six across, then five, then six; `color` is white (w), yellow
+ * (y), purple (p) or green (g).
+ */
+export const BACKDROP_PILE: { row: number; col: number; color: "y" | "p" | "w" | "g" }[] = [
+  { row: 0, col: 1, color: "w" },
+  { row: 0, col: 2, color: "g" },
+  { row: 0, col: 3, color: "g" },
+  { row: 0, col: 4, color: "w" },
+  { row: 0, col: 5, color: "w" },
+  { row: 1, col: 2, color: "g" },
+  { row: 1, col: 3, color: "w" },
+  { row: 1, col: 4, color: "w" },
+  { row: 2, col: 4, color: "p" },
+  { row: 2, col: 5, color: "g" },
+];
+
+/** How long the Stage Door's span is: from the post on the tape line to the truss's near A-frame, about two tiles (about 46 in in the manual). */
+export const STAGE_DOOR_LEN = 40.9;
+
+/** The backdrop board: its lean (60 degrees from the floor, 30 from vertical as in the manual's C-2), its length, and the platform it stands on. */
+export const BACKDROP = { tilt: Math.PI / 3, len: 20, platform: 1.5, depth: 10, faceInset: 0.45 } as const;
+
+/**
+ * Where the face's point (`u` across from the middle, `v` up the face from its bottom edge) is relative to the backdrop's centre on the
+ * floor: `z` south of it and `h` above the floor.
+ */
+export function backdropFace(u: number, v: number, lift = 0): { x: number; z: number; h: number } {
+  const t = BACKDROP.tilt;
+  const zf = (BACKDROP.len - 0.8) / 2 - v; // along the board, the bottom end being +
+  const y = BACKDROP.faceInset + lift; // out of the face
+  return { x: u, z: y * Math.sin(t) + zf * Math.cos(t), h: BACKDROP.platform + (BACKDROP.len * Math.sin(t)) / 2 + y * Math.cos(t) - zf * Math.sin(t) };
+}
+
+/** The two pixels the Center Stage robot places, white then yellow: where on the lattice (see `backdropCell`). The white goes just left of the green in the second row, the yellow on the purple and the green in the third. */
+export const BACKDROP_PLACE: { row: number; col: number; color: "w" | "y" }[] = [
+  { row: 1, col: 1, color: "w" },
+  { row: 3, col: 4, color: "y" },
+];
+
+/**
+ * Team 6417's Center Stage robot (px; 1 px = 1.2 in): 17 in square, a clear box with an intake arm on the front that pivots down to take
+ * pixels in, and at the back a slide leaning back 30 degrees (parallel to the backdrop) with an arm, a turret and a bucket holding two pixels
+ * one above the other. Robot frame: x forward, y up, z to its right; the robot deposits backwards, its rear to the backdrop.
+ */
+export const CS = {
+  half: 17 / 2 / 1.2,
+  reach: 4.3, // how far the intake's fingertips reach past the front when it is down
+  ahead: 3, // how far past the front a pixel lies, centre, when the roller takes it
+  reachUp: 9, // how far the intake sticks out ahead of the robot's centre when it is raised for driving
+  lean: Math.PI / 6, // the slide's lean from vertical
+  slide: { x: -1.87, y: 1, len: 7.8, travel: 14, rails: 3.12, pitch: 0.7 }, // its foot, the length of each stage, how far it extends at most (three stages), and how far the innermost stage of each side's stack stands from the middle (the arm and bucket pass between the two stacks) and how far apart the stages are; the other stages stand outwards of it, the lowest against the inner plate
+  // the arm from the top of the slide to the turret: along the slide (negative: down it) and out towards the backdrop. Arm and bucket are one piece
+  // turning about the slide's top. At rest (`fold`, 60 degrees on) they lie flat inside the robot, the bucket forward of the turret's axis; they swing
+  // back through 60 degrees, out of the robot's back, to the deposit position, where the bucket is parallel to the backdrop.
+  // the arm's pivot, on an aluminium plate off the slide's rear face: down the slide from the top of its highest stage, and out from its middle
+  pivot: { along: -2.1, out: 0.9 },
+  arm: { along: 0, out: 3.51, fold: -Math.PI / 3 }, // from the pivot to the turret's axis: out square from the slide at the deposit position, straight down at rest
+  // how far below the turret's axis the pixel nearer the opening and the one above it sit (one pixel's height apart); where the bucket's closed rear
+  // end is (above the axis: positive), out to the end of the arm joint. The bucket is closed at the rear and open at the bottom, and the pixels
+  // take exactly their own length of it
+  bucket: { low: 4.4, high: 1.5, top: 1.0, half: 2.125 }, // (and `half`, the bucket's outer half width, across the board)
+  turret: Math.PI / 3, // the turret's range, each way
+  gap: 1.7, // how far in front of the board the pixels' plane is held when it deposits (the bucket's front, 0.75 nearer, clears the tops of pixels already placed by 0.07)
+  height: 7.4, // the chassis's height, under the Stage Door's 12.6 px rail with the slide down
+} as const;
+
+/**
+ * Where the bucket's lower pixel is when the lock lets it go: it falls out of the open bottom of the bucket, which hangs above its place, so it
+ * starts `n` out from its resting place on the face and `v` up the face from it (it falls straight down: the face leans back 60 degrees).
+ */
+export const PIXEL_DROP = (() => {
+  const n = CS.gap - PIXEL_SIZE.thick / 2 - 0.01;
+  return { n, v: n * Math.tan(BACKDROP.tilt) };
+})();
+
+/** How the robot waits: intake up, slide down, arm folded with the bucket flat inside the robot, turret straight, gate shut, nothing in it. */
+export const CS_WAIT = { intake: 0, spin: 0, slide: 0, arm: CS.arm.fold, turret: 0, gate: 0, yellow: -1, white: -1, yellowLow: 0 } as const;
+
+const D = [-Math.sin(CS.lean), Math.cos(CS.lean)] as const; // up the slide, in the (x, y) plane of the robot
+const OUT = [-Math.cos(CS.lean), -Math.sin(CS.lean)] as const; // towards the backdrop, square to the slide
+const rot2 = (v: readonly [number, number], a: number): [number, number] => [v[0] * Math.cos(a) - v[1] * Math.sin(a), v[0] * Math.sin(a) + v[1] * Math.cos(a)];
+
+/**
+ * The top of the slide, extended `e` px, and the arm and turret on it, swung back by `beta` (0 = lying along the slide, parallel to the
+ * backdrop; `CS.arm.fold` = folded down inside the robot): the hinge, the turret's axis, and the bucket's
+ * up and out directions, in the robot's (x, y) plane.
+ */
+export function csArm(e: number, beta: number) {
+  const top = [CS.slide.x + (CS.slide.len + e) * D[0], CS.slide.y + (CS.slide.len + e) * D[1]];
+  const hinge: [number, number] = [top[0] + CS.pivot.along * D[0] + CS.pivot.out * OUT[0], top[1] + CS.pivot.along * D[1] + CS.pivot.out * OUT[1]]; // the arm's pivot
+  const l = rot2([CS.arm.along * D[0] + CS.arm.out * OUT[0], CS.arm.along * D[1] + CS.arm.out * OUT[1]], -beta); // the arm, from the pivot
+  return { hinge, axis: [hinge[0] + l[0], hinge[1] + l[1]] as [number, number], up: rot2(D, -beta), out: rot2(OUT, -beta) };
+}
+
+/** The centre of a pixel in the bucket, `dist` below the turret's axis along the bucket, with the turret turned `phi` (positive towards the robot's right), in the robot's frame. */
+export function csPixel(e: number, beta: number, phi: number, dist: number): [number, number, number] {
+  const a = csArm(e, beta);
+  return [a.axis[0] - Math.cos(phi) * dist * a.up[0], a.axis[1] - Math.cos(phi) * dist * a.up[1], Math.sin(phi) * dist];
+}
+
+/**
+ * How far below the turret's axis, up the board, the bucket's lowest point is with the turret turned `a` (0 = the bucket hanging straight down the
+ * board, either way round): its open end is `L` below the axis and its lowest outer corner is `half` to one side of that, so turning it lifts the
+ * end and drops the corner. (The same quantity as `BUCKET_LENGTH * sin(t) - |BUCKET_WIDTH * cos(t)|` for a turret angle `t` from the horizontal,
+ * with the width term added, as the lowest corner is the outer one.)
+ */
+export function csBucketDepth(a: number) {
+  const L = CS.bucket.low + PIXEL_SIZE.corner / 2;
+  return L * Math.cos(a) + CS.bucket.half * Math.abs(Math.sin(a));
+}
+
+/**
+ * How much further the slides must extend, with the turret at `a`, to keep the bucket's lowest point at the height it has with the turret at `aRef`.
+ * The slides run up the board, so a px more extension is a px more height on it.
+ */
+export function csHeightHold(a: number, aRef: number) {
+  return csBucketDepth(a) - csBucketDepth(aRef);
+}
+
+/**
+ * How the robot stands at the backdrop (heading south, its middle on the backdrop's): where, south of the backdrop's centre (`z`), so that the
+ * pixels' plane is `CS.gap` in front of the face, and, for a pixel to land at (`u`, `v`) on the face, the turret's angle and the slide's extension.
+ */
+export function csDeposit(u: number, v: number) {
+  const t = BACKDROP.tilt;
+  const b = backdropFace(0, 0, 0); // the face's lower edge
+  const a0 = csArm(0, 0);
+  const ct = Math.cos(t);
+  const st = Math.sin(t);
+  const z = b.z - a0.axis[0] + (CS.gap - ct * (a0.axis[1] - b.h)) / st; // where the robot's middle is, south of the backdrop's centre
+  const vOf = (e: number) => {
+    const p = csArm(e, 0).axis;
+    return (z + p[0] - b.z) * -ct + (p[1] - b.h) * st; // how far up the face the turret's axis is
+  };
+  const phi = Math.asin(Math.max(-1, Math.min(1, -u / CS.bucket.low))); // the middle of the robot is across from the face's middle
+  const e = v + PIXEL_DROP.v + CS.bucket.low * Math.cos(phi) - vOf(0); // the pixel is let go above its place and falls into it
+  return { z, phi, e, ok: Math.abs(phi) <= CS.turret + 1e-6 && e >= 0 && e <= CS.slide.travel + 1e-6 };
 }

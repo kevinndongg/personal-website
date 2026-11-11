@@ -124,7 +124,7 @@ function arc(color: string, r0: number, r1: number, y0: number, y1: number, th0:
 /**
  * The team's duck, traced from the logo into a 56x52 bitmap (# = vinyl): head up at the right, beak to the right and tail to the left.
  */
-const DUCK = [
+export const DUCK = [
   "..................................#####.................",
   "................................#########...............",
   "..............................############..............",
