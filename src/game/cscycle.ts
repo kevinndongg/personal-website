@@ -1,12 +1,16 @@
-// The Center Stage robot's loop, forever, starting at the east wall: one job, the two pixels there to the backdrop.
+// The Center Stage robot's loop, forever, starting at the east wall: one job, the two pixels there to the backdrop, done like the Power Play
+// robot's (ppcycle.ts): two flowing drives rather than a string of separate moves, every joint on its own track so that one begins while the
+// last is finishing.
 //
-// It is one smooth run each way. Away from the backdrop it drives straight south under the Stage Door (the arm folds and the slides go down as
-// it goes), then turns in one long curve to the east and drives up to the pixels, the intake coming down and the roller starting as it
-// approaches: the yellow pixel is pulled in (up the ramp into the bucket's upper place) and the white one behind it, as it comes to rest. Then it
-// reverses along the same path, the intake lifting, turning as it goes and running north under the door; once its front is clear it slows, and
-// as it slows the slides rise and the arm swings back (parallel to the backdrop). It then stands in one place, and only the turret and the slides
-// move: the turret turns, the lock lets go and the white pixel drops in the second row, just left of the green one; the yellow slides down to the
-// lower place and is held; the slides rise, the turret turns the other way and the yellow one drops on the purple and the green, a mosaic.
+// Away from the backdrop it drives straight south under the Stage Door the moment the last pixel is let go: the lock closes and the turret
+// centres as it pulls away, the arm folds once it has backed off the board and the slides go down before the rear reaches the door. Then one
+// long turn to the east and a straight run up to the pixels, the intake coming down and the roller starting as it approaches: the yellow pixel
+// is pulled in (up the ramp into the bucket's upper place) and the white one behind it, as it comes to rest. Then it reverses along the same
+// path, the intake lifting at once, turning as it goes and running north under the door; once its front is clear the slides rise, and as it
+// slows to a stop the arm swings back (parallel to the backdrop) and the turret swings out, so it arrives with the arm ready. It then stands in
+// one place and only the joints move, one following the next: the lock lets go and the white pixel drops in the second row, just left of the
+// green one; the yellow slides down to the lower place and is held; the slides rise, the turret swings across and the yellow one drops on
+// the purple and the green, a mosaic.
 //
 // The game pieces are persistent. The two pixels at the wall shrink away as the roller takes them and fresh ones grow back once the robot
 // has driven off; the two it places show on the backdrop until it has driven away, and then shrink, so the next lap can do it again. That is
@@ -23,9 +27,9 @@ import type { CenterStageCycle } from "./scenes";
 const GONE = 14; // how far (px) the robot has driven from a stop before the pixel it leaves there changes (a placed one shrinks, a taken one is replaced)
 const FEED = 1.0; // how long a pixel takes to ride in from the floor to its place in the bucket (s)
 const SPIN = 10; // the roller's speed (rad/s)
-const SLIDE_V = 24; // how fast the slides move, up or down alike (px/s on average over a move; they ease in and out)
+const SLIDE_V = 16; // how fast the slides move, up or down alike (px/s on average over a move; they ease in and out)
 const slideTime = (dist: number) => Math.abs(dist) / SLIDE_V; // how long a slide move of `dist` px takes (s)
-const JOINT_W = 4.2; // how fast the arm swings and the turret turns, either way (rad/s on average over a move, about 240 degrees a second; they ease in and out)
+const JOINT_W = 2.6; // how fast the arm swings and the turret turns, either way (rad/s on average over a move, about 150 degrees a second; they ease in and out)
 const jointTime = (rad: number) => Math.abs(rad) / JOINT_W; // how long a swing or turn of `rad` takes (s)
 const DOOR_CLEAR = CS.reachUp + 0.8; // the robot's centre has to be this far past the Stage Door for the raised intake to be clear of it
 const FOLD_AT = 4; // how far (px) it has driven back off the backdrop before the arm folds,
@@ -76,6 +80,8 @@ interface Phase {
   arm: [Arm, Arm];
   /** When, as a fraction of the phase, each joint moves (the rest move throughout), so that one joint can follow another. */
   when?: Partial<Record<Channel, [number, number]>>;
+  /** Or a joint's own track of values through the phase, which overrides the two above. */
+  keys?: Partial<Record<Channel, Keys>>;
   marks?: Mark[];
 }
 
@@ -178,22 +184,32 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   const openY: Arm = { ...raised, gate: 1 };
   const clear1: Arm = { ...openY, turret: 0, gate: 0 }; // the turret centred and the lock shut
 
+  const key = (...k: [number, number][]): Keys => k;
+  /** A joint's track through a phase of `dur` s, given in seconds: `[time, value]` pairs, eased from one to the next. */
+  const secs = (dur: number, ...k: [number, number][]): Keys => k.map(([s, v]) => [s / dur, v]);
+
   const loop: Phase[] = [];
-  // at the backdrop, the last pixel let go: the lock closes and the turret centres
-  loop.push({ dur: 0.5, at: stand, arm: [openY, clear1], when: { turret: [0, jointTime(phiY) / 0.5], gate: [0.5, 1] } });
-  // away from the backdrop in one run: the arm folds once it has backed off the board and the slides go down before the rear reaches the door,
-  // then one long turn, the intake coming down as it drives up to the pixels, the yellow taken first and the white as it comes to rest
-  const A = run(pathA, 5.0, 0, 0, 1);
+  // away from the backdrop in one flowing run, the moment the last pixel is let go (the lock closes and the turret centres as it pulls away; the
+  // arm folds once it has backed off the board and the slides go down before the rear reaches the door), then one long turn, the intake coming
+  // down as it drives up to the pixels, the yellow taken first and the white as it comes to rest
+  const A = run(pathA, 6.0, 0, 0, 1);
   const uFold = firstU(A, (p) => p.y > stand.y + FOLD_AT);
   const uIn = uFold + jointTime(CS.arm.fold) / A.dur; // the arm is in
   const uDown = Math.max(firstU(A, (p) => p.y > stand.y + DOWN_AT), uIn + 0.01); // the slides go down once it is
   const toPixels = (p: { x: number; y: number }) => Math.hypot(p.x - yStand.x, p.y - yStand.y);
-  const uI0 = firstU(A, (p) => toPixels(p) < 24);
+  const uI0 = firstU(A, (p) => toPixels(p) < 26);
   const uI1 = firstU(A, (p) => toPixels(p) < 12);
+  const centre = jointTime(phiY);
   loop.push({
     ...A,
-    arm: [clear1, S],
-    when: { arm: [uFold, uIn], slide: [uDown, Math.min(1, uDown + slideTime(clear1.slide) / A.dur)], intake: [uI0, uI1] },
+    arm: [openY, S],
+    keys: {
+      gate: secs(A.dur, [0, 1], [0.3, 0]),
+      turret: secs(A.dur, [0.1, phiY], [0.1 + centre, 0]),
+      arm: key([uFold, 0], [uIn, CS.arm.fold]),
+      slide: key([uDown, dY.e], [uDown + slideTime(dY.e) / A.dur, 0]),
+      intake: key([uI0, 0], [uI1, 1]),
+    },
     marks: [
       { what: "clear", index: 0, offset: farOffset(A, stand, GONE) },
       { what: "clear", index: 1, offset: farOffset(A, stand, GONE) + 0.2 },
@@ -201,30 +217,54 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
       { what: "pick", index: 1, offset: A.dur },
     ],
   });
-  loop.push({ dur: 0.45, at: wStand, arm: [S, S] }); // the roller finishes taking the white one in
-  // back to the backdrop in one run, reversing: the intake lifts, the new pixels appear at the wall once it is away, it turns as it goes and runs
-  // north under the door; once its front is clear the slides rise, and as it slows to a stop the arm swings back
-  const B1 = run(pathB1, 4.3, 0, 8, -1);
+  loop.push({ dur: 0.3, at: wStand, arm: [S, S] }); // the roller finishes taking the white one in, and it is off again
+  // back to the backdrop in one flowing run, reversing: the intake lifts at once, the new pixels appear at the wall once it is away, it turns as it
+  // goes and runs north under the door; once its front is clear the slides rise, and as it slows to a stop the arm swings back and the turret
+  // swings out, so it arrives with the arm ready
+  const B1 = run(pathB1, 5.0, 0, 8, -1);
   const uClear = firstU(B1, (p) => p.y < yClear);
   loop.push({
     ...B1,
     arm: [S, lifted],
-    when: { intake: [0.14, 0.34], slide: [uClear, Math.min(1, uClear + slideTime(dW.e) / B1.dur)] },
+    keys: {
+      intake: key([0.04, 1], [0.28, 0]),
+      slide: key([uClear, 0], [uClear + slideTime(dW.e) / B1.dur, dW.e]),
+    },
     marks: [
       { what: "spawn", index: 0, offset: farOffset(B1, wStand, GONE) },
       { what: "spawn", index: 1, offset: farOffset(B1, wStand, GONE) + 0.25 },
     ],
   });
-  loop.push({ ...run(pathB2, 2.2, 8, 0, -1), arm: [lifted, armBack], when: { arm: [0.4, 0.4 + jointTime(CS.arm.fold) / 2.2] } });
-  // then it stands there, and only the turret and the slides move: the white pixel, the yellow one down to the lower place, then the yellow
-  loop.push({ dur: jointTime(phiW) + 0.03, at: stand, arm: [armBack, lined] });
-  loop.push({ dur: 0.5, at: stand, arm: [lined, open], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 0, offset: 0.25, turn: -phiW }] });
-  loop.push({ dur: 0.7, at: stand, arm: [open, lowered], when: { yellowLow: [0, 0.6], gate: [0.6, 1] } });
-  const upT = slideTime(dY.e - dW.e); // the slides go up first, then the turret turns
-  const turnT = jointTime(phiY - phiW);
-  const upDur = upT + 0.03 + turnT + 0.03;
-  loop.push({ dur: upDur, at: stand, arm: [lowered, raised], when: { slide: [0, upT / upDur], turret: [(upT + 0.03) / upDur, (upT + 0.03 + turnT) / upDur] } });
-  loop.push({ dur: 0.5, at: stand, arm: [raised, openY], when: { gate: [0, 0.5] }, marks: [{ what: "drop", index: 1, offset: 0.25, turn: -phiY }] });
+  const B2dur = 2.0;
+  loop.push({
+    ...run(pathB2, B2dur, 8, 0, -1),
+    arm: [lifted, lined],
+    keys: {
+      arm: key([0.12, CS.arm.fold], [0.12 + jointTime(CS.arm.fold) / B2dur, 0]),
+      turret: key([0.5, 0], [0.5 + jointTime(phiW) / B2dur, phiW]),
+    },
+  });
+  // then it stands there: the lock draws back and the white pixel drops; the yellow slides down to the lower place and is held; the slides rise and
+  // the turret swings across, one joint following the next, and the lock lets the yellow go
+  const slideUp = slideTime(dY.e - dW.e);
+  const turnAcross = jointTime(phiY - phiW);
+  const lowerAt = 0.3; // the yellow pixel starts down once the white one is on its way
+  const rise = lowerAt + 0.3; // the slides rise as it settles
+  const swing = lowerAt + 0.52; // and the turret swings once the lock has it
+  const Pdur = swing + turnAcross + 0.05;
+  loop.push({
+    dur: Pdur,
+    at: stand,
+    arm: [lined, raised],
+    keys: {
+      gate: secs(Pdur, [0, 0], [0.15, 1], [lowerAt + 0.4, 1], [swing, 0]),
+      yellowLow: secs(Pdur, [lowerAt, 0], [lowerAt + 0.4, 1]),
+      slide: secs(Pdur, [rise, dW.e], [rise + slideUp, dY.e]),
+      turret: secs(Pdur, [swing, phiW], [swing + turnAcross, phiY]),
+    },
+    marks: [{ what: "drop", index: 0, offset: 0.2, turn: -phiW }],
+  });
+  loop.push({ dur: 0.45, at: stand, arm: [raised, openY], when: { gate: [0, 0.4] }, marks: [{ what: "drop", index: 1, offset: 0.2, turn: -phiY }] });
   const loopTotal = loop.reduce((s, p) => s + p.dur, 0);
 
   // it starts where the loop does: standing at the wall with the intake down; reduced motion, which never animates it, leaves it there
@@ -267,6 +307,15 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
 
   const channels: Channel[] = ["intake", "slide", "arm", "turret", "gate", "yellowLow"];
 
+  /** A joint's value at `u` along its own track. */
+  const track = (keys: Keys, u: number) => {
+    if (u <= keys[0][0]) return keys[0][1];
+    for (let n = 1; n < keys.length; n++) {
+      if (u <= keys[n][0]) return lerp(keys[n - 1][1], keys[n][1], smooth((u - keys[n - 1][0]) / (keys[n][0] - keys[n - 1][0])));
+    }
+    return keys[keys.length - 1][1];
+  };
+
   model.userData.animate = ({ t }: AnimCtx) => {
     if (t <= 0) return; // reduced motion: standing at the wall, every pixel where it was
 
@@ -302,6 +351,11 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
 
     const arm = {} as Arm;
     for (const c of channels) {
+      const keys = ph.keys?.[c];
+      if (keys) {
+        arm[c] = track(keys, u);
+        continue;
+      }
       const w = ph.when?.[c];
       arm[c] = lerp(ph.arm[0][c], ph.arm[1][c], w ? smooth((u - w[0]) / (w[1] - w[0])) : k);
     }
