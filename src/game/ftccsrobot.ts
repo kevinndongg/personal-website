@@ -249,19 +249,35 @@ export function csRobotModel(): Group {
     }
   }
   for (const s of [-1, 1]) part(intake, L - 1, 0.12, 0.12, BLACK, L / 2, 0.2, s * 2.2); // the black cords across the arms
-  // the lower bar: five yellow flippers on the axle low at the front, short, with their tips curling up, each with a blade the other way too
-  for (let k = -2; k <= 2; k++) {
-    part(g, HALF + 0.3 - PIVOT.x, 0.3, 0.45, YELLOW, (PIVOT.x + HALF + 0.3) / 2, 0.4, k * 1.6);
-    part(g, 0.35, 0.9, 0.45, YELLOW, HALF + 0.4, 0.75, k * 1.6);
-    // two-pronged: and a blade the other way through the bar, under the chassis, the same shape turned half a turn about it
-    const back = new Group();
-    back.position.set(PIVOT.x, 0.5, k * 1.6);
-    back.rotation.z = Math.PI;
-    part(back, HALF + 0.3 - PIVOT.x, 0.3, 0.45, YELLOW, (HALF + 0.3 - PIVOT.x) / 2, -0.1, 0);
-    part(back, 0.35, 0.9, 0.45, YELLOW, HALF + 0.4 - PIVOT.x, 0.25, 0);
-    g.add(back);
-  }
-  part(g, 0.5, 0.5, 2 * ARM_Z, BLUE, PIVOT.x, 0.5, 0);
+  // two more rows of yellow flippers that spin with the roller (the bottom row five across, z = 0, +-1.6, +-3.2, and the third four, standing between
+  // those, like the roller's): the bottom
+  // row on the arm's own axle at the front, and a third row behind it inside the robot, between the top of the ramp and the bucket. Every flipper is
+  // a blade out each side of its hub, the roller's shape: a short paddle with its tip curled over.
+  const spinners: Group[] = [];
+  const flipperRow = (x: number, y: number, halfSpan: number, zs: number[]) => {
+    const row = new Group();
+    row.position.set(x, y, 0);
+    g.add(row);
+    const bar = cyl(0.3, 0.3, 2 * halfSpan, STEEL, 0, 0, 0, 8);
+    bar.rotation.x = Math.PI / 2;
+    bar.position.set(0, 0, 0);
+    row.add(bar);
+    for (const z of zs) {
+      for (const turn of [0, Math.PI]) {
+        const blade = new Group();
+        blade.position.z = z;
+        blade.rotation.z = turn;
+        part(blade, 1.1, 0.35, 0.45, YELLOW, 0.8, 0, 0);
+        part(blade, 0.35, 0.8, 0.45, YELLOW, 1.4, -0.3, 0);
+        row.add(blade);
+      }
+    }
+    spinners.push(row);
+  };
+  flipperRow(PIVOT.x, PIVOT.y, ARM_Z, [-3.2, -1.6, 0, 1.6, 3.2]); // the bottom row, on the axle the intake arm pivots about
+  // and the third, between the plates, just ahead of the bucket's front end and above the floor plate; its flippers stand between the bottom row's
+  // (the two rows reach each other, so blades in the same place would meet)
+  flipperRow(2.4, 2.5, IN_Z - 0.13, [-2.4, -0.8, 0.8, 2.4]);
 
   // ---- the slide: three stages stacked side by side, one stack against each inner plate (the lowest stage fixed to the plate, the next beside it, and
   // the highest, which carries the arm, innermost), leaning back at CS.lean; the foot of the lowest is at CS.slide
@@ -392,6 +408,7 @@ export function csRobotModel(): Group {
     // the intake: up (60 degrees above level) to down (level, the roller's fingers at the floor)
     intake.rotation.z = lerp((60 * Math.PI) / 180, 0, p.intake);
     roller.rotation.z = -p.spin;
+    for (const r of spinners) r.rotation.z = -p.spin;
     const e = Math.min(CS.slide.travel, Math.max(0, p.slide));
     stages.forEach((st, k) => (st.position.y = (k * e) / 2)); // the highest stage carries the arm's pivot, so it goes the whole way
     const a = csArm(e, p.arm);
@@ -419,6 +436,6 @@ export function csRobotModel(): Group {
   };
   g.userData.pose = pose;
   pose(WAIT);
-  markMoving(g, intake, roller, ...stages, arm, turret, gate, inside.y, inside.w, held.y, held.w);
+  markMoving(g, intake, roller, ...spinners, ...stages, arm, turret, gate, inside.y, inside.w, held.y, held.w);
   return g;
 }
