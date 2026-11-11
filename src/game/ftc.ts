@@ -1,4 +1,4 @@
-import { PP, SAMPLE_COLORS, TAKEN, submersibleSamples } from "./ftcfield";
+import { CS, PIXEL_SIZE, PP, SAMPLE_COLORS, STAGE_DOOR_LEN, TAKEN, submersibleSamples } from "./ftcfield";
 import type { Decal, Footprint, Prop, Scene } from "./scenes";
 
 // The FTC area: one square competition field split into three wedges, one per season, with the duck mascot, the driver
@@ -41,6 +41,7 @@ export const FLOOR = {
   },
 };
 
+const PIXEL_HALF = PIXEL_SIZE.across / 2; // half a pixel, for laying pixels edge to edge
 const circle = (r: number): Footprint => ({ kind: "circle", r });
 const rect = (w: number, h: number): Footprint => ({ kind: "rect", w, h });
 
@@ -121,18 +122,35 @@ export function ftcScene(ox: number, oy: number): Scene {
     },
   });
 
-  // ---- Center Stage (top right wedge): the backdrop against the wall, the truss, the drone, loose pixels
-  props.push(block("ftc-backdrop", f(30, -55), 12, 8));
+  // ---- Center Stage (top right wedge): the backdrop against the wall, the truss, loose pixels
+  // the backdrop is a whole tile wide (the second tile from the right, against the north wall) and 10 deep
+  props.push(block("ftc-backdrop", f(30, -55), 20, 10));
   // the truss lies across the middle of the third tile down in the right-hand column, its bars running left to right on
   // screen: the model is 12 wide and 20 long, turned a quarter so the length runs east-west
   props.push({ sprite: "ftc-truss", ...f(50, -10), angle: Math.PI / 2, solid: rect(12, 20) });
-  props.push(round("ftc-drone", f(38, -46), 3));
+  // the Stage Door runs on from the truss across two tiles to a post on the tape line, along the same row: a barrier for the robots to pass
+  // under (no footprint: only its post blocks anything). Its model is centred, so it stands 2 px behind the y given, like the floor's.
+  const door = f(0.6 + STAGE_DOOR_LEN / 2, -10); // from the post's east face to the truss's west A-frame (x 41.5)
+  props.push({ sprite: "ftc-stage-door", x: door.x, y: door.y + 2 });
+  props.push(round("ftc-door-post", f(0, -10), 1.5));
+  // pixels lie flat on the floor, to scale (3 in across), with no footprint to block anything: loose ones about the wedge, turned this way and
+  // that, and two against the east wall in the middle of the fourth tile down, side by side: the white one right up to the wall (its
+  // flat side on it) and the yellow one directly to the west of it, touching, for a robot to pick up and take to the backdrop
+  const pixel = (sprite: string, c: { x: number; y: number }, yaw = 0): Prop => ({ sprite, x: c.x, y: c.y, angle: yaw });
   props.push(
-    round("ftc-pixel-y", f(10, -24), 3),
-    round("ftc-pixel-p", f(14, -42), 3),
-    round("ftc-pixel-w", f(6, -34), 3),
-    round("ftc-pixel-g", f(41, -54), 3)
+    pixel("ftc-pixel-y", f(10, -24), 0.4),
+    pixel("ftc-pixel-p", f(14, -42), 1.1),
+    pixel("ftc-pixel-w", f(6, -34), 0.7),
+    pixel("ftc-pixel-g", f(46, -54), 0.2),
+    pixel("ftc-wall-pixel-w", f(HALF - PIXEL_HALF, 10)), // these two the Center Stage robot takes (cscycle.ts)
+    pixel("ftc-wall-pixel-y", f(HALF - 3 * PIXEL_HALF, 10))
   );
+  // the Center Stage robot: from the wall, under the Stage Door's gap in the lane at the backdrop's x, to the backdrop; it starts at the wall
+  // with the yellow pixel straight ahead (where its loop starts)
+  props.push({
+    ...turned("ftc-robot-cs", f(HALF - 3 * PIXEL_HALF - (CS.half + CS.ahead), 10), 0, 6),
+    csCycle: { yellow: f(HALF - 3 * PIXEL_HALF, 10), white: f(HALF - PIXEL_HALF, 10), backdrop: f(30, -55), door: f(30, -10) },
+  });
 
   // ---- Into the Deep (front wedge): the submersible in the middle of the fifth tile row (counting from the back), and a basket in
   // each front corner. The floor in front of it is left clear: the robot drives along it.
