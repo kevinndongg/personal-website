@@ -102,18 +102,19 @@ export function ftcScene(ox: number, oy: number): Scene {
   );
 
   // Where the robots park when the about card opens (world px, relative to this area): just north of the field, so that they have not far to
-  // drive, and set out for the viewer, who looks from the south: two in front and one behind, all facing south. Each one's way there is its lane
-  // in the field, out through its gate and up to its spot. The Power Play robot's gate is north of the Into the Deep robot's, so it takes the
-  // inner lane and the nearer spot, and the other the outer lane and the spot behind, so that they never cross.
+  // drive, and set out for the viewer, who looks from the south: two in front and one behind. Each one's way there is its lane in the field, out
+  // through its gate and up to its spot. The Power Play robot's gate is north of the Into the Deep robot's, so it takes the inner lane up the west
+  // side and turns east early, below the front row, round to the spot behind; the Into the Deep robot takes the outer lane up to the front row and
+  // east to its spot, so that they never cross.
   const SOUTH = Math.PI / 2;
   // They are angled for the viewer so that each shows a side as well as its front: the left one turned toward the south-east and the right one
   // toward the south-west, and the one behind turned a further 135 degrees clockwise from facing the viewer (to the north-west).
   const ANGLE = (35 * Math.PI) / 180;
   const FACING = { pp: SOUTH - ANGLE, cs: SOUTH + ANGLE, itd: SOUTH + (135 * Math.PI) / 180 };
   const STOP = {
-    pp: at(34, -20), // front left
+    itd: at(34, -20), // front left
     cs: at(82, -20), // front right
-    itd: at(58, -44), // behind them, in the middle
+    pp: at(58, -44), // behind them, in the middle
   };
 
   // ---- Power Play (left wedge): junction poles on the tile corners, cone stacks to feed them, and the robot that works them
@@ -163,8 +164,11 @@ export function ftcScene(ox: number, oy: number): Scene {
         f(-69, 8),
         f(-70, -4),
         at(-2, 28),
-        at(0, -6),
-        at(16, -20),
+        at(-3, 12),
+        at(12, 0),
+        at(36, -1),
+        at(58, -14),
+        at(62, -32),
         STOP.pp,
       ],
       heading: FACING.pp,
@@ -277,9 +281,8 @@ export function ftcScene(ox: number, oy: number): Scene {
         f(-80, 28),
         at(-18, 70),
         at(-18, 0),
-        at(-18, -26),
-        at(-6, -44),
-        at(26, -44),
+        at(-18, -22),
+        at(14, -20),
         STOP.itd,
       ],
       heading: FACING.itd,
