@@ -47,13 +47,17 @@ export interface Leg {
 
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
-/** Points that are not on top of each other (a centripetal spline cannot take two at one place). */
-function apart(points: Pt[], min = 1.5): Pt[] {
+/**
+ * Points that are not on top of each other (a centripetal spline cannot take two at one place). With `keepEnd` the last point is
+ * always kept, as the way's end: it is the one before it that goes if the two are too close.
+ */
+function apart(points: Pt[], min = 1.5, keepEnd = false): Pt[] {
   const kept: Pt[] = [];
-  for (const p of points) {
+  points.forEach((p, i) => {
     const last = kept[kept.length - 1];
     if (!last || Math.hypot(p.x - last.x, p.y - last.y) > min) kept.push(p);
-  }
+    else if (keepEnd && i === points.length - 1) kept[kept.length - 1] = p;
+  });
   return kept;
 }
 
@@ -93,15 +97,22 @@ export function makeLeg(poses: Pose[], opts: { speed: number; brake: boolean; pa
  * The points must all be ahead of the car.
  */
 export function legThrough(from: Pose | null, points: Pt[], opts: { speed: number; brake: boolean; park?: boolean; finish?: Pt }): Leg {
-  const lead = 8; // a point straight ahead of the car, so that the path leaves it along its heading
-  // (the points close to the car are left out: next to the lead point they would make the path wiggle)
-  const all = from
-    ? [
-        { x: from.x, y: from.z },
-        { x: from.x + Math.cos(from.h) * lead, y: from.z + Math.sin(from.h) * lead },
-        ...points.filter((p) => Math.hypot(p.x - from.x, p.y - from.z) >= lead + 6),
-      ]
-    : points;
+  // Waypoints closer together than this are redundant: the spline smooths between them anyway, and points a few pixels apart (the
+  // lap's last arc has them) only make its heading twitch.
+  const wps = apart(points, 10, true);
+  let all = wps;
+  if (from) {
+    // A point straight ahead of the car, so that the path leaves it along its heading. How far ahead depends on how far the next
+    // waypoint is: a spline whose first two points are 8 px apart and whose third is 140 away bows out near the first.
+    const first = wps.find((p) => Math.hypot(p.x - from.x, p.y - from.z) >= 14);
+    const lead = first ? Math.min(40, Math.max(8, 0.3 * Math.hypot(first.x - from.x, first.y - from.z))) : 8;
+    all = [
+      { x: from.x, y: from.z },
+      { x: from.x + Math.cos(from.h) * lead, y: from.z + Math.sin(from.h) * lead },
+      // (the points close to the car are left out: next to the lead point they would make the path wiggle)
+      ...wps.filter((p) => Math.hypot(p.x - from.x, p.y - from.z) >= lead + 6),
+    ];
+  }
   const poses = curvePoses(all);
   let trackLen = 0;
   if (opts.finish) {

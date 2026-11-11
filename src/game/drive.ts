@@ -167,12 +167,21 @@ export function attachLap(model: Group, path: { x: number; y: number }[], visit?
       }
     }
 
-    const leg = tr.legs[tr.i];
+    let leg = tr.legs[tr.i];
     const rest = leg.len - tr.s;
     let target = leg.speed;
-    if (leg.brake) target = Math.min(target, 5 + Math.sqrt(2 * BRAKE * Math.max(0, rest)));
+    // (it plans to stop with 60% of the braking it has, so that it is always able to follow the plan: with all of it, a car that
+    // is a little late slows too slowly, and is still moving when it gets there)
+    if (leg.brake) target = Math.min(target, 5 + Math.sqrt(2 * BRAKE * 0.6 * Math.max(0, rest)));
     tr.v += Math.min(ACCEL * dt, Math.max(-BRAKE * dt, target - tr.v));
-    tr.s = Math.min(leg.len, tr.s + Math.max(0, tr.v) * dt);
+    // (a frame that runs past the end of a leg carries what is left into the next one: stopping at the join for the rest of the
+    // frame would be a stutter)
+    let s = tr.s + Math.max(0, tr.v) * dt;
+    while (s >= leg.len && tr.i + 1 < tr.legs.length) {
+      s -= leg.len;
+      leg = tr.legs[++tr.i];
+    }
+    tr.s = Math.min(leg.len, s);
 
     const pose = poseAt(leg, tr.s);
     if (leg.park) {
@@ -183,11 +192,8 @@ export function attachLap(model: Group, path: { x: number; y: number }[], visit?
     place(pose);
     carWatch.driving = true;
 
-    if (tr.s >= leg.len - 0.05) {
-      if (tr.i + 1 < tr.legs.length) {
-        tr.i++;
-        tr.s = 0;
-      } else if (leg.park) {
+    if (tr.i === tr.legs.length - 1 && tr.s >= leg.len - 0.05) {
+      if (leg.park) {
         model.position.x = home.x;
         model.position.z = home.z;
         model.rotation.y = home.ry;
