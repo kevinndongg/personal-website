@@ -477,6 +477,7 @@ export class Panel {
     this.badge.hidden = zone.variant !== "construction";
     this.when.hidden = !this.kicker.textContent && this.badge.hidden;
     this.summary.textContent = zone.summary;
+    this.summary.hidden = !zone.summary;
 
     this.bullets.replaceChildren(...(zone.bullets ?? []).map((b) => el("li", undefined, b)));
     this.bullets.hidden = !zone.bullets?.length;
