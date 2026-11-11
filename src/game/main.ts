@@ -223,6 +223,8 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
   function sideFor(zone: Zone): PanelSide {
     // the photography page is the scene itself: just a caption bar under it
     if (zone.kind === "gallery") return "bottom";
+    // the name fills the top of the screen and its card is the caption under it, on any window
+    if (zone.kind === "about") return "bottom";
     const a = zone.scene.area;
     const narrow = innerWidth < 760 || innerWidth < innerHeight * 0.9;
     return narrow ? "bottom" : a.x + a.w / 2 < mapSize / 2 ? "right" : "left";

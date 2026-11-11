@@ -144,7 +144,8 @@ export class Panel {
   coverage(side: PanelSide, zone?: Zone): number {
     // the photography page has no card, so the scene may use the whole screen
     if (zone && isLinkOnly(zone)) return 0;
-    if (side === "bottom") return 0.5;
+    // the about card is short: the name above it gets the rest of the screen
+    if (side === "bottom") return zone?.kind === "about" ? 0.36 : 0.5;
     const scale = cardScale();
     const w = Math.min(CARD_WIDTH * scale, innerWidth * 0.5) + (CLOSE_SIZE + CLOSE_GAP) * scale; // (the close button sits beside the card)
     return Math.min(0.55, (w + Math.max(24, innerWidth * 0.03) + 16) / innerWidth);
@@ -357,7 +358,8 @@ export class Panel {
 
   /** Size the card for the window: the CSS reads --card-scale (the bottom sheet stays at its own size; the gallery link scales with the window). */
   private fit() {
-    const sheet = this.root.dataset.side === "bottom" && this.root.dataset.variant !== "link";
+    // (the about card is a bottom card that scales with the window like a side card)
+    const sheet = this.root.dataset.side === "bottom" && this.root.dataset.variant !== "link" && this.root.dataset.kind !== "about";
     const scale = sheet ? 1 : cardScale();
     this.root.style.setProperty("--card-scale", String(+scale.toFixed(3)));
   }
@@ -372,6 +374,7 @@ export class Panel {
     this.setDrag({ x: 0, y: 0 }); // every open starts in the default spot
     this.resetFull(zone, side);
     this.root.dataset.side = side;
+    this.root.dataset.kind = zone.kind;
     this.root.dataset.variant = linkOnly ? "link" : "card";
     this.fit();
     // the link sits over a scene that stays clickable (the camera's controls, the table), so nothing is dimmed or blocked

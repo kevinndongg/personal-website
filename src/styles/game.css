@@ -701,6 +701,15 @@ html:has(.game) body {
     max-height 320ms var(--ease);
 }
 
+/* the about card: a bottom card centred under the name, as wide as a side card would be (the name fills the screen above it) */
+.panel[data-side="bottom"][data-kind="about"] {
+  left: 0;
+  right: 0;
+  width: min(calc(720px * var(--card-scale, 1)), calc(100% - 16px));
+  margin-inline: auto;
+  bottom: max(8px, calc(1.5vh));
+}
+
 /* pulled up by its handle: the sheet takes most of the screen for reading */
 .panel[data-side="bottom"].expanded {
   max-height: calc(100% - 64px);
