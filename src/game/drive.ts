@@ -76,6 +76,7 @@ export function attachLap(model: Group, path: { x: number; y: number }[], visit?
   let trip: Trip | null = null;
   let wanted = false; // the about card is open: the car should be at the name
   let redirect = false; // the card has just opened while the car is out on a lap that has not yet turned back
+  let rebound = false; // the card has just opened again while the car is on its way home from the name
 
   model.userData.drive = () => {
     if (start >= 0 || requested || trip) return false;
@@ -97,6 +98,8 @@ export function attachLap(model: Group, path: { x: number; y: number }[], visit?
       const toHome = ((home.x - p.x) * Math.cos(p.h) + (home.z - p.z) * Math.sin(p.h)) / dist;
       if (toHome <= 0.5) redirect = true;
     }
+    // opened again while it is on its way home from the name: it turns round and goes back (unless it is nearly home: it parks, and sets off again)
+    if (trip && trip.phase === "back") rebound = true;
   };
   model.userData.recall = () => {
     wanted = false;
@@ -125,6 +128,25 @@ export function attachLap(model: Group, path: { x: number; y: number }[], visit?
   /** Called every frame while the trip to the name is under way. */
   const stepTrip = (t: number, dt: number) => {
     const tr = trip!;
+    // The card was closed and has been opened again before the car got home: it turns round where it is (the way it turns round when the card is
+    // closed on the way out) and goes straight back to its place beside the name. A car already close to its bay finishes parking instead.
+    if (rebound) {
+      rebound = false;
+      if (visit && wanted && tr.phase === "back" && Math.hypot(poseNow().x - home.x, poseNow().z - home.z) > 70) {
+        const here = poseNow();
+        const stop = visit.toStop[visit.toStop.length - 1];
+        const swing = uTurn(here, stop, TURN_R);
+        const end = swing[swing.length - 1];
+        tr.legs = [
+          ...(swing.length > 2 ? [makeLeg(swing, { speed: CAR_SPEED, brake: false })] : []),
+          legThrough(end, [stop], { speed: CAR_SPEED, brake: true }),
+        ];
+        tr.i = 0;
+        tr.s = 0;
+        tr.phase = "out";
+        tr.dwell = false;
+      }
+    }
     // (the legs of the trip are all of its own: the standard lap is not touched)
     if (tr.dwell) {
       carWatch.driving = false;
@@ -157,11 +179,21 @@ export function attachLap(model: Group, path: { x: number; y: number }[], visit?
         tr.phase = "back";
       } else if (leg.len - tr.s > ARRIVE_NEAR) {
         // past it, and not yet near the stop: turn round without stopping, onto the lane
-        const poses = uTurn(here, visit.join, TURN_R);
+        // (aimed at a point of the lane well along from where it is, not the next one: a car that turns round close to the lane's start would otherwise
+        // point at it and then have to turn off again at once)
+        // (and from the point of the lane it is nearest, on toward the bay: a car that is already past the lane's start, as one that has turned
+        // round near it may be, must not go back to it)
+        const lane = visit.laneTail;
+        let near = 0;
+        lane.forEach((p, i) => {
+          if (Math.hypot(p.x - here.x, p.y - here.z) < Math.hypot(lane[near].x - here.x, lane[near].y - here.z)) near = i;
+        });
+        const aim = lane.slice(near).find((p) => Math.hypot(p.x - here.x, p.y - here.z) >= 45) ?? lane[lane.length - 1];
+        const poses = uTurn(here, aim, TURN_R);
         const end = poses[poses.length - 1];
         tr.legs = [
           makeLeg(poses, { speed: CAR_SPEED, brake: false }),
-          legThrough(end, pointsAhead(end, visit.laneTail), { speed: CAR_SPEED, brake: true, park: true }),
+          legThrough(end, visit.laneTail.slice(visit.laneTail.indexOf(aim)), { speed: CAR_SPEED, brake: true, park: true }),
         ];
         tr.i = 0;
         tr.s = 0;

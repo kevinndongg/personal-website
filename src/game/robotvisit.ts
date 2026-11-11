@@ -176,13 +176,20 @@ export function attachRobotVisit(model: Group, visit: RobotVisit) {
   let loopW = 0; // and how fast the loop was turning then (rad/s)
   let lastH = 0;
   let legTime = 0; // how long the leg in hand has been going (s)
-  let way: Pt[] = []; // the part of visit.path it follows, after where it joined it
+  let fullWay: Pt[] = []; // the part of visit.path it follows, after where it joined it
+  let wayOffset = 0; // how many of those it has come back past (it turned round on its way home): the way it is on is `fullWay` from there
+  let way: Pt[] = [];
   let leg: RobotLeg | null = null;
   let wpS: number[] = []; // how far along the way out each of `way`'s points is
+  let backWay: Pt[] = []; // the points the way home goes through, in the order it does, and how far along it each is
+  let backTop = 0; // and which of `fullWay`'s points the first of them is
+  let legKind: "out" | "back" = "out"; // which way the leg in hand goes
+  let backS: number[] = [];
   let s = 0;
   let v = 0;
   let a = 0; // acceleration along the path (px/s^2)
-  let stopAt = Infinity; // brake to a stop here (the card was closed on the way out)
+  let stopAt = Infinity; // brake to a stop here (the card was closed on the way out, or opened again on the way home)
+  let turnBack = false; // opened again on the way home: it is braking to a stop, to go back out from there
 
   model.userData.sendOut = () => {
     wanted = true;
@@ -215,10 +222,16 @@ export function attachRobotVisit(model: Group, visit: RobotVisit) {
   };
 
   /** Sets off from `here` along the way to the stop; `matched`: with the loop's velocity (the way goes on the way the loop was going), else from rest. */
-  const startOut = (here: Pose, matched: boolean) => {
-    home = here;
-    const join = joinIndex({ x: here.x, y: here.z }, visit.path);
-    way = visit.path.slice(join);
+  const startOut = (here: Pose, matched: boolean, resetHome = true, from?: number) => {
+    if (resetHome) home = here; // (not when it turns round on its way home: it still goes home to where it left its loop)
+    // (turning round on its way home it goes back the way it has come: on from the point of the way that it has come back to, which is not always the
+    // nearest stretch of the lane: a robot outside the wall is nearest to a stretch inside it)
+    if (from !== undefined && (from < 0 || from > fullWay.length - 1)) from = undefined;
+    if (from === undefined) {
+      fullWay = visit.path.slice(joinIndex({ x: here.x, y: here.z }, visit.path));
+      wayOffset = 0;
+    } else wayOffset = from;
+    way = fullWay.slice(wayOffset);
     const pts = [{ x: here.x, y: here.z }, ...way];
     const speed = speedOf(loopV);
     leg = robotLeg(pts, matched ? loopV : null, null, here.h, visit.heading, matched ? speed : 0, 0);
@@ -237,6 +250,7 @@ export function attachRobotVisit(model: Group, visit: RobotVisit) {
     a = 0;
     legTime = 0;
     stopAt = Infinity;
+    legKind = "out";
     phase = "out";
   };
 
@@ -258,13 +272,36 @@ export function attachRobotVisit(model: Group, visit: RobotVisit) {
     const here = poseNow();
     // the points of the way it has passed, back to front, and then home. It comes home to the loop's velocity if it can arrive along it (more or
     // less); if the way in goes against it (the way back along the lane usually does) it comes to rest and the loop's clock eases up from nothing.
-    const behind = way.filter((_, i) => wpS[i] < s - 6).reverse();
+    // (and, if it has turned round on the way home before, on past the points before the ones it is on, to where it left its loop)
+    let behind: Pt[];
+    if (legKind === "back") {
+      // stopped part of the way home (it was turning round to go out again) and sent home again: on by the points of the way home it has not passed
+      behind = backWay.filter((_, i) => backS[i] > s + 4);
+      backTop -= backWay.length - behind.length;
+    } else {
+      const passedOut = way.filter((_, i) => wpS[i] < s - 6);
+      behind = [...passedOut.reverse(), ...fullWay.slice(0, wayOffset).reverse()];
+      backTop = wayOffset + passedOut.length - 1;
+    }
+    legKind = "back";
+    stopAt = Infinity; // (what the way out was told to stop at is not for the way home)
+    turnBack = false;
     const prev = behind.length ? behind[behind.length - 1] : { x: here.x, y: here.z };
     const speed = speedOf(loopV);
     const comes = apartBy(prev, { x: home.x, y: home.z });
     const along = speed > 3 && comes > 1 ? (loopV.x * (home.x - prev.x) + loopV.z * (home.z - prev.y)) / (speed * comes) : 0;
     const arrives = along >= 0.5 && comes >= 24;
     leg = robotLeg([{ x: here.x, y: here.z }, ...behind, { x: home.x, y: home.z }], null, arrives ? loopV : null, here.h, home.h, 0, arrives ? speed : 0);
+    backWay = behind;
+    backS = behind.map((w) => {
+      let best = 0;
+      let bestD = Infinity;
+      leg!.poses.forEach((p, i) => {
+        const d = Math.hypot(p.x - w.x, p.z - w.y);
+        if (d < bestD) (bestD = d), (best = i);
+      });
+      return (best / Math.max(1, leg!.poses.length - 1)) * leg!.len;
+    });
     s = 0;
     v = 0;
     a = 0;
@@ -333,15 +370,29 @@ export function attachRobotVisit(model: Group, visit: RobotVisit) {
 
     if (phase === "away") {
       if (wanted) {
-        if (leg && s < leg.len - 1) phase = "out"; // (braked to a stop part of the way, and wanted again)
+        if (turnBack) {
+          // stopped on its way home because the card was opened again: it sets off for the stop from here
+          turnBack = false;
+          const passed = backWay.filter((_, i) => backS[i] <= s + 4).length;
+          startOut(poseNow(), false, false, backTop - passed + 1);
+        } else if (leg && s < leg.len - 1) phase = "out"; // (braked to a stop part of the way, and wanted again)
       } else beginBack();
+    }
+    // opened again before it is home: it brakes to a stop where it is (it never turns round at speed) and goes back out; a robot that is nearly
+    // home finishes the way home instead. Closed again before it has stopped: it carries on home.
+    if (phase === "back" && wanted && !turnBack && leg && leg.len - s > 40) {
+      turnBack = true;
+      stopAt = Math.min(leg.len, s + (v * v) / (2 * BRAKE * PLAN) + 1);
+    } else if (phase === "back" && !wanted && turnBack) {
+      turnBack = false;
+      stopAt = Infinity;
     }
     if (phase === "out" && !wanted) {
       if (stopAt === Infinity && leg) stopAt = Math.min(leg.len, s + (v * v) / (2 * BRAKE * PLAN) + 1);
     } else if (phase === "out") stopAt = Infinity;
 
     if (leg && (phase === "out" || phase === "back")) {
-      const end = phase === "out" ? Math.min(leg.len, stopAt) : leg.len;
+      const end = Math.min(leg.len, stopAt);
       const vEnd = end === leg.len ? leg.vEnd : 0;
       // the speed it should have here: up to cruise (or the loop's speed, if it is coming home to a faster one), no faster than the bends allow, and
       // slowed in time for where the leg ends (or where it was told to stop)
@@ -362,7 +413,7 @@ export function attachRobotVisit(model: Group, visit: RobotVisit) {
       legTime += dt;
       placeLeg(Math.max(0, end - s));
       if (s >= end - 0.05) {
-        if (phase === "out") {
+        if (phase === "out" || end < leg.len - 0.05) {
           phase = "away";
           v = 0;
           a = 0;

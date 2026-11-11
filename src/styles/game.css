@@ -782,7 +782,7 @@ html:has(.game) body {
      third of the way down the frame and in the middle of it across */
   background-color: var(--paper-2);
   background-repeat: no-repeat;
-  background-size: 145%;
+  background-size: 120%;
   background-position: 21.3% 61%;
   border-radius: calc(12px * var(--card-scale, 1));
   box-shadow: 0 0 0 1px var(--line);
