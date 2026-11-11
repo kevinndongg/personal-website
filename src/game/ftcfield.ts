@@ -238,17 +238,17 @@ export const CS = {
   ahead: 3, // how far past the front a pixel lies, centre, when the roller takes it
   reachUp: 9, // how far the intake sticks out ahead of the robot's centre when it is raised for driving
   lean: Math.PI / 6, // the slide's lean from vertical
-  slide: { x: -2.16, y: 1, len: 7.22, travel: 13.5, rails: 3.12, pitch: 0.7 }, // its foot, the length of each stage, how far it extends at most (three stages), and how far the innermost stage of each side's stack stands from the middle (the arm and bucket pass between the two stacks) and how far apart the stages are; the other stages stand outwards of it, the lowest against the inner plate
+  slide: { x: -1.87, y: 1, len: 7.8, travel: 14, rails: 3.12, pitch: 0.7 }, // its foot, the length of each stage, how far it extends at most (three stages), and how far the innermost stage of each side's stack stands from the middle (the arm and bucket pass between the two stacks) and how far apart the stages are; the other stages stand outwards of it, the lowest against the inner plate
   // the arm from the top of the slide to the turret: along the slide (negative: down it) and out towards the backdrop. Arm and bucket are one piece
   // turning about the slide's top. At rest (`fold`, 60 degrees on) they lie flat inside the robot, the bucket forward of the turret's axis; they swing
   // back through 60 degrees, out of the robot's back, to the deposit position, where the bucket is parallel to the backdrop.
   // the arm's pivot, on an aluminium plate off the slide's rear face: down the slide from the top of its highest stage, and out from its middle
   pivot: { along: -2.1, out: 0.9 },
-  arm: { along: 0, out: 3.0, fold: -Math.PI / 3 }, // from the pivot to the turret's axis: out square from the slide at the deposit position, straight down at rest
+  arm: { along: 0, out: 3.51, fold: -Math.PI / 3 }, // from the pivot to the turret's axis: out square from the slide at the deposit position, straight down at rest
   // how far below the turret's axis the pixel nearer the opening and the one above it sit (one pixel's height apart); where the bucket's closed rear
   // end is (above the axis: positive), out to the end of the arm joint. The bucket is closed at the rear and open at the bottom, and the pixels
   // take exactly their own length of it
-  bucket: { low: 4.4, high: 1.5, top: 1.0 },
+  bucket: { low: 4.4, high: 1.5, top: 1.0, half: 2.125 }, // (and `half`, the bucket's outer half width, across the board)
   turret: Math.PI / 3, // the turret's range, each way
   gap: 1.7, // how far in front of the board the pixels' plane is held when it deposits (the bucket's front, 0.75 nearer, clears the tops of pixels already placed by 0.07)
   height: 7.4, // the chassis's height, under the Stage Door's 12.6 px rail with the slide down
@@ -286,6 +286,25 @@ export function csArm(e: number, beta: number) {
 export function csPixel(e: number, beta: number, phi: number, dist: number): [number, number, number] {
   const a = csArm(e, beta);
   return [a.axis[0] - Math.cos(phi) * dist * a.up[0], a.axis[1] - Math.cos(phi) * dist * a.up[1], Math.sin(phi) * dist];
+}
+
+/**
+ * How far below the turret's axis, up the board, the bucket's lowest point is with the turret turned `a` (0 = the bucket hanging straight down the
+ * board, either way round): its open end is `L` below the axis and its lowest outer corner is `half` to one side of that, so turning it lifts the
+ * end and drops the corner. (The same quantity as `BUCKET_LENGTH * sin(t) - |BUCKET_WIDTH * cos(t)|` for a turret angle `t` from the horizontal,
+ * with the width term added, as the lowest corner is the outer one.)
+ */
+export function csBucketDepth(a: number) {
+  const L = CS.bucket.low + PIXEL_SIZE.corner / 2;
+  return L * Math.cos(a) + CS.bucket.half * Math.abs(Math.sin(a));
+}
+
+/**
+ * How much further the slides must extend, with the turret at `a`, to keep the bucket's lowest point at the height it has with the turret at `aRef`.
+ * The slides run up the board, so a px more extension is a px more height on it.
+ */
+export function csHeightHold(a: number, aRef: number) {
+  return csBucketDepth(a) - csBucketDepth(aRef);
 }
 
 /**

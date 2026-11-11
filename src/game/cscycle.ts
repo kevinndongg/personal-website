@@ -19,7 +19,7 @@
 // Like the other cycles it only sets the prop's x, z and heading (the hover lift owns its height), and poses the model through
 // `userData.pose` (see ftccsrobot.ts). Everything is worked out in the world px the scene gives; nothing here knows where the field is.
 import { CatmullRomCurve3, Vector3, type Group } from "three";
-import { BACKDROP_PLACE, CS, CS_WAIT, backdropCell, csDeposit, ftcField } from "./ftcfield";
+import { BACKDROP_PLACE, CS, CS_WAIT, backdropCell, csDeposit, csHeightHold, ftcField } from "./ftcfield";
 import type { CSPose } from "./ftccsrobot";
 import type { AnimCtx } from "./models";
 import type { CenterStageCycle } from "./scenes";
@@ -250,7 +250,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   const turnAcross = jointTime(phiY - phiW);
   const lowerAt = 0.3; // the yellow pixel starts down once the white one is on its way
   const rise = lowerAt + 0.3; // the slides rise as it settles
-  const swing = lowerAt + 0.52; // and the turret swings once the lock has it
+  const swing = Math.max(lowerAt + 0.52, rise + slideUp); // and the turret swings once the lock has it and the slides are up
   const Pdur = swing + turnAcross + 0.05;
   loop.push({
     dur: Pdur,
@@ -305,6 +305,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   /** Where a pixel taken in at `pick` and let go at `drop` is on the robot at `tl`: not on it (-1), on its way in (0..1), or in the bucket (1). */
   const aboard = (tl: number, pick: number, drop: number) => (tl < pick || tl >= drop ? -1 : Math.min(1, (tl - pick) / FEED));
 
+  const holdRef = Math.abs(phiW); // the turret angle at the slots, where the slides need no correction
   const channels: Channel[] = ["intake", "slide", "arm", "turret", "gate", "yellowLow"];
 
   /** A joint's value at `u` along its own track. */
@@ -359,6 +360,9 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
       const w = ph.when?.[c];
       arm[c] = lerp(ph.arm[0][c], ph.arm[1][c], w ? smooth((u - w[0]) / (w[1] - w[0])) : k);
     }
+    // whenever the turret turns with the arm out, the slides make up for the bucket's lowest point rising and falling as it swings, so that point
+    // stays at one height on the backdrop (nothing at the two slots, where the turret is at its reference angle; it fades out as the arm folds)
+    arm.slide += smooth(-(arm.arm - CS.arm.fold) / CS.arm.fold) * csHeightHold(arm.turret, holdRef);
     const pose = model.userData.pose as ((p: CSPose) => void) | undefined;
     pose?.({ ...arm, spin: arm.intake > 0.2 ? tl * SPIN : 0, yellow: aboard(tl, pickAt[0], dropAt[1]), white: aboard(tl, pickAt[1], dropAt[0]) });
   };
