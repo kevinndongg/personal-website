@@ -254,7 +254,7 @@ export function csRobotModel(): Group {
   // row on the arm's own axle at the front, and a third row behind it inside the robot, between the top of the ramp and the bucket. Every flipper is
   // a blade out each side of its hub, the roller's shape: a short paddle with its tip curled over.
   const spinners: Group[] = [];
-  const flipperRow = (x: number, y: number, halfSpan: number, zs: number[]) => {
+  const flipperRow = (x: number, y: number, halfSpan: number, zs: number[], size = 1) => {
     const row = new Group();
     row.position.set(x, y, 0);
     g.add(row);
@@ -267,17 +267,17 @@ export function csRobotModel(): Group {
         const blade = new Group();
         blade.position.z = z;
         blade.rotation.z = turn;
-        part(blade, 1.1, 0.35, 0.45, YELLOW, 0.8, 0, 0);
-        part(blade, 0.35, 0.8, 0.45, YELLOW, 1.4, -0.3, 0);
+        part(blade, 1.1 * size, 0.35, 0.45, YELLOW, 0.8 * size, 0, 0);
+        part(blade, 0.35, 0.8 * size, 0.45, YELLOW, 1.4 * size, -0.3 * size, 0);
         row.add(blade);
       }
     }
     spinners.push(row);
   };
   flipperRow(PIVOT.x, PIVOT.y, ARM_Z, [-3.2, -1.6, 0, 1.6, 3.2]); // the bottom row, on the axle the intake arm pivots about
-  // and the third, between the plates, just ahead of the bucket's front end and above the floor plate; its flippers stand between the bottom row's
-  // (the two rows reach each other, so blades in the same place would meet)
-  flipperRow(2.4, 2.5, IN_Z - 0.13, [-2.4, -0.8, 0.8, 2.4]);
+  // and the third, between the plates, just ahead of the bucket's front end and above the floor plate: just two flippers, side by side near the middle
+  // (between the bottom row's, so that the blades of the two rows never meet), and shorter
+  flipperRow(2.0, 2.3, IN_Z - 0.13, [-0.8, 0.8], 0.7);
 
   // ---- the slide: three stages stacked side by side, one stack against each inner plate (the lowest stage fixed to the plate, the next beside it, and
   // the highest, which carries the arm, innermost), leaning back at CS.lean; the foot of the lowest is at CS.slide

@@ -27,6 +27,7 @@ import type { CenterStageCycle } from "./scenes";
 const GONE = 14; // how far (px) the robot has driven from a stop before the pixel it leaves there changes (a placed one shrinks, a taken one is replaced)
 const FEED = 1.0; // how long a pixel takes to ride in from the floor to its place in the bucket (s)
 const SPIN = 10; // the roller's speed (rad/s)
+const SPIN_EASE = 3; // how quickly it runs up to that and winds down from it (1/s: it is most of the way there or stopped in about a second)
 const SLIDE_V = 22; // how fast the slides move, up or down alike (px/s on average over a move; they ease in and out)
 const slideTime = (dist: number) => Math.abs(dist) / SLIDE_V; // how long a slide move of `dist` px takes (s)
 const JOINT_W = 2.6; // how fast the arm swings and the turret turns, either way (rad/s on average over a move, about 150 degrees a second; they ease in and out)
@@ -317,6 +318,10 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
     return keys[keys.length - 1][1];
   };
 
+  let lastT = -1;
+  let spinning = 0; // 0..1, how fast the roller and the flippers are turning
+  let spin = 0; // and the angle they have turned through
+
   model.userData.animate = ({ t }: AnimCtx) => {
     if (t <= 0) return; // reduced motion: standing at the wall, every pixel where it was
 
@@ -364,6 +369,11 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
     // stays at one height on the backdrop (nothing at the two slots, where the turret is at its reference angle; it fades out as the arm folds)
     arm.slide += smooth(-(arm.arm - CS.arm.fold) / CS.arm.fold) * csHeightHold(arm.turret, holdRef);
     const pose = model.userData.pose as ((p: CSPose) => void) | undefined;
-    pose?.({ ...arm, spin: arm.intake > 0.2 ? tl * SPIN : 0, yellow: aboard(tl, pickAt[0], dropAt[1]), white: aboard(tl, pickAt[1], dropAt[0]) });
+    // the roller and the flippers turn while the intake is down; they run up to speed and wind down with it, never starting or stopping all at once
+    const dt = lastT < 0 ? 0 : Math.min(0.1, Math.max(0, t - lastT));
+    lastT = t;
+    spinning += ((arm.intake > 0.2 ? 1 : 0) - spinning) * (1 - Math.exp(-dt * SPIN_EASE));
+    spin += dt * SPIN * spinning;
+    pose?.({ ...arm, spin, yellow: aboard(tl, pickAt[0], dropAt[1]), white: aboard(tl, pickAt[1], dropAt[0]) });
   };
 }
