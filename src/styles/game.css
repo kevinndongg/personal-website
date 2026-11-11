@@ -740,7 +740,7 @@ html:has(.game) body {
   color: var(--ink);
 }
 
-.portrait {
+.about-photo {
   grid-column: 2;
   grid-row: 1 / span 2;
   display: block;
@@ -752,7 +752,7 @@ html:has(.game) body {
   box-shadow: 0 0 0 1px var(--line);
 }
 
-.portrait[hidden] {
+.about-photo[hidden] {
   display: none;
 }
 
