@@ -55,7 +55,9 @@ const YAW = 0;
 const CAM_DIST = 2500; // orthographic: distance only has to clear the scene
 // How fast the camera eases toward where it is going, per second (an exponential approach: it is 90% there after 2.3 / rate seconds).
 const ZOOM_RATE = 6.5; // into a project: about a third of a second
-const ABOUT_ZOOM_RATE = 1.6; // into (and out of) the name's card: about a second and a half, so the car is seen driving across
+// The name's card is a timed glide instead, slow to start and slow to finish, into it and out of it: an exponential approach does
+// most of its moving at the start, when the formula car is still in the garage, and the view leaves it behind.
+const ABOUT_ZOOM_SECONDS = 2.25;
 /** Cap on the device pixel ratio we render at (keeps big/hi-dpi screens fast). */
 const MAX_RENDER_RATIO = 1.5;
 
@@ -369,7 +371,8 @@ export class Renderer3D {
   private target = { wpp: 1, left: 0, top: 0 };
   private focused: { zoneId: string; panel: "left" | "right" | "bottom"; frac: number } | null = null;
   private focusAmt = 0; // 0..1, eased: how strongly the rest of the map is dimmed/blurred
-  private zoomRate = ZOOM_RATE; // how fast the camera eases toward its target (per second): the name's card has a slower one
+  /** The name's card is being glided to or from: when that began (-1: not yet seen by `draw`), and how far along the glide was last frame (0..1). */
+  private glide: { start: number; done: number } | null = null;
   /**
    * Zoomed into something on the focused project (world points to frame), rather than the project as a whole. `normal`
    * is the way the points face: the camera looks along it, so what it shows is square-on, not foreshortened.
@@ -815,10 +818,10 @@ export class Renderer3D {
    * of the screen it covers (0..1 of the width for left/right; the sheet's height for bottom).
    */
   focus(zoneId: string | null, panel: "left" | "right" | "bottom" = "right", frac = 0.4) {
-    // the name's card is a slow, wide glide (the formula car drives across the map to it as the camera comes in, and home as it
-    // goes out): the pace is the name's both ways; every other project keeps the quick one
+    // the name's card is a slow glide (the formula car drives across the map to it as the camera comes in, and home as it goes
+    // out): the pace is the name's both ways; every other project keeps the quick one
     const kindOf = (id: string | undefined) => this.world.zones.find((z) => z.id === id)?.kind;
-    this.zoomRate = kindOf(zoneId ?? this.focused?.zoneId) === "about" ? ABOUT_ZOOM_RATE : ZOOM_RATE;
+    this.glide = kindOf(zoneId ?? this.focused?.zoneId) === "about" && !this.reduceMotion ? { start: -1, done: 0 } : null;
     this.focused = zoneId ? { zoneId, panel, frac } : null;
     this.focusPts = null; // back to framing the whole project
     this.retarget(false);
@@ -1135,8 +1138,18 @@ export class Renderer3D {
     // ease the camera toward its target (a gentle exponential approach: quick start, soft landing)
     const dt = Math.min(1 / 30, Math.max(0, time - this.lastTime));
     this.lastTime = time;
-    const k = 1 - Math.exp(-dt * this.zoomRate);
-    const kQuick = 1 - Math.exp(-dt * ZOOM_RATE); // (what is not part of the zoom keeps the quick pace)
+    const kQuick = 1 - Math.exp(-dt * ZOOM_RATE);
+    let k = kQuick;
+    const g = this.glide;
+    if (g) {
+      // A timed glide through the same chase: each frame closes the share of the gap that the ease-in-out curve says it should,
+      // so the view follows that curve exactly (the gap left is (1 - ease) of what it was when the glide began).
+      if (g.start < 0) g.start = time;
+      const u = Math.min(1, (time - g.start) / ABOUT_ZOOM_SECONDS);
+      const ease = u * u * (3 - 2 * u);
+      k = g.done >= 1 ? 1 : (ease - g.done) / (1 - g.done);
+      g.done = ease;
+    }
     const t = this.target;
     this.view.wpp += (t.wpp - this.view.wpp) * k;
     this.view.left += (t.left - this.view.left) * k;

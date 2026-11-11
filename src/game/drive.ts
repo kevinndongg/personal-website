@@ -11,10 +11,11 @@ const GAP = [20, 30]; // seconds from the end of one lap to the next
 const SETTLE = 0.08; // the last part of the lap (as a fraction of it) over which the heading eases to the parked one
 
 // the trip to the name
-const VISIT_SPEED = 90; // px/s on the way
+const VISIT_SPEED = 90; // px/s on the way home
+const OUT_SPEED = 140; // px/s on the way out
 const U_SPEED = 60; // px/s round the U it pulls away in (it is gathering speed through it)
 const TURN_R = 16; // turning radius, px, of that U and of any other turn it makes (the lap's last arc is 14)
-const ACCEL = 150; // px/s^2 pulling away
+const ACCEL = 300; // px/s^2 pulling away
 const BRAKE = 160; // px/s^2 stopping
 const ARRIVE_NEAR = 34; // a car this close to the stop when the card closes goes on to it and turns there, rather than turning round
 const SETTLE_HOME = 0.1; // the last part of the way home over which the heading eases to the parked one
@@ -235,16 +236,16 @@ export function attachLap(model: Group, path: { x: number; y: number }[], visit?
           const swing = uTurn(here, ahead[0], TURN_R);
           const from = swing[swing.length - 1];
           const finish = onTrack ? visit.track[visit.track.length - 1] : undefined;
-          const leg = legThrough(from, pointsAhead(from, ahead), { speed: VISIT_SPEED, brake: true, finish });
+          const leg = legThrough(from, pointsAhead(from, ahead), { speed: OUT_SPEED, brake: true, finish });
           if (swing.length > 2) {
-            const arc = makeLeg(swing, { speed: VISIT_SPEED, brake: false });
+            const arc = makeLeg(swing, { speed: OUT_SPEED, brake: false });
             beginTrip(arc, SPEED);
             trip!.legs.push(leg);
-          } else beginTrip(legThrough(here, ahead, { speed: VISIT_SPEED, brake: true, finish }), SPEED);
+          } else beginTrip(legThrough(here, ahead, { speed: OUT_SPEED, brake: true, finish }), SPEED);
         }
       } else if (wanted && start < 0) {
         // parked, and the card is open: out through the cones, to the name
-        beginTrip(legThrough(null, [...visit.track, ...visit.toStop], { speed: VISIT_SPEED, brake: true, finish: visit.track[visit.track.length - 1] }), 0);
+        beginTrip(legThrough(null, [...visit.track, ...visit.toStop], { speed: OUT_SPEED, brake: true, finish: visit.track[visit.track.length - 1] }), 0);
       }
     }
     if (trip) {
