@@ -1,4 +1,4 @@
-import { Group, Mesh, MeshBasicMaterial, PlaneGeometry, TorusGeometry } from "three";
+import { Group, Mesh, MeshBasicMaterial, PlaneGeometry, Quaternion, TorusGeometry, Vector3 } from "three";
 import { markMoving } from "./bake";
 import { box, canvasOf, cyl, fillRect, mesh, nearestTexture, toon } from "./models";
 
@@ -235,6 +235,15 @@ export function robotModel(): Group {
     sample.rotation.y = Math.PI / 2;
   };
   g.userData.pose = pose;
+  /** Where the sample on the scoop is, and how it lies, in the world (as the model was last posed and placed): the cycle uses it to hand the sample to a basket. */
+  g.userData.sampleWorld = () => {
+    g.updateMatrixWorld(true);
+    const pos = new Vector3();
+    const quat = new Quaternion();
+    sample.getWorldPosition(pos);
+    sample.getWorldQuaternion(quat);
+    return { pos, quat };
+  };
   pose({ ...STOWED, spin: 0, carrying: false, carryColor: YELLOW, slide: 1 });
   markMoving(g, shoulder, ...stages, wrist, head, paddle, sample);
   return g;

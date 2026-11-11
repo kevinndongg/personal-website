@@ -10,6 +10,7 @@ import {
   MeshBasicMaterial,
   MeshLambertMaterial,
   PlaneGeometry,
+  Quaternion,
   Vector3,
 } from "three";
 import { FLOOR } from "./ftc";
@@ -509,11 +510,33 @@ function basketModel(stripe: string, index: number, held: string[], dropped: str
   // (lying across the way the robot's head points, as it was on the scoop, so along the bucket's width)
   const top = lie(dropped, 18.5, 0, Math.PI / 2 + 0.12);
   top.visible = false;
+  const restAt = new Vector3(4.4, 19.3, 0); // where it lies on the pile (the middle of the box)
+  const restQuat = top.quaternion.clone();
+  const fromAt = new Vector3();
+  const fromQuat = new Quaternion();
+  const inv = new Quaternion();
   g.userData.animate = () => {
     const p = ftcField.dropped[index];
-    top.visible = p > 0.02;
-    top.scale.setScalar(Math.max(0.001, p));
-    top.position.y = 18.5 + 0.8 * p + (1 - p) * 3;
+    top.visible = p > 0.002 && p < 1.999;
+    if (!top.visible) return;
+    if (p >= 1) {
+      // in place, and then shrinking away when it is taken
+      top.position.copy(restAt);
+      top.quaternion.copy(restQuat);
+      top.scale.setScalar(Math.max(0.001, 2 - p));
+      return;
+    }
+    // falling from the scoop into the bucket: across at an easing pace, down at the pace of a fall, turning to lie as it will on the pile
+    const f = ftcField.flight[index];
+    g.updateWorldMatrix(true, false);
+    fromAt.set(f.from[0], f.from[1], f.from[2]);
+    g.worldToLocal(fromAt);
+    g.getWorldQuaternion(inv).invert();
+    fromQuat.set(f.quat[0], f.quat[1], f.quat[2], f.quat[3]).premultiply(inv);
+    const across = p * p * (3 - 2 * p);
+    top.position.set(fromAt.x + (restAt.x - fromAt.x) * across, fromAt.y + (restAt.y - fromAt.y) * p * p, fromAt.z + (restAt.z - fromAt.z) * across);
+    top.quaternion.slerpQuaternions(fromQuat, restQuat, across);
+    top.scale.setScalar(1);
   };
   markMoving(g, top);
   return g;

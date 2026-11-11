@@ -16,7 +16,7 @@
 // Like drive.ts and errand.ts it only sets the prop's x, z and heading (the hover lift owns its height, so the robot rides the
 // floor up and down), and it poses the model through `userData.pose` (see ftcrobot.ts). It is a mecanum robot, so it turns while
 // it drives rather than pointing along its route.
-import { CatmullRomCurve3, Vector3, type Group } from "three";
+import { CatmullRomCurve3, Quaternion, Vector3, type Group } from "three";
 import { ftcField } from "./ftcfield";
 import { ARM, HEAD, STOWED } from "./ftcrobot";
 import type { ArmPose, RobotPose } from "./ftcrobot";
@@ -103,7 +103,7 @@ interface Phase {
 }
 
 /** How long each thing that happens to the field takes. */
-const FADE = { pick: 0.3, spawn: 0.4, drop: 0.3, clear: 0.4 };
+const FADE = { pick: 0.3, spawn: 0.4, drop: 0.4, clear: 0.4 }; // (a drop is the sample's fall from the scoop into the bucket)
 
 export function attachCycle(model: Group, cfg: RobotCycle) {
   const curve = (pts: { x: number; y: number }[]) => {
@@ -171,6 +171,30 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
     return { job, intakeAt, scoreAt, intakeArm, vertArm, upArm, tipArm, turnedArm, reachedArm };
   };
   const jobs = cfg.jobs.map(prepare);
+
+  // Where each sample leaves the scoop: pose the robot as it is at that moment of the tip (the sample just about to slide off), standing at the
+  // basket, and note where the sample is and how it lies, so that the basket can bring it down from there into the bucket.
+  {
+    const posed = model.userData.pose as ((p: RobotPose) => void) | undefined;
+    const where = model.userData.sampleWorld as (() => { pos: Vector3; quat: Quaternion }) | undefined;
+    if (posed && where) {
+      const y = model.position.y;
+      for (const j of jobs) {
+        model.position.set(0, y, 0);
+        model.rotation.y = 0;
+        posed({ ...mix(j.upArm, j.tipArm, smooth(0.55)), spin: 0, carrying: true, carryColor: j.job.intake.color, slide: 1 });
+        const s = where();
+        const h = j.scoreAt.h;
+        const turn = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), -h); // the robot is turned by -h about the vertical, here and there
+        const q = turn.multiply(s.quat);
+        ftcField.flight[j.job.score.basket] = {
+          from: [j.scoreAt.x + s.pos.x * Math.cos(h) - s.pos.z * Math.sin(h), s.pos.y, j.scoreAt.y + s.pos.x * Math.sin(h) + s.pos.z * Math.cos(h)],
+          quat: [q.x, q.y, q.z, q.w],
+        };
+      }
+      posed({ ...STOWED, spin: 0, carrying: false, carryColor: YELLOW, slide: 1 });
+    }
+  }
 
   /** Pick up (the slide is already out, extended on the way in): the head drops, the sample rolls on, it curls up and the slide retracts. */
   const intakePhases = (j: ReturnType<typeof prepare>): Phase[] => {
@@ -263,13 +287,12 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
     for (const ev of events) {
       if (ev.what === "pick") sample[ev.index] -= ramp(tl, ev.at, FADE.pick);
       else if (ev.what === "spawn") sample[ev.index] += ramp(tl, ev.at, FADE.spawn);
-      else if (ev.what === "drop") dropped[ev.index] += ramp(tl, ev.at, FADE.drop);
-      else dropped[ev.index] -= ramp(tl, ev.at, FADE.clear);
+      else dropped[ev.index] += ramp(tl, ev.at, ev.what === "drop" ? FADE.drop : FADE.clear); // 0..1 falling in, 1..2 shrinking away
     }
     ftcField.sample[0] = Math.min(1, Math.max(0, sample[0]));
     ftcField.sample[1] = Math.min(1, Math.max(0, sample[1]));
-    ftcField.dropped[0] = Math.min(1, Math.max(0, dropped[0]));
-    ftcField.dropped[1] = Math.min(1, Math.max(0, dropped[1]));
+    ftcField.dropped[0] = Math.min(2, Math.max(0, dropped[0]));
+    ftcField.dropped[1] = Math.min(2, Math.max(0, dropped[1]));
   };
 
   /** The arm's pose `e` seconds (`u` of the way) into a phase. */

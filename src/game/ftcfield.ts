@@ -59,7 +59,8 @@ export function submersibleSamples(w: number, d: number): SampleSpot[] {
 /**
  * The state the robots write every frame, as a function of where they are in their loops (see robotcycle.ts, ppcycle.ts), and the
  * models read. Into the Deep: how much of each of the two samples the robot takes is on the floor (1 there, 0 gone), and how
- * much of the sample it has just dropped in each basket is showing on top (0 not at all, 1 in place); red basket / blue basket,
+ * far the sample it has just dropped in each basket has come on its way from the scoop to the top of the pile (0 not at all, 0..1 falling,
+ * 1 in place, 1..2 shrinking away: see `flight` for where it starts); red basket / blue basket,
  * left / right sample. Power Play: how much of the red stack's top cone and of the human player's cone is there (1 there, 0 taken),
  * and the cone just placed on the high / medium junction (0 not at all, 0..1 sliding down the pole, 1 at rest, 1..2 shrinking away).
  * The rest state, and the one reduced motion leaves, is every game piece where it was and nothing placed.
@@ -67,6 +68,11 @@ export function submersibleSamples(w: number, d: number): SampleSpot[] {
 export const ftcField = {
   sample: [1, 1],
   dropped: [0, 0],
+  /** Into the Deep: where each dropped sample is let go from, in the world (x east, y up, z south), and how it lies (a quaternion x, y, z, w). */
+  flight: [
+    { from: [0, 0, 0], quat: [0, 0, 0, 1] },
+    { from: [0, 0, 0], quat: [0, 0, 0, 1] },
+  ] as { from: number[]; quat: number[] }[],
   cone: [1, 1],
   placed: [0, 0],
   /** The way the cone just placed on the high / medium junction leans as it is let go (base to tip, world x east, y up, z south). */
