@@ -191,6 +191,8 @@ export function attachRobotVisit(model: Group, visit: RobotVisit) {
     wanted = false;
   };
   model.userData.visitPhase = () => phase;
+  /** Parked at its spot (the trip's end): what the tag under it waits for. */
+  model.userData.visitParked = () => phase === "away" && !!leg && s >= leg.len - 1;
 
   const poseNow = (): Pose => ({ x: model.position.x, z: model.position.z, h: -model.rotation.y });
   const place = (p: Pose) => {

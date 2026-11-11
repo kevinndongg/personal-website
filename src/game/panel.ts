@@ -70,7 +70,7 @@ export class Panel {
   private tags: HTMLElement;
   private media: HTMLElement;
   private actions: HTMLElement;
-  private portrait: HTMLImageElement;
+  private portrait: HTMLElement;
   private grip: HTMLElement;
   private closeTimer = 0;
   /** How far the side card has been dragged from where it rests (it is put back on every open). */
@@ -492,8 +492,8 @@ export class Panel {
     this.media.replaceChildren(...(media?.nodes ?? []));
     this.media.hidden = !media;
 
-    if (zone.portrait) this.portrait.src = zone.portrait;
-    else this.portrait.removeAttribute("src");
+    // (the photo is a background, so that it can be cropped in on the face)
+    this.portrait.style.backgroundImage = zone.portrait ? `url("${zone.portrait}")` : "";
     this.portrait.hidden = !zone.portrait;
 
     this.actions.replaceChildren();

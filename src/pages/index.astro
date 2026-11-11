@@ -125,8 +125,8 @@ async function cardMedia(items: NonNullable<(typeof projects)[number]["data"]["m
   );
 }
 
-// the about card's photo: shown at most about 300px wide (170px at the card's base size, scaled up on a big window)
-const portrait = (await getImage({ src: aboutPhoto, width: 600, format: "webp", quality: 80 })).src;
+// the about card's photo: cropped in on the face, so it is drawn at about twice the frame (150px at the card's base size, scaled up on a big window)
+const portrait = (await getImage({ src: aboutPhoto, width: 1100, format: "webp", quality: 80 })).src;
 
 const zones = [
   ...(await Promise.all(
@@ -177,7 +177,9 @@ const zones = [
     id: "hub",
     kind: "about" as const,
     label: "Kevin Dong",
-    role: "Computer Science at CMU",
+    // the card has no title (the name on the map is it): "Computer Science at CMU" is its heading (the `period` slot) and the role a small line under it
+    period: "Computer Science at CMU",
+    role: "Robotics · Racing · Vision",
     summary: "", // (the card is kept minimal: the heading, the role, the links and the photo)
     actions: contactLinks.map((l) => ({ ...l, external: !l.href.startsWith("mailto:") })),
     portrait,
@@ -302,6 +304,8 @@ const zones = [
     <p class="sr-only" data-live aria-live="polite"></p>
 
     <div class="backdrop" data-backdrop hidden></div>
+    <!-- the tags under the car and the robots when they are parked beside the name: each one opens its project (see `updateVisitors` in src/game/main.ts) -->
+    <div class="visitors" data-visitors></div>
     <aside class="panel" data-panel hidden role="dialog" aria-modal="true" aria-labelledby="panel-title">
       <button class="close" type="button" data-close aria-label="Close">
         <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"></path></svg>
@@ -333,7 +337,7 @@ const zones = [
         </div>
         <div class="media" data-media hidden></div>
         <div class="actions" data-actions></div>
-        <img class="about-photo" data-portrait alt="Kevin Dong" hidden />
+        <div class="about-photo" data-portrait role="img" aria-label="Kevin Dong" hidden></div>
       </div>
       </div>
     </aside>

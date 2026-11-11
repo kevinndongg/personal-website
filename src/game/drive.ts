@@ -102,6 +102,8 @@ export function attachLap(model: Group, path: { x: number; y: number }[], visit?
     wanted = false;
     redirect = false;
   };
+  /** Parked beside the name (the trip's end): what the tag under it waits for. */
+  model.userData.visitParked = () => !!trip && trip.dwell;
 
   carWatch.driving = false;
 

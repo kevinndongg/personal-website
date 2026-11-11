@@ -57,6 +57,13 @@ const YAW = 0;
 const CAM_DIST = 2500; // orthographic: distance only has to clear the scene
 // How fast the camera eases toward where it is going, per second (an exponential approach: it is 90% there after 2.3 / rate seconds).
 const ZOOM_RATE = 6.5; // into a project: about a third of a second
+/** The tag under each vehicle that drives to the name (see `visitors`): what it says. The vehicle's own zone is the project the tag opens. */
+const VISITOR_TAGS: Record<string, string> = {
+  formula: "CMU Racing",
+  "ftc-robot-pp": "Power Play",
+  "ftc-robot-cs": "Center Stage",
+  "ftc-robot-itd": "Into the Deep",
+};
 // The name's card is a timed glide instead, slow to start and slow to finish, into it and out of it: an exponential approach does
 // most of its moving at the start, when the formula car is still in the garage, and the view leaves it behind.
 const ABOUT_ZOOM_SECONDS = 2.25;
@@ -593,6 +600,7 @@ export class Renderer3D {
         if (p.ppCycle) attachPowerPlay(model, p.ppCycle);
         if (p.csCycle) attachCenterStage(model, p.csCycle);
         if (p.robotVisit) attachRobotVisit(model, p.robotVisit); // (after its cycle: it wraps that)
+        if (VISITOR_TAGS[p.sprite]) model.userData.visitLabel = VISITOR_TAGS[p.sprite];
         model.traverse((o) => {
           if (typeof o.userData.animate === "function") {
             this.animators.push({ fn: o.userData.animate, zoneId: zone.id, pauseOnHover: !!zone.scene.animation?.pauseOnHover });
@@ -977,6 +985,18 @@ export class Renderer3D {
       if (typeof m.userData.drive === "function" && m.userData.drive()) return true;
     }
     return false;
+  }
+
+  /** The vehicles that go to the name, with where each is on the map, whether it is parked there, the words for its tag, and the project it belongs to. */
+  visitors(): { key: string; zoneId: string; label: string; x: number; z: number; parked: boolean }[] {
+    const out: { key: string; zoneId: string; label: string; x: number; z: number; parked: boolean }[] = [];
+    for (const list of this.zoneModels.values()) {
+      for (const m of list) {
+        if (typeof m.userData.visitParked !== "function" || !m.userData.visitLabel) continue;
+        out.push({ key: m.uuid, zoneId: m.userData.zoneId, label: m.userData.visitLabel, x: m.position.x, z: m.position.z, parked: m.userData.visitParked() });
+      }
+    }
+    return out;
   }
 
   /** The about card is open: the car drives to the name (it has to be there, in sight, whichever zone it belongs to). */

@@ -82,12 +82,23 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
   // with a project open the backdrop lies over the scene, but the car behind it can still be clicked
   panel.onBackdropPress = (e) => {
     const hit = renderer.pick(e.clientX, e.clientY);
+    // while the name's card is up the car and the robots stand beside it: pressing one opens its project
+    if (openZone?.kind === "about" && hit?.propId && VISITOR_SPRITES.has(hit.propId) && hit.zoneId) {
+      const zone = zoneById(hit.zoneId);
+      if (zone) {
+        open(zone);
+        return true;
+      }
+    }
     return hit?.propId === "formula" && !!hit.zoneId && renderer.driveCar(hit.zoneId);
   };
   const backdropMove = oncePerFrame((e: PointerEvent) => {
-    const onCar = renderer.pick(e.clientX, e.clientY)?.propId === "formula";
-    backdrop.style.cursor = onCar ? "pointer" : "";
-    renderer.hoverCar(onCar);
+    const propId = renderer.pick(e.clientX, e.clientY)?.propId;
+    const onCar = propId === "formula";
+    // (a vehicle beside the name is a link to its project)
+    const onVisitor = openZone?.kind === "about" && !!propId && VISITOR_SPRITES.has(propId);
+    backdrop.style.cursor = onCar || onVisitor ? "pointer" : "";
+    renderer.hoverCar(onCar && !onVisitor);
   }, signal);
   backdrop.addEventListener(
     "pointermove",
@@ -117,6 +128,40 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     labelsEl.append(el);
     return el;
   });
+
+  // The tags under the car and the robots once they are parked beside the name: each one is a button that opens the project the vehicle belongs to
+  // (the vehicles themselves can be pressed too: see `onBackdropPress`).
+  const visitorsEl = root.querySelector<HTMLElement>("[data-visitors]")!;
+  const VISITOR_SPRITES = new Set(["formula", "ftc-robot-pp", "ftc-robot-cs", "ftc-robot-itd"]);
+  const tags = new Map<string, HTMLButtonElement>();
+  function updateVisitors() {
+    const showing = panel.isOpen && openZone?.kind === "about";
+    if (!showing && !tags.size) return;
+    for (const v of renderer.visitors()) {
+      let tag = tags.get(v.key);
+      if (!tag) {
+        tag = document.createElement("button");
+        tag.type = "button";
+        tag.className = "visitor-tag";
+        tag.textContent = v.label;
+        const zoneId = v.zoneId;
+        tag.addEventListener("click", () => {
+          const zone = zoneById(zoneId);
+          if (zone) open(zone);
+        });
+        visitorsEl.append(tag);
+        tags.set(v.key, tag);
+      }
+      const on = showing && v.parked;
+      // (placed only while it is showing or fading out: placing asks the page for the canvas's size)
+      if (on || tag.classList.contains("visible")) {
+        const p = renderer.project(v.x, 0, v.z + 11);
+        tag.style.transform = `translate(calc(${p.x}px - 50%), ${p.y}px)`;
+      }
+      tag.classList.toggle("visible", on);
+      tag.tabIndex = on ? 0 : -1;
+    }
+  }
 
   const galleryZone = world.zones.find((z) => z.kind === "gallery");
   let swipe: { id: number; x: number; y: number } | null = null; // a touch that began while zoomed into a photo
@@ -861,6 +906,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
       hint.style.setProperty("--pulse", renderer.invitePulse.toFixed(3));
     }
     updateLabels();
+    updateVisitors();
     updateFilmHints();
     if (import.meta.env.DEV) {
       gaps.push(gap);
@@ -936,6 +982,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
             renderer.draw(time);
           }
           updateLabels();
+          updateVisitors();
         },
       },
     });
@@ -992,6 +1039,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     abort.abort();
     renderer.dispose();
     labels.forEach((el) => el.remove());
+    tags.forEach((el) => el.remove());
     root.classList.remove("ready");
   };
 }
