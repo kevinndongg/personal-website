@@ -23,11 +23,9 @@ export interface Visit {
   track: Pt[];
   /** From the finish to the stop, in order: the stop is the last point, and the car faces along the last stretch. */
   toStop: Pt[];
-  /** After the three-point turn: the way back up to the lane (the car faces up the map there). */
-  home: Pt[];
   /** The rest of the standard lap after the finish (the loop, the lane, the arc into the bay): a lap taken from the track goes round it. */
   lapRest: Pt[];
-  /** Where the lane starts: a car that turns round on the way out aims for it. */
+  /** Where the lane starts: a car that turns round (at the stop, or on the way out) aims for it. */
   join: Pt;
   /** The lane and the arc into the bay, from `join` on. */
   laneTail: Pt[];
@@ -133,46 +131,9 @@ export function pointsAhead(from: Pose, pts: Pt[]): Pt[] {
   return pts.slice(ahead < 5 ? best + 1 : best);
 }
 
-/** One arc driven at a constant steering: `turn` radians of heading change (the sign says which way), forwards or in reverse. */
-function arc(from: Pose, turn: number, reverse: boolean, r: number): Pose[] {
-  const steps = Math.max(2, Math.ceil(Math.abs(turn) * r));
-  const ds = (Math.abs(turn) * r) / steps;
-  const out: Pose[] = [{ ...from }];
-  let { x, z, h } = from;
-  for (let i = 1; i <= steps; i++) {
-    const next = from.h + (turn * i) / steps;
-    const mid = (h + next) / 2;
-    x += Math.cos(mid) * ds * (reverse ? -1 : 1);
-    z += Math.sin(mid) * ds * (reverse ? -1 : 1);
-    h = next;
-    out.push({ x, z, h });
-  }
-  return out;
-}
-
 /**
- * A three-point turn: forwards across the lane, back the other way, and forwards again, to face the way the car came from.
- * Three legs, each ending in a stop. `turn` is the heading change to make (radians; positive is clockwise on the map).
- */
-export function threePointTurn(from: Pose, turn: number, r: number, speed: number): Leg[] {
-  const parts: [number, boolean][] = [
-    [turn * 0.46, false],
-    [turn * 0.46, true],
-    [turn * 0.08, false],
-  ];
-  const legs: Leg[] = [];
-  let at = from;
-  for (const [t, reverse] of parts) {
-    const poses = arc(at, t, reverse, r);
-    legs.push(makeLeg(poses, { speed, brake: true }));
-    at = poses[poses.length - 1];
-  }
-  return legs;
-}
-
-/**
- * Turning round without stopping: an arc on the way the car turns the shorter way, until it points at `target`. Returns the poses
- * (the last is where the car is when it points at it), or null if it would take more than three quarters of a turn.
+ * Turning round in one sweep: an arc of radius `r` on the way the car turns the shorter way, until it points at `target`. Returns
+ * the poses along it (the last is where the car is when it points at the target; just the first if it already does).
  */
 export function uTurn(from: Pose, target: Pt, r: number): Pose[] {
   const bearing = (p: Pose) => Math.atan2(target.y - p.z, target.x - p.x);

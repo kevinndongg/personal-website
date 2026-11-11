@@ -316,7 +316,7 @@ function racingScene(ox: number, oy: number): Scene {
 
   // The car's trip to the name (when the about card opens): the cone track out of the bay, then on past the finish and down the
   // left of the map to a stop beside the name (the name is in the middle of the map, so these are world points, from its footprint).
-  // It pulls up in the margin to the name's left, heading south, with room on both sides for a three-point turn; the way home is
+  // It pulls up in the margin to the name's left, heading south, with room to the west for the U it pulls away in; the way home is
   // straight back up to the lane, which it shares with the lap.
   const finishAt = lap.indexOf(finish);
   const name = nameRect();
@@ -330,10 +330,6 @@ function racingScene(ox: number, oy: number): Scene {
       { x: stop.x + 22, y: stop.y - 44 },
       { x: stop.x + 8, y: stop.y - 18 },
       stop,
-    ],
-    home: [
-      { x: stop.x - 1, y: stop.y - 40 },
-      { x: join.x + 2, y: (stop.y + join.y) / 2 },
     ],
     lapRest: lap.slice(finishAt + 1),
     join,

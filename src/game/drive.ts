@@ -3,7 +3,7 @@
 // on to a stop beside the name, and home again when the card closes.
 import { CatmullRomCurve3, Vector3, type Group } from "three";
 import type { AnimCtx } from "./models";
-import { legThrough, makeLeg, poseAt, pointsAhead, threePointTurn, uTurn, type Leg, type Pose, type Visit } from "./visit";
+import { legThrough, makeLeg, poseAt, pointsAhead, uTurn, type Leg, type Pose, type Visit } from "./visit";
 
 const SPEED = 60; // average px/s over a lap (it eases out of and into the parking spot, so it peaks at 1.5x)
 const FIRST = [8, 14]; // seconds after the scene starts to the first lap
@@ -12,8 +12,8 @@ const SETTLE = 0.08; // the last part of the lap (as a fraction of it) over whic
 
 // the trip to the name
 const VISIT_SPEED = 90; // px/s on the way
-const TURN_SPEED = 42; // px/s in the three-point turn
-const TURN_R = 13; // turning radius, px (the lap's last arc is 14)
+const U_SPEED = 60; // px/s round the U it pulls away in (it is gathering speed through it)
+const TURN_R = 16; // turning radius, px, of that U and of any other turn it makes (the lap's last arc is 14)
 const ACCEL = 150; // px/s^2 pulling away
 const BRAKE = 160; // px/s^2 stopping
 const ARRIVE_NEAR = 34; // a car this close to the stop when the card closes goes on to it and turns there, rather than turning round
@@ -32,8 +32,8 @@ interface Trip {
   i: number;
   s: number;
   v: number;
-  /** "out": on the way to the name (it can still be called back), "turn": turning at the stop, "back": on its way home. */
-  phase: "out" | "turn" | "back";
+  /** "out": on the way to the name (it can still be called back), "back": on its way home. */
+  phase: "out" | "back";
   /** Stopped at the name, for as long as the card is open. */
   dwell: boolean;
 }
@@ -127,20 +127,18 @@ export function attachLap(model: Group, path: { x: number; y: number }[], visit?
     if (tr.dwell) {
       carWatch.driving = false;
       if (wanted || !visit) return;
-      // the card has closed: a three-point turn to face the way home, then up the lane and into the bay
-      const here = poseNow();
-      const bearing = Math.atan2(visit.join.y - here.z, visit.join.x - here.x);
-      let turn = (wrap(bearing - here.h) + 2 * Math.PI) % (2 * Math.PI); // clockwise on the map
-      if (turn > 1.3 * Math.PI) turn -= 2 * Math.PI;
-      const legs = turn > 0.6 || turn < -0.6 ? threePointTurn(here, turn, TURN_R, TURN_SPEED) : [];
-      const end = legs.length ? legs[legs.length - 1].poses[legs[legs.length - 1].poses.length - 1] : here;
-      legs.push(legThrough(end, pointsAhead(end, [...visit.home, ...visit.laneTail]), { speed: VISIT_SPEED, brake: true, park: true }));
-      tr.legs = legs;
+      // the card has closed: it pulls away in a wide U back toward the garage, then up the lane and into the bay
+      const poses = uTurn(poseNow(), visit.join, TURN_R);
+      const end = poses[poses.length - 1];
+      tr.legs = [
+        makeLeg(poses, { speed: U_SPEED, brake: false }),
+        legThrough(end, pointsAhead(end, visit.laneTail), { speed: VISIT_SPEED, brake: true, park: true }),
+      ];
       tr.i = 0;
       tr.s = 0;
       tr.v = 0;
       tr.dwell = false;
-      tr.phase = "turn";
+      tr.phase = "back";
     }
 
     // the card closed on the way out: the car does not carry on to the name
