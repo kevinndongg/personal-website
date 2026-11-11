@@ -3,7 +3,8 @@
 // empty, so it only has to extend) and roll it onto the scoop, retract, pivot the arm up to stand upright with the sample lying
 // on top of it, drive like that to a basket and stop diagonally with its back to the bucket, extend the arm straight up and
 // lean it back over the robot to tip the sample into the bucket behind it, then lay the arm back down flat. The robot sets off while the
-// arm is still moving: it drives away from the sample as the arm stands upright, and away from the basket as the arm pivots down and retracts. The first job takes
+// arm is still moving: it drives away from the sample as the arm stands upright, and away from the basket as the arm pivots down and retracts. The long runs cruise at the top speed and
+// brake late, and the arm starts to extend over the last 15 px of the way in, so it arrives with the slide out. The first job takes
 // a red sample to the red basket; the second takes a yellow one
 // from the south side of the submersible to the blue basket. The robot never has to turn round: the sample goes over the top.
 //
@@ -22,7 +23,11 @@ import type { ArmPose, RobotPose } from "./ftcrobot";
 import type { AnimCtx } from "./models";
 import type { RobotCycle, RobotJob } from "./scenes";
 
-const SPEED = 18; // px/s on average along a route (the robot eases out of and into each stop, so its top speed is half as much again: 27 px/s, the Power Play robot's)
+const TOP = 27; // px/s, the most it drives at: the Power Play robot's top speed
+const RAMP = 0.55; // how long it takes to get up to that speed from a stop, and to come back to a stop (s); a long run cruises at TOP in between
+const SPEED = TOP / 1.5; // px/s on average along a short run, which has no room to cruise (it eases out of and into its stops, so its top speed is half as much again, TOP)
+const INTRO = 0.4; // how long the arm takes to come out from folded at the very start, there being no drive in before it
+const EXTEND = 15; // how far (px) from its stop at the submersible the robot is when the arm starts to extend
 const SPIN_RATE = 14; // rad/s of the paddle wheel while it is running
 const FLOOR_Y = 1.2; // the top of the submersible's floor plate, where the scoop lies
 const OVER_RIM = 2.5; // how far above the bucket's rim the head holds the sample
@@ -82,9 +87,11 @@ interface Phase {
   dur: number;
   /** Where the robot stands (a stop). */
   at?: Pose;
-  /** Or the route it drives, turning from the heading it sets off with to the one it stops with. */
-  route?: { curve: CatmullRomCurve3; h0: number; h1: number };
+  /** Or the route it drives, turning from the heading it sets off with to the one it stops with, and its speed profile (the default eases in and out). */
+  route?: { curve: CatmullRomCurve3; h0: number; h1: number; ease?: (u: number) => number };
   arm: [ArmPose, ArmPose];
+  /** For a drive, a second arm move after the first, from `from` to `to` (fractions of the phase), to a new pose. */
+  then?: { arm: ArmPose; from: number; to: number };
   /** For a drive, how long the arm takes to go from the first pose to the second, from the start of the phase (it eases over the whole phase if this is not given). */
   armTime?: number;
   spin?: boolean;
@@ -108,7 +115,34 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
     c.arcLengthDivisions = 600;
     return c;
   };
-  const drive = (c: CatmullRomCurve3) => Math.max(1.4, c.getLength() / SPEED);
+  /**
+   * How long a run along `c` takes and how far along it the robot is after `u` of that: a long run gets up to TOP in RAMP, cruises and comes to a
+   * stop in RAMP; a short one just eases in and out (and takes at least 1.4 s).
+   */
+  const profile = (c: CatmullRomCurve3): { dur: number; ease?: (u: number) => number } => {
+    const d = c.getLength();
+    if (d <= 2 * TOP * RAMP + 2) return { dur: Math.max(1.4, d / SPEED) };
+    const T = d / TOP + RAMP;
+    const g = (w: number) => w * w * w - (w * w * w * w) / 2; // the distance covered getting up to speed, in TOP * RAMP, at w of the way through the ramp
+    return {
+      dur: T,
+      ease: (u: number) => {
+        const t = u * T;
+        if (t < RAMP) return (TOP * RAMP * g(t / RAMP)) / d;
+        if (t > T - RAMP) return 1 - (TOP * RAMP * g((T - t) / RAMP)) / d;
+        return (TOP * (RAMP / 2 + (t - RAMP))) / d;
+      },
+    };
+  };
+  /** How far through a run (0..1) the robot is first within `dist` px of its end. */
+  const lastStretch = (c: CatmullRomCurve3, ease: ((u: number) => number) | undefined, dist: number) => {
+    const d = c.getLength();
+    for (let n = 0; n <= 400; n++) {
+      const u = n / 400;
+      if (d * (1 - (ease ? ease(u) : smooth(u))) <= dist) return u;
+    }
+    return 1;
+  };
   const never = () => false;
   const always = () => true;
 
@@ -138,12 +172,11 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
   };
   const jobs = cfg.jobs.map(prepare);
 
-  /** Pick up: the slide extends, the head drops, the sample rolls on, it curls up and retracts, and the arm stands upright. */
+  /** Pick up (the slide is already out, extended on the way in): the head drops, the sample rolls on, it curls up and the slide retracts. */
   const intakePhases = (j: ReturnType<typeof prepare>): Phase[] => {
     const color = j.job.intake.color;
     const slot = j.job.intake.slot;
     return [
-      { dur: 0.45, at: j.intakeAt, arm: [STOWED, j.reachedArm], carry: never }, // the slide just extends forward, no pivoting
       { dur: 0.25, at: j.intakeAt, arm: [j.reachedArm, j.intakeArm], spin: true, carry: never }, // the head drops to the floor
       {
         dur: 0.85,
@@ -186,10 +219,12 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
     const color = j.job.intake.color;
     const over = curve([j.intakeAt, ...j.job.over, j.scoreAt]);
     const between = curve([j.scoreAt, ...cfg.between[n], next.intakeAt]);
+    const overRun = profile(over);
+    const betweenRun = profile(between);
     loop.push(...intakePhases(j));
     loop.push({
-      dur: drive(over),
-      route: { curve: over, h0: j.intakeAt.h, h1: j.scoreAt.h },
+      dur: overRun.dur,
+      route: { curve: over, h0: j.intakeAt.h, h1: j.scoreAt.h, ease: overRun.ease },
       arm: [STOWED, j.vertArm], // with the sample on it the arm stands upright, ready to go straight up at the basket, while the robot sets off
       armTime: 0.5,
       carry: always,
@@ -198,10 +233,11 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
     });
     loop.push(...depositPhases(j));
     loop.push({
-      dur: drive(between),
-      route: { curve: between, h0: j.scoreAt.h, h1: next.intakeAt.h },
+      dur: betweenRun.dur,
+      route: { curve: between, h0: j.scoreAt.h, h1: next.intakeAt.h, ease: betweenRun.ease },
       arm: [j.turnedArm, STOWED], // the arm pivots down and retracts as the robot drives off
       armTime: 0.65,
+      then: { arm: next.reachedArm, from: lastStretch(between, betweenRun.ease, EXTEND), to: 1 }, // and extends again over the last stretch to the submersible
       carry: never,
       mark: { what: "clear", index: j.job.score.basket, offset: 0.75 }, // and the sample it dropped goes once the robot has driven off
     });
@@ -236,6 +272,12 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
     ftcField.dropped[1] = Math.min(1, Math.max(0, dropped[1]));
   };
 
+  /** The arm's pose `e` seconds (`u` of the way) into a phase. */
+  const armAt = (ph: Phase, e: number, u: number, k: number): ArmPose => {
+    const a = mix(ph.arm[0], ph.arm[1], ph.armTime ? smooth(e / ph.armTime) : k);
+    return ph.then ? mix(a, ph.then.arm, smooth((u - ph.then.from) / (ph.then.to - ph.then.from))) : a;
+  };
+
   let lastT = -1;
   let spinning = 0; // 0..1, how fast the paddle is going
   let spin = 0; // its angle
@@ -257,7 +299,7 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
 
     let at: Pose;
     if (ph.route) {
-      const p = ph.route.curve.getPointAt(k);
+      const p = ph.route.curve.getPointAt(Math.min(1, Math.max(0, ph.route.ease ? ph.route.ease(u) : k)));
       at = { x: p.x, y: p.z, h: ph.route.h0 + wrap(ph.route.h1 - ph.route.h0) * k };
     } else {
       at = ph.at!;
@@ -270,7 +312,7 @@ export function attachCycle(model: Group, cfg: RobotCycle) {
     spin += dt * SPIN_RATE * spinning;
     const pose = model.userData.pose as ((p: RobotPose) => void) | undefined;
     pose?.({
-      ...mix(ph.arm[0], ph.arm[1], ph.armTime ? smooth(e / ph.armTime) : k),
+      ...(t < INTRO ? mix(STOWED, armAt(ph, e, u, k), smooth(t / INTRO)) : armAt(ph, e, u, k)), // (the very first moments: the arm comes out from its folded pose, as it does on the way in later)
       spin,
       carrying: ph.carry(u),
       carryColor: ph.color ?? YELLOW,
