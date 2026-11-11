@@ -106,6 +106,10 @@ export function ftcScene(ox: number, oy: number): Scene {
   // in the field, out through its gate and up to its spot. The Power Play robot's gate is north of the Into the Deep robot's, so it takes the
   // inner lane and the nearer spot, and the other the outer lane and the spot behind, so that they never cross.
   const SOUTH = Math.PI / 2;
+  // They face the viewer but are angled in toward each other, so that each shows a side as well as its front: the left one turned toward the
+  // south-east, the right one toward the south-west, the one behind straight on.
+  const ANGLE = (35 * Math.PI) / 180;
+  const FACING = { pp: SOUTH - ANGLE, cs: SOUTH + ANGLE, itd: SOUTH };
   const STOP = {
     pp: at(34, -20), // front left
     cs: at(82, -20), // front right
@@ -163,7 +167,7 @@ export function ftcScene(ox: number, oy: number): Scene {
         at(16, -20),
         STOP.pp,
       ],
-      heading: SOUTH,
+      heading: FACING.pp,
       gate: { id: 0, at: GATE_PP },
       delay: 0.15,
     },
@@ -213,7 +217,7 @@ export function ftcScene(ox: number, oy: number): Scene {
         at(96, -17),
         STOP.cs,
       ],
-      heading: SOUTH,
+      heading: FACING.cs,
       gate: { id: 2, at: GATE_CS },
       delay: 0.3, // (the shortest way: it sets off last)
     },
@@ -278,7 +282,7 @@ export function ftcScene(ox: number, oy: number): Scene {
         at(26, -44),
         STOP.itd,
       ],
-      heading: SOUTH,
+      heading: FACING.itd,
       gate: { id: 1, at: GATE_ITD },
       delay: 0, // (the longest way: it sets off first)
     },

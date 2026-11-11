@@ -76,7 +76,7 @@ export interface CenterStageCycle {
 export interface RobotVisit {
   /** The way, in order: from inside the field (its lanes), through the gate, to the stop (the last point). */
   path: { x: number; y: number }[];
-  /** The way the robot faces when it is parked there (radians, world plane, y = south): toward the viewer. */
+  /** The way the robot faces when it is parked there (radians, world plane, y = south): toward the viewer, a little angled. */
   heading: number;
   /** The gate in the field wall it goes out by (`ftcGates` in robotvisit.ts) and where that is. */
   gate: { id: number; at: { x: number; y: number } };
