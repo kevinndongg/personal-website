@@ -21,7 +21,7 @@ import type { ArmPose, RobotPose } from "./ftcrobot";
 import type { AnimCtx } from "./models";
 import type { RobotCycle, RobotJob } from "./scenes";
 
-const SPEED = 36; // px/s along the route (the robot eases out of and into each stop)
+const SPEED = 18; // px/s on average along a route (the robot eases out of and into each stop, so its top speed is half as much again: 27 px/s, the Power Play robot's)
 const SPIN_RATE = 14; // rad/s of the paddle wheel while it is running
 const FLOOR_Y = 1.2; // the top of the submersible's floor plate, where the scoop lies
 const OVER_RIM = 2.5; // how far above the bucket's rim the head holds the sample

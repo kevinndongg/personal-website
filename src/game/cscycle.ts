@@ -27,7 +27,7 @@ import type { CenterStageCycle } from "./scenes";
 const GONE = 14; // how far (px) the robot has driven from a stop before the pixel it leaves there changes (a placed one shrinks, a taken one is replaced)
 const FEED = 1.0; // how long a pixel takes to ride in from the floor to its place in the bucket (s)
 const SPIN = 10; // the roller's speed (rad/s)
-const SLIDE_V = 16; // how fast the slides move, up or down alike (px/s on average over a move; they ease in and out)
+const SLIDE_V = 22; // how fast the slides move, up or down alike (px/s on average over a move; they ease in and out)
 const slideTime = (dist: number) => Math.abs(dist) / SLIDE_V; // how long a slide move of `dist` px takes (s)
 const JOINT_W = 2.6; // how fast the arm swings and the turret turns, either way (rad/s on average over a move, about 150 degrees a second; they ease in and out)
 const jointTime = (rad: number) => Math.abs(rad) / JOINT_W; // how long a swing or turn of `rad` takes (s)
@@ -109,8 +109,8 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   // back is the same path travelled in reverse)
   const ROW = cfg.yellow.y;
   const yClear = cfg.door.y - DOOR_CLEAR; // how far north its front is clear of the door
-  const ySplit = stand.y + 5; // and where it begins to brake for the stand
-  const TURN = 16; // how long the turn is (px of path): its heading eases from south to east, so it begins and ends without a jolt of the steering
+  const ySplit = stand.y + 8.5; // and where it begins to brake for the stand
+  const TURN = 19; // how long the turn is (px of path): its heading eases from south to east, so it begins and ends without a jolt of the steering
   const bend: { x: number; y: number }[] = [];
   {
     let x = 0;
@@ -192,7 +192,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   // away from the backdrop in one flowing run, the moment the last pixel is let go (the lock closes and the turret centres as it pulls away; the
   // arm folds once it has backed off the board and the slides go down before the rear reaches the door), then one long turn, the intake coming
   // down as it drives up to the pixels, the yellow taken first and the white as it comes to rest
-  const A = run(pathA, 6.0, 0, 0, 1);
+  const A = run(pathA, 3.6, 0, 0, 1);
   const uFold = firstU(A, (p) => p.y > stand.y + FOLD_AT);
   const uIn = uFold + jointTime(CS.arm.fold) / A.dur; // the arm is in
   const uDown = Math.max(firstU(A, (p) => p.y > stand.y + DOWN_AT), uIn + 0.01); // the slides go down once it is
@@ -221,7 +221,7 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
   // back to the backdrop in one flowing run, reversing: the intake lifts at once, the new pixels appear at the wall once it is away, it turns as it
   // goes and runs north under the door; once its front is clear the slides rise, and as it slows to a stop the arm swings back and the turret
   // swings out, so it arrives with the arm ready
-  const B1 = run(pathB1, 5.2, 0, 12, -1);
+  const B1 = run(pathB1, 3.2, 0, 20, -1);
   const uClear = firstU(B1, (p) => p.y < yClear);
   loop.push({
     ...B1,
@@ -235,13 +235,13 @@ export function attachCenterStage(model: Group, cfg: CenterStageCycle) {
       { what: "spawn", index: 1, offset: farOffset(B1, wStand, GONE) + 0.25 },
     ],
   });
-  const B2dur = 1.0;
+  const B2dur = 0.85;
   loop.push({
-    ...run(pathB2, B2dur, 12, 0, -1),
+    ...run(pathB2, B2dur, 20, 0, -1),
     arm: [lifted, lined],
     keys: {
-      arm: key([0.06, CS.arm.fold], [0.06 + jointTime(CS.arm.fold) / B2dur, 0]),
-      turret: key([0.45, 0], [0.45 + jointTime(phiW) / B2dur, phiW]),
+      arm: key([0.03, CS.arm.fold], [0.03 + jointTime(CS.arm.fold) / B2dur, 0]),
+      turret: key([0.38, 0], [0.38 + jointTime(phiW) / B2dur, phiW]),
     },
   });
   // then it stands there: the lock draws back and the white pixel drops; the yellow slides down to the lower place and is held; the slides rise and
