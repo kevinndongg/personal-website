@@ -778,11 +778,12 @@ html:has(.game) body {
   display: block;
   width: 100%;
   aspect-ratio: 3 / 4;
-  /* cropped in on the face: the photo drawn at 190% of the frame, with the face (about a third in from the left and 30% down) in the middle of it */
+  /* cropped in on the face: the photo drawn at 190% of the frame, placed so that the eyes (42% down the photo, and 41% across it) are on the line a
+     third of the way down the frame and in the middle of it across */
   background-color: var(--paper-2);
   background-repeat: no-repeat;
   background-size: 190%;
-  background-position: 34% 30%;
+  background-position: 31% 51.5%;
   border-radius: calc(12px * var(--card-scale, 1));
   box-shadow: 0 0 0 1px var(--line);
 }

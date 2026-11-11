@@ -177,9 +177,8 @@ const zones = [
     id: "hub",
     kind: "about" as const,
     label: "Kevin Dong",
-    // the card has no title (the name on the map is it): "Computer Science at CMU" is its heading (the `period` slot) and the role a small line under it
+    // the card has no title (the name on the map is it): "Computer Science at CMU" is its heading (the `period` slot)
     period: "Computer Science at CMU",
-    role: "Robotics · Racing · Vision",
     summary: "", // (the card is kept minimal: the heading, the role, the links and the photo)
     actions: contactLinks.map((l) => ({ ...l, external: !l.href.startsWith("mailto:") })),
     portrait,
