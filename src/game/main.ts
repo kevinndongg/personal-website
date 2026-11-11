@@ -251,6 +251,9 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
     openZone = zone;
     openSide = side;
     renderer.focus(zone.id, side, panel.coverage(side, zone));
+    // the name's card: the formula car drives over and parks beside the name; any other card sends it home
+    if (zone.kind === "about") renderer.sendCarToName();
+    else renderer.recallCar();
     zoomKey = ""; // `focus` frames the whole project: say again where the view should be zoomed to, if anywhere
     panel.open(zone, side);
     hoveredId = zone.id;
@@ -271,6 +274,7 @@ export function startGame(root: HTMLElement, intro: Intro | null = null): () => 
       rig.zoomOut(); // it opens at the page next time, not zoomed into the photo it was closed on
     }
     renderer.focus(null);
+    renderer.recallCar();
     hoveredId = null;
     openZone = null;
     if (syncing || !location.hash) return;

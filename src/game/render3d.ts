@@ -578,7 +578,7 @@ export class Renderer3D {
         model.userData.zoneId = zone.id;
         model.userData.sprite = p.sprite;
         if (model.userData.liftOverlay) this.addLiftOverlay(model, model.userData.liftOverlay);
-        if (p.drive) attachLap(model, p.drive);
+        if (p.drive) attachLap(model, p.drive, p.visit);
         if (p.errand) attachErrand(model, p.errand, Math.PI / 2); // (he stops facing south, toward the grill)
         if (p.cycle) attachCycle(model, p.cycle);
         if (p.ppCycle) attachPowerPlay(model, p.ppCycle);
@@ -964,6 +964,21 @@ export class Renderer3D {
     return false;
   }
 
+  /** The about card is open: the car drives to the name (it has to be there, in sight, whichever zone it belongs to). */
+  sendCarToName() {
+    if (this.reduceMotion) return;
+    for (const list of this.zoneModels.values()) {
+      for (const m of list) if (typeof m.userData.sendOut === "function") m.userData.sendOut();
+    }
+  }
+
+  /** The about card is closed (or another opened): the car drives home. */
+  recallCar() {
+    for (const list of this.zoneModels.values()) {
+      for (const m of list) if (typeof m.userData.recall === "function") m.userData.recall();
+    }
+  }
+
   /** Tells the zone's car whether the pointer is over it (it glows while it is parked and could be sent out). */
   hoverCar(on: boolean) {
     for (const list of this.zoneModels.values()) {
@@ -1204,7 +1219,7 @@ export class Renderer3D {
     if (this.focused) {
       const zone = this.world.zones.find((z) => z.id === this.focused!.zoneId);
       if (zone) {
-        const a = this.focusFrame(zone);
+        const a = zone.scene.sharpArea ?? this.focusFrame(zone);
         const pts = this.focusPts && this.focusPts.zoneId === zone.id ? this.focusPts.points : null;
         let u0 = 1,
           v0 = 1,

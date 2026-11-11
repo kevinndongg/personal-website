@@ -1,6 +1,7 @@
 // Free-form project areas. Everything here is positioned in world pixels, not tiles.
 import { constructionScene } from "./construction";
-import { SLAB, nameZone } from "./name";
+import { SLAB, nameRect, nameZone } from "./name";
+import type { Visit } from "./visit";
 import { slabScene, nameScene } from "./namescenes";
 import { ftcScene, H as FTC_H, W as FTC_W } from "./ftc";
 import { photoDeskScene } from "./photodesk";
@@ -43,6 +44,8 @@ export interface Prop {
   focus?: PropFocus & { tall?: PropFocus };
   /** A lap the prop drives now and then (world px; the first and last points are its parked pose). See drive.ts. */
   drive?: { x: number; y: number }[];
+  /** A trip a prop with a `drive` lap makes to the name when the about card opens, and back when it closes. See visit.ts and drive.ts. */
+  visit?: Visit;
   /** A trip the prop makes now and then, one way (world px, from where it starts out of sight to where it stops). See errand.ts. */
   errand?: { x: number; y: number }[];
   /** A robot that works the field on its own, over and over (the Into the Deep robot). See robotcycle.ts. */
@@ -121,6 +124,8 @@ export interface Scene {
   area: Rect; // the project box: hovering it lifts the props; clicking it opens the project
   /** The world rect to frame (and keep sharp) when zoomed in, for props that grow beyond `area`. Defaults to `area`. */
   focusArea?: Rect;
+  /** The world rect that stays sharp (the rest is dimmed and blurred) when zoomed in, if it is not the framed one: the name's car parks beside it. */
+  sharpArea?: Rect;
   /** Like `focusArea` but for portrait screens, where the props are laid out stacked rather than side by side. */
   focusAreaTall?: Rect;
   /** How much of the free part of the screen the framed area fills when zoomed in (0..1). Defaults to 0.82. */
@@ -306,7 +311,34 @@ function racingScene(ox: number, oy: number): Scene {
     { x: lane, y: 140 },
     ...arc,
   ];
-  props.find((p) => p.sprite === "formula")!.drive = lap;
+  const car = props.find((p) => p.sprite === "formula")!;
+  car.drive = lap;
+
+  // The car's trip to the name (when the about card opens): the cone track out of the bay, then on past the finish and down the
+  // left of the map to a stop beside the name (the name is in the middle of the map, so these are world points, from its footprint).
+  // It pulls up in the margin to the name's left, heading south, with room on both sides for a three-point turn; the way home is
+  // straight back up to the lane, which it shares with the lap.
+  const finishAt = lap.indexOf(finish);
+  const name = nameRect();
+  const stop = { x: name.x - 64, y: name.y + name.h * 0.35 };
+  const join = lap[finishAt + 3]; // where the lane starts (the lap's "lane + 40, 230")
+  car.visit = {
+    track: lap.slice(0, finishAt + 1),
+    toStop: [
+      { x: finish.x + 1, y: finish.y + 34 },
+      { x: stop.x + 42, y: stop.y - 74 },
+      { x: stop.x + 22, y: stop.y - 44 },
+      { x: stop.x + 8, y: stop.y - 18 },
+      stop,
+    ],
+    home: [
+      { x: stop.x - 1, y: stop.y - 40 },
+      { x: join.x + 2, y: (stop.y + join.y) / 2 },
+    ],
+    lapRest: lap.slice(finishAt + 1),
+    join,
+    laneTail: lap.slice(finishAt + 3),
+  };
 
   // The burger run: out of the garage's side door (the long wall facing the tent, at its back end), down to the grill's
   // side table. Clear of the tent and of the car's lane.

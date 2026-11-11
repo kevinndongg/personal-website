@@ -17,6 +17,8 @@ export function nameScene(ox: number, oy: number): Scene {
   ];
   return {
     area: { x: ox, y: oy, w: z.w, h: z.h },
+    // the formula car comes to park in the margin to the left of the name (see racingScene): it stays sharp, level with the letters
+    sharpArea: { x: ox - 120, y: oy - 20, w: z.w + 240, h: z.h + 40 },
     building: { x: ox + m, y: oy + m, w: NAME.letters, h: NAME_H },
     labelAt: { x: ox + z.w / 2, y: oy + m },
     labelHeight: 22,
