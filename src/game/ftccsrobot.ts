@@ -209,12 +209,6 @@ export function csRobotModel(): Group {
   const PIVOT = { x: HALF - 2.3, y: 1.8 };
   const L = 4.7;
   const ARM_Z = 3.55; // inboard of the inner plates, so the front wheels have the pods to themselves
-  // every flipper is a two-pronged fork: two thin fingers a little apart, joined at their root
-  const PRONG = 0.21; // how far each prong stands to either side of the flipper's middle
-  const PRONG_W = 0.22; // and how wide it is
-  const prongs = (z: number, build: (zp: number) => void) => {
-    for (const d of [-PRONG, PRONG]) build(z + d);
-  };
   const intake = new Group();
   intake.position.set(PIVOT.x, PIVOT.y, 0);
   g.add(intake);
@@ -241,23 +235,24 @@ export function csRobotModel(): Group {
   drum.rotation.x = Math.PI / 2;
   drum.position.set(0, 0, 0);
   roller.add(drum);
-  // four yellow two-pronged flippers on the roller, the same shape as the five on the bottom bar and standing between them (z = +-0.8, +-2.4 against their
+  // four yellow flippers on the roller, each a blade out each side of the drum, the blade the same shape as the five on the bottom bar and standing between them (z = +-0.8, +-2.4 against their
   // 0, +-1.6, +-3.2): a short paddle out from the drum with its tip curled over
   for (const z of [-2.4, -0.8, 0.8, 2.4]) {
-    prongs(z, (zp) => {
-      part(roller, 1.1, 0.35, PRONG_W, YELLOW, 0.8, 0, zp);
-      part(roller, 0.35, 0.8, PRONG_W, YELLOW, 1.4, -0.3, zp);
-    });
-    part(roller, 0.3, 0.35, 2 * PRONG + PRONG_W, YELLOW, 0.4, 0, z); // the fork's root, joining its two prongs
+    // two-pronged: a blade out each side of the drum, one opposite the other, so it is a paddle right through it
+    for (const turn of [0, Math.PI]) {
+      const blade = new Group();
+      blade.position.z = z;
+      blade.rotation.z = turn;
+      part(blade, 1.1, 0.35, 0.45, YELLOW, 0.8, 0, 0);
+      part(blade, 0.35, 0.8, 0.45, YELLOW, 1.4, -0.3, 0);
+      roller.add(blade);
+    }
   }
   for (const s of [-1, 1]) part(intake, L - 1, 0.12, 0.12, BLACK, L / 2, 0.2, s * 2.2); // the black cords across the arms
-  // the lower bar: five yellow two-pronged flippers on the axle low at the front, short, with their tips curling up
+  // the lower bar: five yellow flippers on the axle low at the front, short, with their tips curling up
   for (let k = -2; k <= 2; k++) {
-    prongs(k * 1.6, (zp) => {
-      part(g, HALF + 0.3 - PIVOT.x, 0.3, PRONG_W, YELLOW, (PIVOT.x + HALF + 0.3) / 2, 0.4, zp);
-      part(g, 0.35, 0.9, PRONG_W, YELLOW, HALF + 0.4, 0.75, zp);
-    });
-    part(g, 0.3, 0.3, 2 * PRONG + PRONG_W, YELLOW, PIVOT.x + 0.3, 0.4, k * 1.6); // the fork's root, joining its two prongs
+    part(g, HALF + 0.3 - PIVOT.x, 0.3, 0.45, YELLOW, (PIVOT.x + HALF + 0.3) / 2, 0.4, k * 1.6);
+    part(g, 0.35, 0.9, 0.45, YELLOW, HALF + 0.4, 0.75, k * 1.6);
   }
   part(g, 0.5, 0.5, 2 * ARM_Z, BLUE, PIVOT.x, 0.5, 0);
 
