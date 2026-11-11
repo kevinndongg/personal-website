@@ -716,13 +716,13 @@ html:has(.game) body {
 }
 
 /*
- * arriving: it waits while the camera starts its glide and the formula car sets out (800ms), then fades and rises in slowly (700ms),
- * so that it lands as the camera settles, with the car still on its way. (Panel's hide timer after closing is 450ms: see `close`.)
+ * arriving: it waits while the camera glides in and the formula car drives across (1300ms), then fades and rises in slowly (700ms),
+ * so that it lands as the camera settles (2.25s), with the car just arriving. (Panel's hide timer after closing is 450ms: see `close`.)
  */
 .panel[data-side="bottom"][data-kind="about"].open {
   transition:
-    transform 800ms var(--ease) 800ms,
-    opacity 700ms ease 800ms,
+    transform 800ms var(--ease) 1300ms,
+    opacity 700ms ease 1300ms,
     max-height 320ms var(--ease);
 }
 
