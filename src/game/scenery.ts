@@ -25,6 +25,7 @@ import { nameGlowModel } from "./nameglow";
 import { nameModel } from "./namemodel";
 import { constructionModel } from "./constructionmodels";
 import { ftcModel } from "./ftcmodels";
+import { dtcModel } from "./dtcmodels";
 
 // Models for the photography area: an Olympus OM-1 and a light table. The table shows the photos a page at a time: six
 // frames of film laid out on it (two strips of two landscape photos, and one strip of two portrait ones). The camera is
@@ -1713,6 +1714,8 @@ export function sceneryModel(id: string, footprint: Footprint | undefined, prop:
   if (site) return site;
   const ftc = ftcModel(id, w, d);
   if (ftc) return ftc;
+  const dtc = dtcModel(id);
+  if (dtc) return dtc;
   const zone = zones.find((z) => z.kind === "gallery");
   const rig = zone ? filmRig(zone) : new FilmRig();
   switch (id) {
