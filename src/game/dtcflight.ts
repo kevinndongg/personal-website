@@ -38,7 +38,6 @@ export interface CasualtyState {
 export const DRONE = {
   alt: 30, // how high it cruises (px)
   inspect: 15, // how low it drops to look at a casualty
-  reach: 22, // the radius of the circle its camera sees on the ground while cruising (it narrows to 0.42 of that over a casualty)
   hit: 12, // a casualty this near (horizontally) is scanned, which only happens while it is down over them
 };
 export const SPOT = { hit: 16 };
@@ -47,11 +46,14 @@ export const SPOT = { hit: 16 };
 export interface FlightPose {
   alt: number; // height above its pad, px
   lift: number; // 0 on the pad .. 1 up (climbing out, settling back)
-  focus: number; // 0 cruising .. 1 down over a casualty, camera narrowed onto them
+  focus: number; // 0 cruising .. 1 down over a casualty, its camera locked on them
+  aim: { dx: number; dz: number }; // from the drone to the point on the ground it is looking at (world px)
   power: number; // 0 rotors still .. 1 flying
   dt: number;
   t: number;
 }
+
+const NO_AIM = { dx: 0, dz: 0 };
 
 /** What the robot model is told each frame (`userData.pose`). */
 export interface SpotPose {
@@ -137,7 +139,7 @@ export function attachFlight(model: Group, path: { x: number; y: number; hold?: 
 
   model.userData.animate = ({ t }: AnimCtx) => {
     if (t <= 0) {
-      setFlight({ alt: 0, power: 0, lift: 0, focus: 0, dt: 0, t: 0 }); // reduced motion: parked
+      setFlight({ alt: 0, power: 0, lift: 0, focus: 0, dt: 0, t: 0, aim: NO_AIM }); // reduced motion: parked
       return;
     }
     const dt = last < 0 ? 0 : Math.min(0.1, Math.max(0, t - last));
@@ -145,7 +147,7 @@ export function attachFlight(model: Group, path: { x: number; y: number; hold?: 
     if (next < 0) next = t + between(FIRST);
     if (start < 0) {
       if (t < next) {
-        setFlight({ alt: 0, power: 0, lift: 0, focus: 0, dt, t });
+        setFlight({ alt: 0, power: 0, lift: 0, focus: 0, dt, t, aim: NO_AIM });
         dtcScan.drone.on = false;
         return;
       }
@@ -157,7 +159,7 @@ export function attachFlight(model: Group, path: { x: number; y: number; hold?: 
       next = t + between(GAP);
       model.position.x = home.x;
       model.position.z = home.z;
-      setFlight({ alt: 0, power: 0, lift: 0, focus: 0, dt, t });
+      setFlight({ alt: 0, power: 0, lift: 0, focus: 0, dt, t, aim: NO_AIM });
       dtcScan.drone.on = false;
       return;
     }
@@ -165,16 +167,19 @@ export function attachFlight(model: Group, path: { x: number; y: number; hold?: 
     // where it is along the survey, and how closely it is looking: 0 cruising .. 1 down over a casualty
     let at = 0;
     let focus = 0;
+    let looking = -1; // the distance along the survey of the casualty it looks at
     for (const part of plan) {
       if (e < part.t0) break;
       if (part.kind === "hold") {
         at = part.s;
         focus = 1;
+        looking = part.s;
         if (e < part.t1) break;
       } else {
         const u = Math.min(1, (e - part.t0) / (part.t1 - part.t0));
         at = part.s0 + (part.s1 - part.s0) * smooth(u);
         focus = Math.max(part.fromStop ? 1 - smooth(u / 0.3) : 0, part.toStop ? smooth((u - 0.7) / 0.3) : 0);
+        looking = part.toStop && (!part.fromStop || u >= 0.5) ? part.s1 : part.fromStop ? part.s0 : -1;
         if (e < part.t1) break;
       }
     }
@@ -182,7 +187,16 @@ export function attachFlight(model: Group, path: { x: number; y: number; hold?: 
     const swirl = 2.6 * focus; // a slow circle over the casualty, to look at them from all sides
     model.position.x = p.x + Math.cos(t * 1.4) * swirl;
     model.position.z = p.z + Math.sin(t * 1.4) * swirl;
-    setFlight({ alt: lift * (DRONE.alt + (DRONE.inspect - DRONE.alt) * focus), power: Math.min(1, e / 0.6, (flightTime - e) / 0.3 + 0.2), lift, focus, dt, t });
+    const q = looking >= 0 ? curve.getPointAt(Math.min(1, looking / total)) : p;
+    setFlight({
+      alt: lift * (DRONE.alt + (DRONE.inspect - DRONE.alt) * focus),
+      power: Math.min(1, e / 0.6, (flightTime - e) / 0.3 + 0.2),
+      lift,
+      focus,
+      dt,
+      t,
+      aim: { dx: q.x - model.position.x, dz: q.z - model.position.z },
+    });
     dtcScan.drone.on = focus > 0.8;
     dtcScan.drone.x = p.x;
     dtcScan.drone.z = p.z;
