@@ -113,14 +113,12 @@ export function fuselageModel(): Group {
   const nose = mesh(new SphereGeometry(R, 22, 14), toon(WHITE), L / 2, y0, 0);
   nose.scale.set(1.3, 1, 1);
   g.add(nose);
-  // the cockpit glass: a dark oval lying on the top of the nose, tipped to follow it
-  const glass = mesh(new SphereGeometry(1, 14, 10), toon("#1b2a4a"), L / 2 + 4.6, y0 + R - 0.9, 0);
-  glass.scale.set(3.2, 0.9, 5.4);
-  glass.rotation.z = -0.3;
+  // the cockpit: the windshield on the front-upper slope of the nose, right at the tip (tipped to follow the slope), and a side window each side
+  const glass = mesh(new SphereGeometry(1, 14, 10), toon("#1b2a4a"), L / 2 + 9.4, y0 + 6.5, 0);
+  glass.scale.set(2.4, 0.8, 2.6);
+  glass.rotation.z = -0.69;
   g.add(glass);
-  // ...and a side window each side of it, so that the cockpit reads from every angle
-  for (const side of [-1, 1]) g.add(box(2.8, 1.5, 0.7, "#1b2a4a", L / 2 + 4.6, y0 + 3.4, side * 8.9));
-  g.add(box(L - 14, 0.6, 4, BLUE, -4, y0 + R - 0.3, 0)); // the airline's stripe along the spine, which shows from above
+  for (const side of [-1, 1]) g.add(box(2.4, 1.4, 0.7, "#1b2a4a", L / 2 + 7.8, y0 + 3.3, side * 7.3));
   for (const side of [-1, 1]) g.add(box(L - 2, 1.8, 0.8, BLUE, 0, y0 - 2.5 - 0.9, side * (R - 0.2))); // the cheat line
   windows(g, -24, 22, 6, y0, R);
   brokenEnd(g, -L / 2, -1, R, y0);
