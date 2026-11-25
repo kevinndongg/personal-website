@@ -21,9 +21,9 @@ export function dtcScene(ox: number, oy: number): Scene {
 
   // ---- the wreck. With an angle, x/y is the centre of the model and a rect footprint turns with it.
   props.push(
-    { sprite: "dtc-tail", ...at(44, 72), angle: 0.45, solid: rect(40, 26) },
-    { sprite: "dtc-fuselage", ...at(108, 70), angle: 0.05, solid: rect(56, 26) },
-    { sprite: "dtc-wing", ...at(112, 113), angle: -0.1, solid: rect(14, 36) },
+    { sprite: "dtc-tail", ...at(40, 72), angle: 0.45, solid: rect(40, 20) },
+    { sprite: "dtc-fuselage", ...at(108, 70), angle: 0.05, solid: rect(62, 20) },
+    { sprite: "dtc-wing", ...at(114, 114), angle: 0.15, solid: rect(16, 28) },
     { sprite: "dtc-engine", ...at(66, 110), angle: 0.9, solid: rect(11, 8) },
     // the fire at the engine's burnt end
     { sprite: "dtc-fire", ...at(62.5, 105.5) }
@@ -36,25 +36,25 @@ export function dtcScene(ox: number, oy: number): Scene {
     debris("panel-1", 20, 62, -0.2),
     debris("panel-2", 134, 94, 0.9),
     debris("panel-0", 150, 86, 1.4),
-    debris("panel-1", 100, 124, 0.3),
+    debris("panel-1", 92, 122, 0.3),
     debris("panel-2", 30, 108, 2.2),
     debris("seat", 70, 60, 0.7),
     debris("seat", 72, 84, -0.4),
     debris("seat", 24, 86, 1.9),
     debris("case-r", 88, 50, 0.3),
-    debris("case-b", 124, 130, 1.1),
+    debris("case-b", 140, 128, 1.1),
     debris("case-g", 38, 114, 0.5),
-    debris("case-r", 56, 90, 2.4),
+    debris("case-r", 42, 104, 2.4),
     debris("wheel", 138, 100, 0)
   );
 
   // ---- the casualties, each lying where they were thrown. The key is the triage colour (g green, y yellow, r red, k black) and a number
-  // for what they wear and how they lie (g1 waves). The robot walks out to the red one at (94, 92); the drone passes over all of them.
+  // for what they wear and how they lie (g1 waves). The robot walks out to the red one at (92, 96); the drone passes over all of them.
   const casualty = (key: string, x: number, y: number, angle: number): Prop => ({ sprite: `dtc-casualty-${key}`, ...at(x, y), angle });
   props.push(
     casualty("g0", 74, 96, 0.3),
     casualty("y0", 78, 52, -0.4),
-    casualty("r0", 94, 92, 3.4),
+    casualty("r0", 92, 96, 3.4),
     casualty("k0", 52, 96, 1.9),
     casualty("g1", 144, 50, 2.9),
     casualty("y2", 146, 116, 0.2),
@@ -69,7 +69,7 @@ export function dtcScene(ox: number, oy: number): Scene {
   );
   for (const [x, y] of [
     [156, 34],
-    [156, 78],
+    [162, 80],
     [156, 128],
     [120, 136],
     [84, 136],
@@ -77,7 +77,7 @@ export function dtcScene(ox: number, oy: number): Scene {
     [16, 120],
     [16, 40],
     [60, 30],
-    [104, 30],
+    [130, 26],
   ])
     props.push({ sprite: "cone-o", ...at(x, y), solid: circle(3) });
 
@@ -92,7 +92,7 @@ export function dtcScene(ox: number, oy: number): Scene {
       pad,
       { x: 156, y: 116 },
       { x: 130, y: 100 },
-      { x: 100, y: 96 },
+      { x: 98, y: 98 },
       { x: 76, y: 98 },
       { x: 54, y: 100 },
       { x: 32, y: 98 },
@@ -110,13 +110,13 @@ export function dtcScene(ox: number, oy: number): Scene {
   // just ahead of it
   props.push({
     sprite: "dtc-spot",
-    ...at(152, 90),
+    ...at(152, 92),
     angle: Math.PI,
     patrol: [
-      { x: 152, y: 90 },
-      { x: 138, y: 89.5 },
-      { x: 120, y: 88.5 },
-      { x: 104, y: 88.5 },
+      { x: 152, y: 92 },
+      { x: 138, y: 92 },
+      { x: 120, y: 92 },
+      { x: 104, y: 92 },
     ].map((p) => at(p.x, p.y)),
   });
 
