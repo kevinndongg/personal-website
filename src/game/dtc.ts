@@ -178,8 +178,8 @@ export function dtcScene(ox: number, oy: number): Scene {
   ])
     props.push({ sprite: "cone-o", ...at(x, y), solid: circle(3) });
 
-  // ---- the drone, parked on its pad in the south-east. It flies slowly from casualty to casualty and stops over each one, dropping down to
-  // look at them closely, and then goes on: out over the south side, back along the north, and home to the pad (its first and last
+  // ---- the drone, parked on its pad in the south-east. It flies slowly from casualty to casualty and stops over each one, locking its camera
+  // on them, and then goes on: out over the south side, back along the north, and home to the pad (its first and last
   // points), for a moment, and again. It is always at work: the medics follow what it finds.
   const pad = { x: 179, y: 113 };
   props.push({
