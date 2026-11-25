@@ -67,41 +67,109 @@ export function dtcScene(ox: number, oy: number): Scene {
     casualty("r1", 30, 96, -0.5)
   );
 
-  // ---- the medical tent, in the north-east, and its two medics, who go out to whoever the drone and the robot find (red first, then
-  // yellow, then green), kneel to treat them and come back. Each way is a route from the medics' post round the wreck (it keeps to the
-  // corridor south of the front section, or north of the wing), ending where the medic kneels, beside the casualty.
-  const call = (cas: [number, number], route: [number, number][]): NonNullable<Prop["medic"]>[number] => {
-    const pts = route.map(([x, y]) => at(x, y));
-    const at0 = at(cas[0], cas[1]);
-    const end = pts[pts.length - 1];
-    return { at: at0, route: pts, face: Math.atan2(at0.y - end.y, at0.x - end.x) };
+  // ---- the medical tent, in the north-east, and its two medics. They go out to whoever the drone and the robot find (red first, then
+  // yellow, then green), kneel to treat them and, if somebody else is waiting, go straight on to them; they only come back to the tent when
+  // nobody is. They walk the site's paths: a few corridors round the wreck (south of the front section, north of the wing, down the east
+  // side and round the south), each ending in a spot beside a casualty where the medic kneels.
+  const NODES: Record<string, [number, number]> = {
+    postA: [160, 62],
+    postB: [170, 66],
+    n0: [156, 56], // east of the nose
+    e1: [158, 74],
+    e2: [156, 88],
+    e3: [158, 98],
+    e4: [156, 108],
+    s1: [134, 90], // the corridor between the front section and the wing
+    s2: [112, 90],
+    s3: [90, 90],
+    v1: [80, 87],
+    w1: [104, 98],
+    n1: [160, 48], // north, past the wing's tip
+    n2: [158, 36],
+    n3: [146, 30],
+    n4: [124, 27],
+    n5: [100, 27],
+    n6: [84, 34],
+    b1: [150, 122], // round the south of the wing and the engine
+    b2: [130, 134],
+    b3: [98, 136],
+    b4: [70, 130],
+    b5: [48, 122],
+    b6: [38, 108],
+    x1: [92, 114],
+    x2: [92, 128],
+    // where a medic kneels
+    standR0: [98, 102],
+    standG0: [80, 91],
+    standY1: [73, 80],
+    standY0: [83, 46],
+    standG1: [150, 54],
+    standY2: [152, 112],
+    standR1: [35, 102],
   };
-  const south: [number, number][] = [
-    [158, 74],
-    [156, 88],
-    [134, 90],
-    [112, 90],
+  const EDGES: [string, string][] = [
+    ["postA", "postB"],
+    ["postA", "n0"],
+    ["postA", "n1"],
+    ["postA", "e1"],
+    ["postB", "e1"],
+    ["n0", "e1"],
+    ["n0", "n1"],
+    ["n0", "standG1"],
+    ["e1", "e2"],
+    ["e2", "e3"],
+    ["e3", "e4"],
+    ["e4", "standY2"],
+    ["e2", "s1"],
+    ["s1", "s2"],
+    ["s2", "s3"],
+    ["s2", "w1"],
+    ["w1", "standR0"],
+    ["s3", "standG0"],
+    ["s3", "v1"],
+    ["v1", "standY1"],
+    ["n1", "n2"],
+    ["n2", "n3"],
+    ["n3", "n4"],
+    ["n4", "n5"],
+    ["n5", "n6"],
+    ["n6", "standY0"],
+    ["e3", "b1"],
+    ["b1", "b2"],
+    ["b2", "b3"],
+    ["b3", "b4"],
+    ["b4", "b5"],
+    ["b5", "b6"],
+    ["b6", "standR1"],
+    ["standR0", "x1"],
+    ["x1", "x2"],
+    ["x2", "b3"],
   ];
+  const nodes = Object.fromEntries(Object.entries(NODES).map(([id, [x, y]]) => [id, at(x, y)]));
+  const stand = (node: string, cas: [number, number]) => {
+    const c = at(cas[0], cas[1]);
+    return { at: c, node, face: Math.atan2(c.y - nodes[node].y, c.x - nodes[node].x) };
+  };
   const calls = [
-    call([92, 96], [...south, [104, 98], [98, 102]]),
-    call([74, 96], [...south, [90, 90], [80, 91]]),
-    call([68, 72], [...south, [90, 90], [80, 87], [73, 80], [72, 79]]),
-    call([78, 52], [[160, 48], [158, 36], [146, 30], [124, 27], [100, 27], [84, 34], [83, 46]]),
-    call([144, 50], [[156, 56], [150, 54]]),
-    call([146, 116], [[158, 76], [158, 98], [156, 108], [152, 112]]),
-    call([30, 96], [[158, 76], [158, 100], [150, 122], [130, 131], [100, 132], [70, 130], [48, 122], [38, 108], [35, 102]]),
+    stand("standR0", [92, 96]),
+    stand("standG0", [74, 96]),
+    stand("standY1", [68, 72]),
+    stand("standY0", [78, 52]),
+    stand("standG1", [144, 50]),
+    stand("standY2", [146, 116]),
+    stand("standR1", [30, 96]),
   ];
   props.push(
     { sprite: "tent", ...at(178, 48), solid: rect(24, 24) },
-    { sprite: "dtc-medic", ...at(160, 62), angle: 2.4, medic: calls },
-    { sprite: "dtc-medic", ...at(170, 66), angle: 2.0, medic: calls }
+    { sprite: "dtc-medic", ...at(160, 62), angle: 2.4, medic: { home: "postA", nodes, edges: EDGES, calls } },
+    { sprite: "dtc-medic", ...at(170, 66), angle: 2.0, medic: { home: "postB", nodes, edges: EDGES, calls } }
   );
   for (const [x, y] of [
     [150, 22],
     [170, 84],
     [156, 128],
-    [120, 136],
-    [84, 136],
+    [120, 141],
+    [84, 141],
     [48, 132],
     [16, 120],
     [16, 40],
