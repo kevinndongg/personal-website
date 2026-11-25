@@ -8,6 +8,7 @@
 import type { Group } from "three";
 import { lapCurve } from "./drive";
 import type { AnimCtx } from "./models";
+import type { MedicPlan } from "./scenes";
 
 /** Where each sensor is (world px, z being the world's y) and whether it is scanning now. */
 export const dtcScan = {
@@ -277,110 +278,175 @@ export function attachPatrol(model: Group, route: { x: number; y: number }[]) {
   };
 }
 
-/** One place a medic can be sent: where the casualty lies, the way there from the medics' post (world px; the last point is where the medic kneels) and the heading to kneel facing. */
-export interface MedicCall {
-  at: { x: number; y: number };
-  route: { x: number; y: number }[];
-  face: number;
-}
+type Pt = { x: number; y: number };
 
 const mix = (a: number, b: number, k: number) => a + wrap(b - a) * k;
 
 /**
- * Makes `model` (a medic with `userData.pose`), parked at its post, answer the drone and the robot: when a casualty has been found and
- * nobody is on the way (the most urgent first, then the nearest), it sets off along the route to them, kneels and treats them, then goes
- * back to its post and turns to face the way it did. Casualties reached by none of the `calls` are left alone.
+ * Makes `model` (a medic with `userData.pose`), parked at its post (`plan.home`), answer the drone and the robot: when a casualty has
+ * been found and nobody is on the way (the most urgent first, then the nearest to where the medic is), it walks there along the site's
+ * paths (`plan.nodes` and `plan.edges`, the shortest way), kneels and treats them. Then, if another casualty is waiting, it goes straight
+ * on to them from where it kneels; only when nobody is waiting does it walk back to its post and turn to face the way it did. A medic on
+ * its way home turns back if somebody is found. Casualties that none of the `plan.calls` reach are left alone.
  */
-export function attachMedic(model: Group, calls: MedicCall[]) {
+export function attachMedic(model: Group, plan: MedicPlan) {
   const pose = model.userData.pose as (p: MedicPose) => void;
   const home = { x: model.position.x, z: model.position.z, ry: model.rotation.y };
-  const curves = calls.map((c) => lapCurve([{ x: home.x, y: home.z }, ...c.route]));
-  const lengths = curves.map((c) => c.getLength());
   const homeHeading = -home.ry;
+  const calls = plan.calls;
 
-  let job: { i: number; st: CasualtyState; start: number; marked: boolean } | null = null;
+  // the paths: shortest way between two nodes (Dijkstra; there are few of them)
+  const ids = Object.keys(plan.nodes);
+  const adjacent = new Map<string, { to: string; w: number }[]>(ids.map((id) => [id, []]));
+  for (const [a, b] of plan.edges) {
+    const w = Math.hypot(plan.nodes[a].x - plan.nodes[b].x, plan.nodes[a].y - plan.nodes[b].y);
+    adjacent.get(a)!.push({ to: b, w });
+    adjacent.get(b)!.push({ to: a, w });
+  }
+  const gap = (p: Pt, id: string) => Math.hypot(plan.nodes[id].x - p.x, plan.nodes[id].y - p.y);
+  const nearest = (p: Pt) => ids.reduce((best, id) => (gap(p, id) < gap(p, best) ? id : best), ids[0]);
+  const shortest = (from: string, to: string): string[] => {
+    const dist = new Map(ids.map((id) => [id, Infinity]));
+    const prev = new Map<string, string>();
+    const todo = new Set(ids);
+    dist.set(from, 0);
+    while (todo.size) {
+      let u: string | null = null;
+      for (const id of todo) if (u === null || dist.get(id)! < dist.get(u)!) u = id;
+      if (u === null || dist.get(u) === Infinity) break;
+      todo.delete(u);
+      if (u === to) break;
+      for (const { to: v, w } of adjacent.get(u)!) {
+        const d = dist.get(u)! + w;
+        if (d < dist.get(v)!) {
+          dist.set(v, d);
+          prev.set(v, u);
+        }
+      }
+    }
+    const way = [to];
+    while (way[0] !== from) {
+      const before = prev.get(way[0]);
+      if (!before) break;
+      way.unshift(before);
+    }
+    return way;
+  };
+
+  interface Leg {
+    curve: ReturnType<typeof lapCurve>;
+    L: number;
+    start: number;
+    delay: number; // seconds standing before it sets off
+    headStart: number; // the heading it begins with, which it turns from onto the way
+    toHome: boolean;
+  }
+  let mode: "idle" | "walk" | "treat" | "settle" = "idle";
+  let at: Pt = { x: home.x, y: home.z };
+  let heading = homeHeading;
+  let leg: Leg | null = null;
+  let job: { st: CasualtyState; face: number } | null = null;
+  let treatStart = 0;
+  let treatFrom = 0;
+  let marked = false;
+  let settleStart = 0;
+  let settleFrom = 0;
   let phase = 0;
   let last = -1;
 
+  const startLeg = (t: number, to: string, toHome: boolean, delay: number) => {
+    const way = shortest(nearest(at), to).map((id) => plan.nodes[id]);
+    const points = way.length && Math.hypot(way[0].x - at.x, way[0].y - at.y) > 1 ? [{ x: at.x, y: at.y }, ...way] : way.slice();
+    if (points.length < 2) points.push({ x: points[0].x + 0.01, y: points[0].y });
+    const curve = lapCurve(points);
+    leg = { curve, L: curve.getLength(), start: t, delay, headStart: heading, toHome };
+    mode = "walk";
+  };
+
+  /** The casualty to go to: found, nobody on the way, not yet treated, and one of ours; the most urgent, then the nearest. */
   const pick = () => {
-    let best: { i: number; st: CasualtyState; score: number } | null = null;
+    let best: { ci: number; st: CasualtyState; score: number } | null = null;
     for (const st of dtcScan.casualties.values()) {
       if (!st.found || st.claimed || st.helped || !(st.tag in RANK)) continue;
-      const i = calls.findIndex((c) => Math.hypot(c.at.x - st.x, c.at.y - st.z) < 4);
-      if (i < 0) continue;
-      const score = RANK[st.tag] * 1000 + Math.hypot(st.x - home.x, st.z - home.z);
-      if (!best || score < best.score) best = { i, st, score };
+      const ci = calls.findIndex((c) => Math.hypot(c.at.x - st.x, c.at.y - st.z) < 4);
+      if (ci < 0) continue;
+      const score = RANK[st.tag] * 1000 + Math.hypot(st.x - at.x, st.z - at.y);
+      if (!best || score < best.score) best = { ci, st, score };
     }
     return best;
+  };
+  const dispatch = (t: number, next: { ci: number; st: CasualtyState }, delay: number) => {
+    next.st.claimed = true;
+    job = { st: next.st, face: calls[next.ci].face };
+    startLeg(t, calls[next.ci].node, false, delay);
   };
 
   model.userData.animate = ({ t }: AnimCtx) => {
     if (t <= 0) return; // reduced motion: the medics wait at their post
     const dt = last < 0 ? 0 : Math.min(0.1, Math.max(0, t - last));
     last = t;
-    if (!job) {
-      const next = pick();
-      if (next) {
-        next.st.claimed = true;
-        job = { i: next.i, st: next.st, start: t, marked: false };
-      }
-      return;
-    }
-    const e = t - job.start;
-    const curve = curves[job.i];
-    const L = lengths[job.i];
-    const walk = L / RUN;
-    const a = REACT;
-    const b = a + walk;
-    const c = b + TREAT;
-    const d = c + walk;
-    const end = d + 0.6;
-    if (e >= end) {
-      job = null;
-      model.position.x = home.x;
-      model.position.z = home.z;
-      model.rotation.y = home.ry;
-      pose({ phase, swing: 0, kneel: 0, t });
-      return;
-    }
-    const tangent = (s: number) => {
-      const v = curve.getTangentAt(Math.min(1, Math.max(0, s / L)));
-      return Math.atan2(v.z, v.x);
-    };
-    const face = calls[job.i].face;
-    let s = 0;
-    let heading = homeHeading;
     let swing = 0;
     let kneel = 0;
-    if (e < a) {
-      heading = mix(homeHeading, tangent(0), smooth(e / a)); // turns to the way out
-    } else if (e < b) {
-      s = ((e - a) / walk) * L;
-      heading = tangent(s);
-      swing = 1;
-    } else if (e < c) {
-      s = L;
-      const k = e - b;
-      heading = mix(tangent(L), face, smooth(k / 0.4));
-      kneel = Math.min(smooth(k / KNEEL), smooth((TREAT - k) / KNEEL));
-      if (!job.marked && k > TREAT - KNEEL) {
-        job.marked = true;
-        job.st.helped = true;
-        job.st.helpedAt = t;
-      }
-    } else if (e < d) {
-      s = L - ((e - c) / walk) * L;
-      heading = mix(face, tangent(s) + Math.PI, smooth((e - c) / 0.4));
-      swing = 1;
-    } else {
-      const k = smooth((e - d) / 0.6);
-      heading = mix(tangent(0) + Math.PI, homeHeading, k);
-      swing = 0.4;
+
+    if (mode === "idle") {
+      const next = pick();
+      if (next) dispatch(t, next, REACT);
+      return;
     }
-    const p = curve.getPointAt(Math.min(1, Math.max(0, s / L)));
+    if (mode === "walk") {
+      if (leg!.toHome) {
+        const next = pick(); // somebody was found on the way home: turn back
+        if (next) dispatch(t, next, 0.2);
+      }
+      const l = leg!;
+      const e = t - l.start - l.delay;
+      const s = Math.min(l.L, Math.max(0, e) * RUN);
+      const u = Math.min(1, Math.max(0, s / l.L));
+      const v = l.curve.getTangentAt(u);
+      heading = mix(l.headStart, Math.atan2(v.z, v.x), smooth(e / 0.35));
+      const q = l.curve.getPointAt(u);
+      at = { x: q.x, y: q.z };
+      swing = e > 0 ? 1 : 0;
+      if (e > 0 && s >= l.L) {
+        if (l.toHome) {
+          mode = "settle";
+          settleStart = t;
+          settleFrom = heading;
+        } else {
+          mode = "treat";
+          treatStart = t;
+          treatFrom = heading;
+          marked = false;
+        }
+      }
+    } else if (mode === "treat") {
+      const k = t - treatStart;
+      heading = mix(treatFrom, job!.face, smooth(k / 0.4));
+      kneel = Math.min(smooth(k / KNEEL), smooth((TREAT - k) / KNEEL));
+      if (!marked && k > TREAT - KNEEL) {
+        marked = true;
+        job!.st.helped = true;
+        job!.st.helpedAt = t;
+      }
+      if (k >= TREAT) {
+        const next = pick();
+        if (next) dispatch(t, next, 0.3); // straight on to the next one
+        else startLeg(t, plan.home, true, 0.3);
+      }
+    } else {
+      const k = (t - settleStart) / 0.6;
+      heading = mix(settleFrom, homeHeading, smooth(k));
+      swing = 0.4 * (1 - smooth(k));
+      if (k >= 1) {
+        mode = "idle";
+        at = { x: home.x, y: home.z };
+        heading = homeHeading;
+        swing = 0;
+      }
+    }
     phase += dt * STRIDE * swing * 1.2;
-    model.position.x = p.x;
-    model.position.z = p.z;
+    model.position.x = at.x;
+    model.position.z = at.y;
     model.rotation.y = -heading;
     pose({ phase, swing, kneel, t });
   };

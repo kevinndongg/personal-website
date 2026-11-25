@@ -56,8 +56,8 @@ export interface Prop {
   flight?: { x: number; y: number; hold?: number }[];
   /** A walk the robot makes now and then (world px, from where it is parked to where it stops). See dtcflight.ts. */
   patrol?: { x: number; y: number }[];
-  /** A medic's post is where it stands; it is sent to casualties the drone and the robot find, along these routes. See dtcflight.ts. */
-  medic?: { at: { x: number; y: number }; route: { x: number; y: number }[]; face: number }[];
+  /** A medic: parked at its post, it is sent to casualties the drone and the robot find, and walks the site's paths to them. See dtcflight.ts. */
+  medic?: MedicPlan;
 }
 
 /**
@@ -125,6 +125,18 @@ export interface RobotJob {
    * basket it is (`basket`, an index into `ftcField.dropped`).
    */
   score: { at: { x: number; y: number }; target: { x: number; y: number }; rim: number; basket: number };
+}
+
+/**
+ * What a medic knows of the site: the paths it can walk (`nodes` are points in world px, `edges` the straight-ish links between them),
+ * the node it is parked at, and the casualties it can be sent to, each with the node it kneels at and the heading it kneels facing.
+ * See dtcflight.ts.
+ */
+export interface MedicPlan {
+  home: string;
+  nodes: Record<string, { x: number; y: number }>;
+  edges: [string, string][];
+  calls: { at: { x: number; y: number }; node: string; face: number }[];
 }
 
 export interface PropFocus {
