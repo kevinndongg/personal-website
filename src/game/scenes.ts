@@ -52,8 +52,8 @@ export interface Prop {
   ppCycle?: PowerPlayCycle;
   /** A robot that takes two pixels from the east wall to the backdrop, over and over (the Center Stage robot). See cscycle.ts. */
   csCycle?: CenterStageCycle;
-  /** A survey flight the drone makes now and then (world px; the first and last points are its pad). See dtcflight.ts. */
-  flight?: { x: number; y: number }[];
+  /** The survey the drone flies, over and over (world px; the first and last points are its pad; a point with a `hold` is a casualty it stops over for that many seconds). See dtcflight.ts. */
+  flight?: { x: number; y: number; hold?: number }[];
   /** A walk the robot makes now and then (world px, from where it is parked to where it stops). See dtcflight.ts. */
   patrol?: { x: number; y: number }[];
   /** A medic's post is where it stands; it is sent to casualties the drone and the robot find, along these routes. See dtcflight.ts. */

@@ -15,7 +15,7 @@ import {
   Vector2,
 } from "three";
 import { markMoving } from "./bake";
-import { DRONE, HELPED_FOR, SPOT, dtcScan } from "./dtcflight";
+import { DRONE, SPOT, dtcScan } from "./dtcflight";
 import type { CasualtyState, FlightPose, MedicPose, SpotPose } from "./dtcflight";
 import { box, cyl, mesh, toon } from "./models";
 import type { AnimCtx } from "./models";
@@ -384,10 +384,11 @@ export function casualtyModel(key: string): Group {
   apply(0, 0, 0, false);
 
   // What the others know of them (see `dtcScan.casualties`): found by the drone or the robot, then waiting for a medic, who kneels by them
-  // and so they are helped. A while after that the scene starts over: they go grey again, to be found again.
+  // and so they are helped. When the drone or the robot comes to look at them again, they are due another visit.
   let state: CasualtyState | null = null;
   let seen = 0;
   let boxAmt = 0;
+  let wasHit = false;
   let last = -1;
   g.userData.animate = ({ t }: AnimCtx) => {
     if (t <= 0) {
@@ -402,8 +403,11 @@ export function casualtyModel(key: string): Group {
     last = t;
     const near = (s: { on: boolean; x: number; z: number }, r: number) => s.on && Math.hypot(s.x - g.position.x, s.z - g.position.z) < r;
     const hit = near(dtcScan.drone, DRONE.hit) || near(dtcScan.spot, SPOT.hit);
-    if (hit) state.found = true;
-    if (state.helped && t - state.helpedAt > HELPED_FOR) state.found = state.claimed = state.helped = false;
+    if (hit && !wasHit) {
+      if (!state.found) state.found = true;
+      else if (state.helped) state.helped = state.claimed = false; // looked at again: a medic is due back
+    }
+    wasHit = hit;
     seen += ((state.found ? 1 : 0) - seen) * (1 - Math.exp(-dt * (state.found ? 7 : 2.2)));
     boxAmt += ((hit ? 1 : 0) - boxAmt) * (1 - Math.exp(-dt * 10));
     apply(seen < 0.01 ? 0 : seen, boxAmt, t, state.found && !state.helped && seen > 0.9);
@@ -523,24 +527,28 @@ export function droneModel(): Group {
   g.add(fill);
 
   let spin = 0;
-  const flight = ({ alt, power, dt, t }: FlightPose) => {
+  const flight = ({ alt, lift, focus, power, dt, t }: FlightPose) => {
     rig.position.y = alt + (alt > 1 ? 0.6 * Math.sin(t * 2.4) : 0);
     spin += dt * power * 70;
     pivots.forEach((p, i) => (p.rotation.y = spin * (i % 3 === 0 ? 1 : -1) + i));
     for (const m of discs) m.opacity = 0.06 + 0.2 * power;
-    const k = smooth(alt / DRONE.alt);
+    const k = smooth(lift);
     const on = k > 0.02;
     cone.visible = ring.visible = fill.visible = on;
     if (on) {
-      cone.scale.set(1, alt, 1);
+      // the camera's circle narrows and brightens as it looks closely at a casualty
+      const r = 1 - 0.58 * focus;
+      cone.scale.set(r, alt, r);
       cone.position.y = alt / 2;
-      coneMat.opacity = 0.1 * k;
-      ringMat.opacity = 0.45 * k;
-      (fill.material as MeshBasicMaterial).opacity = 0.09 * k;
+      ring.scale.set(r, r, 1);
+      fill.scale.set(r, r, 1);
+      coneMat.opacity = (0.07 + 0.1 * focus) * k;
+      ringMat.opacity = (0.3 + 0.55 * focus) * k;
+      (fill.material as MeshBasicMaterial).opacity = (0.06 + 0.12 * focus) * k;
     }
   };
   g.userData.setFlight = flight;
-  flight({ alt: 0, power: 0, dt: 0, t: 0 });
+  flight({ alt: 0, lift: 0, focus: 0, power: 0, dt: 0, t: 0 });
   markMoving(g, rig, cone, ring, fill, ...pivots);
   return g;
 }

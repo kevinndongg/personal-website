@@ -17,6 +17,9 @@ export const H = 144;
 const circle = (r: number): Footprint => ({ kind: "circle", r });
 const rect = (w: number, h: number): Footprint => ({ kind: "rect", w, h });
 
+/** Seconds the drone spends over each casualty. */
+const HOLD = 3.4;
+
 export function dtcScene(ox: number, oy: number): Scene {
   const at = (x: number, y: number) => ({ x: ox + x, y: oy + y });
   const props: Prop[] = [];
@@ -107,8 +110,9 @@ export function dtcScene(ox: number, oy: number): Scene {
   ])
     props.push({ sprite: "cone-o", ...at(x, y), solid: circle(3) });
 
-  // ---- the drone, parked on its pad in the south-east, and the survey it flies: out over the casualties one after another, back over
-  // the tail and the north side of the wreck, and home. (Its first and last points are the pad.)
+  // ---- the drone, parked on its pad in the south-east. It flies slowly from casualty to casualty and stops over each one, dropping down to
+  // look at them closely, and then goes on: out over the south side, back along the north, and home to the pad (its first and last
+  // points), for a moment, and again. It is always at work: the medics follow what it finds.
   const pad = { x: 179, y: 113 };
   props.push({
     sprite: "dtc-drone",
@@ -116,21 +120,19 @@ export function dtcScene(ox: number, oy: number): Scene {
     angle: 0,
     flight: [
       pad,
-      { x: 156, y: 116 },
-      { x: 130, y: 100 },
-      { x: 98, y: 98 },
-      { x: 76, y: 98 },
-      { x: 54, y: 100 },
-      { x: 32, y: 98 },
-      { x: 46, y: 76 },
-      { x: 64, y: 72 },
-      { x: 62, y: 56 },
-      { x: 78, y: 50 },
-      { x: 110, y: 46 },
-      { x: 142, y: 50 },
-      { x: 170, y: 72 },
+      { x: 146, y: 116, hold: HOLD }, // each casualty it stops over is on the path itself
+      { x: 120, y: 104 },
+      { x: 92, y: 96, hold: HOLD },
+      { x: 74, y: 96, hold: HOLD },
+      { x: 30, y: 96, hold: HOLD },
+      { x: 50, y: 86 },
+      { x: 68, y: 72, hold: HOLD },
+      { x: 78, y: 52, hold: HOLD },
+      { x: 112, y: 44 },
+      { x: 144, y: 50, hold: HOLD },
+      { x: 172, y: 76 },
       pad,
-    ].map((p) => at(p.x, p.y)),
+    ].map(({ x, y, hold }) => ({ ...at(x, y), hold })),
   });
 
   // ---- the robot, parked beside it facing west, and its walk: along the south side of the front section, to where the red casualty is

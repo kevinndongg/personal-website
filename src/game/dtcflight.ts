@@ -19,7 +19,8 @@ export const dtcScan = {
 
 /**
  * One casualty as the team sees them: `found` once the drone or the robot has had a sensor on them, `claimed` once a medic is on the way,
- * `helped` once a medic has treated them (at `helpedAt`, seconds). A while after that they are unfound again, for the next round.
+ * `helped` once a medic has treated them (at `helpedAt`, seconds). When the drone or the robot looks at them again, they are
+ * due another visit.
  */
 export interface CasualtyState {
   x: number;
@@ -31,19 +32,21 @@ export interface CasualtyState {
   helpedAt: number;
 }
 
-/** Seconds a treated casualty stays tagged before the scene starts over for them. */
-export const HELPED_FOR = 16;
+
 
 export const DRONE = {
-  alt: 34, // how high it flies (px)
-  reach: 22, // the radius of the circle its camera sees on the ground
-  hit: 21, // a casualty this near (horizontally) is scanned
+  alt: 30, // how high it cruises (px)
+  inspect: 15, // how low it drops to look at a casualty
+  reach: 22, // the radius of the circle its camera sees on the ground while cruising (it narrows to 0.42 of that over a casualty)
+  hit: 12, // a casualty this near (horizontally) is scanned, which only happens while it is down over them
 };
 export const SPOT = { hit: 16 };
 
 /** What the drone model is told each frame (`userData.setFlight`). */
 export interface FlightPose {
   alt: number; // height above its pad, px
+  lift: number; // 0 on the pad .. 1 up (climbing out, settling back)
+  focus: number; // 0 cruising .. 1 down over a casualty, camera narrowed onto them
   power: number; // 0 rotors still .. 1 flying
   dt: number;
   t: number;
@@ -57,10 +60,10 @@ export interface SpotPose {
   t: number;
 }
 
-const SPEED = 38; // px/s along the survey
+const SPEED = 28; // px/s between casualties
 const LIFT = 1.5; // seconds to climb out and to settle back
-const FIRST = [3, 5]; // seconds after the scene starts to the first flight
-const GAP = [6, 9]; // seconds from landing to the next take-off
+const FIRST = [2, 3]; // seconds after the scene starts to the first flight
+const GAP = [3, 5]; // seconds from landing to the next take-off (a battery swap)
 
 const WALK = 15; // px/s
 const STRIDE = 8.5; // rad/s of the stride at full swing
@@ -91,15 +94,41 @@ const smooth = (k: number) => {
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 /**
- * Makes `model` (a drone with `userData.setFlight`) take off from where it stands, fly the survey along `path` (world px; the
- * first and last points are its pad) and land again, every so often. It does not turn: a quadcopter flies sideways.
+ * Makes `model` (a drone with `userData.setFlight`) take off from where it stands, fly the survey along `path` (world px; the first and
+ * last points are its pad) and land again, over and over. A point with a `hold` is a casualty: the drone slows into it, drops down,
+ * narrows its camera onto them and circles a little above them for that many seconds, then climbs and goes on to the next. It does not
+ * turn: a quadcopter flies sideways.
  */
-export function attachFlight(model: Group, path: { x: number; y: number }[]) {
+export function attachFlight(model: Group, path: { x: number; y: number; hold?: number }[]) {
   const curve = lapCurve(path);
-  const cruise = curve.getLength() / SPEED;
-  const total = LIFT + cruise + LIFT;
-  const home = { x: model.position.x, z: model.position.z };
+  const lengths = curve.getLengths(); // cumulative arc length at t = k / divisions
+  const divisions = lengths.length - 1;
+  const total = lengths[divisions];
   const setFlight = model.userData.setFlight as (p: FlightPose) => void;
+  const home = { x: model.position.x, z: model.position.z };
+
+  // the schedule: a leg to each stop, a hold at it, and a last leg home, between a climb and a landing
+  type Leg = { kind: "leg"; t0: number; t1: number; s0: number; s1: number; fromStop: boolean; toStop: boolean };
+  type Hold = { kind: "hold"; t0: number; t1: number; s: number };
+  const plan: (Leg | Hold)[] = [];
+  let clock = LIFT;
+  let s = 0;
+  let fromStop = false;
+  const leg = (to: number, toStop: boolean) => {
+    const dur = Math.max(0.8, ((to - s) / SPEED) * 1.3); // (it eases out of and into each stop, so the average is below the top speed)
+    plan.push({ kind: "leg", t0: clock, t1: clock + dur, s0: s, s1: to, fromStop, toStop });
+    clock += dur;
+    s = to;
+  };
+  path.forEach((p, i) => {
+    if (!p.hold) return;
+    leg(lengths[Math.round((i / (path.length - 1)) * divisions)], true);
+    plan.push({ kind: "hold", t0: clock, t1: clock + p.hold, s });
+    clock += p.hold;
+    fromStop = true;
+  });
+  leg(total, false);
+  const flightTime = clock + LIFT;
 
   let start = -1;
   let next = -1;
@@ -107,7 +136,7 @@ export function attachFlight(model: Group, path: { x: number; y: number }[]) {
 
   model.userData.animate = ({ t }: AnimCtx) => {
     if (t <= 0) {
-      setFlight({ alt: 0, power: 0, dt: 0, t: 0 }); // reduced motion: parked
+      setFlight({ alt: 0, power: 0, lift: 0, focus: 0, dt: 0, t: 0 }); // reduced motion: parked
       return;
     }
     const dt = last < 0 ? 0 : Math.min(0.1, Math.max(0, t - last));
@@ -115,31 +144,45 @@ export function attachFlight(model: Group, path: { x: number; y: number }[]) {
     if (next < 0) next = t + between(FIRST);
     if (start < 0) {
       if (t < next) {
-        setFlight({ alt: 0, power: 0, dt, t });
+        setFlight({ alt: 0, power: 0, lift: 0, focus: 0, dt, t });
         dtcScan.drone.on = false;
         return;
       }
       start = t;
     }
     const e = t - start;
-    if (e >= total) {
+    if (e >= flightTime) {
       start = -1;
       next = t + between(GAP);
       model.position.x = home.x;
       model.position.z = home.z;
-      setFlight({ alt: 0, power: 0, dt, t });
+      setFlight({ alt: 0, power: 0, lift: 0, focus: 0, dt, t });
       dtcScan.drone.on = false;
       return;
     }
-    const up = smooth(e / LIFT);
-    const down = smooth((total - e) / LIFT);
-    const lift = Math.min(up, down);
-    const u = smooth((e - LIFT) / cruise);
-    const p = curve.getPointAt(Math.min(1, Math.max(0, u)));
-    model.position.x = p.x;
-    model.position.z = p.z;
-    setFlight({ alt: DRONE.alt * lift, power: Math.min(1, e / 0.6, (total - e) / 0.3 + 0.2), dt, t });
-    dtcScan.drone.on = lift > 0.7;
+    const lift = Math.min(smooth(e / LIFT), smooth((flightTime - e) / LIFT));
+    // where it is along the survey, and how closely it is looking: 0 cruising .. 1 down over a casualty
+    let at = 0;
+    let focus = 0;
+    for (const part of plan) {
+      if (e < part.t0) break;
+      if (part.kind === "hold") {
+        at = part.s;
+        focus = 1;
+        if (e < part.t1) break;
+      } else {
+        const u = Math.min(1, (e - part.t0) / (part.t1 - part.t0));
+        at = part.s0 + (part.s1 - part.s0) * smooth(u);
+        focus = Math.max(part.fromStop ? 1 - smooth(u / 0.3) : 0, part.toStop ? smooth((u - 0.7) / 0.3) : 0);
+        if (e < part.t1) break;
+      }
+    }
+    const p = curve.getPointAt(Math.min(1, Math.max(0, at / total)));
+    const swirl = 2.6 * focus; // a slow circle over the casualty, to look at them from all sides
+    model.position.x = p.x + Math.cos(t * 1.4) * swirl;
+    model.position.z = p.z + Math.sin(t * 1.4) * swirl;
+    setFlight({ alt: lift * (DRONE.alt + (DRONE.inspect - DRONE.alt) * focus), power: Math.min(1, e / 0.6, (flightTime - e) / 0.3 + 0.2), lift, focus, dt, t });
+    dtcScan.drone.on = focus > 0.8;
     dtcScan.drone.x = p.x;
     dtcScan.drone.z = p.z;
   };
