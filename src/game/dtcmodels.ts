@@ -5,11 +5,14 @@ import {
   ConeGeometry,
   CylinderGeometry,
   DoubleSide,
+  ExtrudeGeometry,
   Group,
   Mesh,
   MeshBasicMaterial,
   RingGeometry,
+  Shape,
   SphereGeometry,
+  Vector2,
 } from "three";
 import { markMoving } from "./bake";
 import { DRONE, SPOT, dtcScan } from "./dtcflight";
@@ -29,7 +32,7 @@ const BLUE_DK = "#243a6e";
 const YELLOW = "#f2c230";
 const LIME = "#3dff8a";
 
-const R = 13; // the airliner's radius
+const R = 10; // the airliner's radius
 const tagGrey = new Color("#9aa0ab");
 const TAGS: Record<string, string> = { g: "#2fc25b", y: "#f2c230", r: "#e03131", k: "#16161d" };
 
@@ -68,35 +71,73 @@ function brokenEnd(parent: Group, x: number, dir: 1 | -1, r: number, y: number) 
   });
 }
 
-/** A row of cabin windows along a fuselage, on both sides. */
-function windows(parent: Group, from: number, to: number, step: number, y: number, r: number) {
-  const dz = Math.sqrt(Math.max(0, r * r - 2.5 * 2.5)) + 0.1;
+/** A row of cabin windows along a fuselage, on both sides, `up` above its axis. */
+function windows(parent: Group, from: number, to: number, step: number, y: number, r: number, up = 4) {
+  const dz = Math.sqrt(Math.max(0, r * r - up * up)) + 0.1;
   for (let x = from; x <= to; x += step)
-    for (const side of [-1, 1]) parent.add(box(1.8, 2, 0.7, DARK, x, y + 2.5 - 1, side * dz));
+    for (const side of [-1, 1]) parent.add(box(1.8, 2, 0.7, DARK, x, y + up - 1, side * dz));
 }
 
-/** The front of the airliner: nose, cockpit, a stub of the north wing, the torn end to the west. Length 56 (the nose reaches 14 further). */
+/**
+ * A flat plate with the outline `points` (x forward, z across: its shape seen from above), `thick` thick, its bottom at y = 0.
+ * Wings and tailplanes are these, so that they are swept and tapered the way they look from the camera.
+ */
+function planform(points: [number, number][], thick: number, color: string): Mesh {
+  const geo = new ExtrudeGeometry(new Shape(points.map(([x, z]) => new Vector2(x, z))), { depth: thick, bevelEnabled: false });
+  geo.rotateX(Math.PI / 2); // the outline's y becomes z, and the plate hangs down from y = 0
+  geo.translate(0, thick, 0);
+  return mesh(geo, toon(color));
+}
+
+/** One half of a swept wing, root at z = 0 (a pixel inside the body) out to `span` on `side` (+1 south, -1 north); `lead` is the root's front edge. */
+function wingOutline(side: 1 | -1, span: number, lead: number, rootChord: number, sweep: number, tipChord: number): [number, number][] {
+  return [
+    [lead, -side],
+    [lead - sweep, side * span],
+    [lead - sweep - tipChord, side * span],
+    [lead - rootChord, -side],
+  ];
+}
+
+/** The front of the airliner: rounded nose and cockpit glass, the north wing (an engine torn off it), the stub of the south one, the torn end to the west. Length 62 (the nose reaches 13 further). */
 export function fuselageModel(): Group {
-  const L = 56;
+  const L = 62;
   const y0 = R - 0.5;
   const g = new Group();
   g.add(tube(R, R, L, WHITE, 0, y0, 0, 22));
-  g.add(tube(3.5, R, 14, WHITE, L / 2 + 7, y0, 0, 22, true)); // the nose, narrowing to the front
-  g.add(box(4, 1.4, 5.6, DARK, L / 2 + 2.5, y0 + 10.6 - 0.7, 0)); // cockpit windows on top of the nose
-  for (const side of [-1, 1]) g.add(box(L - 2, 1.8, 0.8, BLUE, 0, y0 - 3 - 0.9, side * (R - 0.1))); // the cheat line
-  windows(g, -22, 18, 6, y0, R);
+  // the nose: a blunt dome, not a cone
+  const nose = mesh(new SphereGeometry(R, 22, 14), toon(WHITE), L / 2, y0, 0);
+  nose.scale.set(1.3, 1, 1);
+  g.add(nose);
+  // the cockpit glass: a dark oval lying on the top of the nose, tipped to follow it
+  const glass = mesh(new SphereGeometry(1, 14, 10), toon("#23314d"), L / 2 + 5.2, y0 + R - 1, 0);
+  glass.scale.set(2.4, 0.7, 3.8);
+  glass.rotation.z = -0.3;
+  g.add(glass);
+  g.add(box(L - 14, 0.6, 4, BLUE, -4, y0 + R - 0.3, 0)); // the airline's stripe along the spine, which shows from above
+  for (const side of [-1, 1]) g.add(box(L - 2, 1.8, 0.8, BLUE, 0, y0 - 2.5 - 0.9, side * (R - 0.2))); // the cheat line
+  windows(g, -24, 22, 6, y0, R);
   brokenEnd(g, -L / 2, -1, R, y0);
 
-  // a stub of the north wing, swept back, with a jagged end
-  const stub = new Group();
-  stub.position.set(6, 3, -(R - 1));
-  stub.rotation.y = 0.35;
-  stub.add(box(14, 1.6, 17, WHITE, 0, 0, -8.5));
-  stub.add(box(5, 1.4, 3.4, GREY, -4.5, 0.1, -17.8));
-  stub.add(box(4, 1.2, 2.4, WHITE, 2.5, 0.2, -19));
-  g.add(stub);
-  // the belly, a little darker than the sides
-  g.add(box(L, 1.4, 7, "#c4c9d3", 0, -0.5, 0));
+  // the wings, low on the body, swept back. The north one is whole but for its engine (a stub of the pylon is left) and droops to the
+  // ground; the south one broke off a few pixels out (the loose wing lies beyond it).
+  for (const [side, span] of [
+    [-1, 27],
+    [1, 5],
+  ] as const) {
+    const wing = new Group();
+    wing.position.set(8, 2.6, side * (R - 2.5));
+    if (side < 0) wing.rotation.x = -0.1;
+    wing.add(planform(wingOutline(side, span, 6, 17, 15, 5), 1.6, WHITE));
+    if (side < 0) {
+      wing.add(planform(wingOutline(side, span - 1, -7, 4, 4.4, 2.6), 0.5, "#cfd4de").translateY(1.5)); // the flaps' lighter band along the back
+      wing.add(box(3.4, 2.4, 2.6, GREY, -1.2, -2.4, side * 9)); // where the engine was
+    } else {
+      wing.add(box(2.4, 1.2, 2, WHITE, -2, 0.2, side * 5.6)); // torn edge
+    }
+    g.add(wing);
+  }
+  g.add(box(L, 1.4, 6, "#c4c9d3", 0, -0.5, 0)); // the belly, a little darker than the sides
   return g;
 }
 
@@ -108,41 +149,66 @@ export function tailModel(): Group {
   shell.position.y = R - 0.5;
   shell.rotation.x = 0.55; // rolled over, so that the fin leans
   g.add(shell);
-  shell.add(tube(4.5, R, L, WHITE, 0, 0, 0, 22));
-  shell.add(tube(5, 5, 2.4, "#c4c9d3", -L / 2 - 0.4, 0, 0, 12)); // the cone at the tail's tip
+  const TIP = 3.5; // the radius at the tail's tip
+  shell.add(tube(TIP, R, L, WHITE, 0, 0, 0, 22));
+  shell.add(tube(TIP + 0.3, TIP + 0.3, 2.2, "#c4c9d3", -L / 2 - 0.3, 0, 0, 12)); // the cone at the tail's tip
   // the fin: swept back from the top of the tail
-  const fin = box(11, 17, 1.4, "#d8322c", 0, 0, 0);
-  fin.position.set(-L / 2 + 8, 4.5 + 8.2, 0);
-  fin.rotation.z = 0.4;
+  const fin = new Mesh(
+    new ExtrudeGeometry(
+      new Shape(
+        [
+          [5, 0],
+          [-3, 17],
+          [-7.5, 17],
+          [-8, 0],
+        ].map(([x, y]) => new Vector2(x, y))
+      ),
+      { depth: 1.4, bevelEnabled: false }
+    ),
+    toon("#d8322c")
+  );
+  fin.geometry.translate(0, 0, -0.7);
+  fin.position.set(-L / 2 + 11, 3.2, 0);
+  fin.castShadow = true;
   shell.add(fin);
-  shell.add(box(7, 0.9, 25, WHITE, -L / 2 + 6, 0.3, 0)); // the tailplane
-  for (const side of [-1, 1]) shell.add(box(5, 0.9, 5, GREY, -L / 2 + 5, 0.3, side * 12)); // its tips
+  // the tailplane: two swept halves
+  for (const side of [-1, 1] as const) {
+    const half = planform(wingOutline(side, 13, 0, 9, 8, 4), 0.9, WHITE);
+    half.position.set(-L / 2 + 9, -0.3, 0);
+    shell.add(half);
+  }
   // windows and the cheat line follow the skin, which narrows toward the tip
-  const skin = (x: number) => 4.5 + ((R - 4.5) * (x + L / 2)) / L;
+  const skin = (x: number) => TIP + ((R - TIP) * (x + L / 2)) / L;
   for (let x = -2; x <= 16; x += 6)
     for (const side of [-1, 1]) {
-      shell.add(box(1.8, 2, 0.7, DARK, x, 1.5, side * (Math.sqrt(skin(x) ** 2 - 2.5 ** 2) + 0.1)));
+      shell.add(box(1.8, 2, 0.7, DARK, x, 2, side * (Math.sqrt(skin(x) ** 2 - 3 ** 2) + 0.1)));
       shell.add(box(6.4, 1.6, 0.8, BLUE, x, -3.8, side * (Math.sqrt(skin(x) ** 2 - 3 ** 2) - 0.1)));
     }
   brokenEnd(shell, L / 2, 1, R, 0);
   return g;
 }
 
-/** The wing that came off: lying flat, a little up on the engine under it. Chord along x, span along z. */
+/** The wing that came off the south side: swept, lying with its torn root on the ground and its engine propping it up. Span along z (root at -z), 28 long. */
 export function wingModel(): Group {
   const g = new Group();
   const wing = new Group();
-  wing.rotation.x = 0.28; // the outer end rests on the ground, the inner one on the engine
-  wing.position.y = 6.3;
-  wing.add(box(14, 1.6, 18, WHITE, 0, 0, -9));
-  wing.add(box(10, 1.4, 18, WHITE, 2, 0, 9));
-  wing.add(box(3, 1.1, 16, "#cfd4de", -8.2, -0.1, -9)); // flaps along the back
-  wing.add(box(2.4, 1.1, 14, "#cfd4de", -6.4, -0.1, 9));
-  wing.add(box(4, 3.2, 0.9, WHITE, 3, 1.6, 17.6)); // a winglet, bent
+  wing.position.y = 5.5;
+  wing.rotation.x = -0.3; // the root rests on the ground, the engine holds the rest up
+  const half = new Group();
+  half.position.z = -14;
+  half.add(planform(wingOutline(1, 28, 9, 18, 18, 6), 1.6, WHITE));
+  half.add(planform(wingOutline(1, 27, -5, 4, 7.4, 2.6), 0.5, "#cfd4de").translateY(1.5)); // the flaps' lighter band along the back
+  for (const [x, z] of [
+    [8, 0.5],
+    [4, 0.5],
+    [-2, 0.5],
+  ])
+    half.add(box(3, 1.2, 1.6, "#cfd4de", x, 0.2, z)); // jagged at the torn root
+  wing.add(half);
   g.add(wing);
-  // the engine under the inner part of it
-  g.add(tube(3.3, 3.5, 10, GREY, 4, 4.2, -8, 14));
-  g.add(tube(3.0, 3.0, 0.8, DARK, 9.2, 4.2, -8, 14));
+  // the engine under it, out in front of the leading edge
+  g.add(tube(2.9, 3.1, 9, GREY, -3, 3.3, 6, 14));
+  g.add(tube(2.7, 2.7, 0.8, DARK, 1.6, 3.3, 6, 14));
   return g;
 }
 
