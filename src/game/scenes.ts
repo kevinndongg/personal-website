@@ -3,6 +3,7 @@ import { constructionScene } from "./construction";
 import { SLAB, nameZone } from "./name";
 import { slabScene, nameScene } from "./namescenes";
 import { ftcScene, H as FTC_H, W as FTC_W } from "./ftc";
+import { dtcScene, H as DTC_H, W as DTC_W } from "./dtc";
 import { photoDeskScene } from "./photodesk";
 
 export interface Rect {
@@ -51,6 +52,10 @@ export interface Prop {
   ppCycle?: PowerPlayCycle;
   /** A robot that takes two pixels from the east wall to the backdrop, over and over (the Center Stage robot). See cscycle.ts. */
   csCycle?: CenterStageCycle;
+  /** A survey flight the drone makes now and then (world px; the first and last points are its pad). See dtcflight.ts. */
+  flight?: { x: number; y: number }[];
+  /** A walk the robot makes now and then (world px, from where it is parked to where it stops). See dtcflight.ts. */
+  patrol?: { x: number; y: number }[];
 }
 
 /**
@@ -157,7 +162,7 @@ export interface Scene {
   decals: Decal[];
 }
 
-export type ZoneVariant = "garage" | "building" | "office" | "photodesk" | "name" | "slab" | "construction" | "ftc";
+export type ZoneVariant = "garage" | "building" | "office" | "photodesk" | "name" | "slab" | "construction" | "ftc" | "dtc";
 
 export const GARAGE_W = 150; // roofed workshop + a 66 px open bay big enough for the formula car
 export const GARAGE_H = 56;
@@ -174,6 +179,7 @@ export function sceneSize(variant: ZoneVariant): { w: number; h: number } {
   if (variant === "slab") return { w: SLAB.w, h: SLAB.areaH };
   if (variant === "construction") return { w: 160, h: 144 }; // the same footprint as the generic building
   if (variant === "ftc") return { w: FTC_W, h: FTC_H };
+  if (variant === "dtc") return { w: DTC_W, h: DTC_H };
   return { w: BUILDING[variant].w + 32, h: 144 };
 }
 
@@ -379,5 +385,6 @@ export function buildScene(id: string, variant: ZoneVariant, ox: number, oy: num
   if (variant === "slab") return slabScene(ox, oy, id);
   if (variant === "construction") return constructionScene(ox, oy, id);
   if (variant === "ftc") return ftcScene(ox, oy);
+  if (variant === "dtc") return dtcScene(ox, oy);
   return defaultScene(ox, oy, id, variant);
 }

@@ -1,0 +1,481 @@
+import {
+  AdditiveBlending,
+  BoxGeometry,
+  Color,
+  ConeGeometry,
+  CylinderGeometry,
+  DoubleSide,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  RingGeometry,
+  SphereGeometry,
+} from "three";
+import { markMoving } from "./bake";
+import { DRONE, SPOT, dtcScan } from "./dtcflight";
+import type { FlightPose, SpotPose } from "./dtcflight";
+import { box, cyl, mesh, toon } from "./models";
+import type { AnimCtx } from "./models";
+
+// Models for the DARPA Triage Challenge area (see dtc.ts): the wrecked airliner and what fell from it, the casualties,
+// the drone and the Spot robot that look for them. Same conventions as models.ts: 1 unit = 1 world px, origin at the
+// footprint centre on the ground, +x = front. Anything that moves animates itself from `userData`, or is moved by dtcflight.ts.
+
+const WHITE = "#e9ecf2";
+const GREY = "#aeb4c0";
+const DARK = "#2a2d36";
+const BLUE = "#2f4a8a";
+const BLUE_DK = "#243a6e";
+const YELLOW = "#f2c230";
+const LIME = "#3dff8a";
+
+const R = 13; // the airliner's radius
+const tagGrey = new Color("#9aa0ab");
+const TAGS: Record<string, string> = { g: "#2fc25b", y: "#f2c230", r: "#e03131", k: "#16161d" };
+
+const smooth = (k: number) => {
+  const c = Math.min(1, Math.max(0, k));
+  return c * c * (3 - 2 * c);
+};
+
+/** A cylinder lying along x. With `rotation.z = +90 deg` the top of the cylinder ends up at -x; `front` puts the narrow end at +x instead. */
+function tube(rTop: number, rBottom: number, len: number, color: string, x = 0, y = 0, z = 0, seg = 20, front = false): Mesh {
+  const m = mesh(new CylinderGeometry(rTop, rBottom, len, seg), toon(color), x, y, z);
+  m.rotation.z = front ? -Math.PI / 2 : Math.PI / 2;
+  return m;
+}
+
+/** The torn end of a fuselage section at `x` (facing `dir`, -1 west / +1 east): a dark opening, seats showing, and ragged skin round the rim. */
+function brokenEnd(parent: Group, x: number, dir: 1 | -1, r: number, y: number) {
+  parent.add(tube(r - 0.7, r - 0.7, 0.8, DARK, x + dir * 0.2, y, 0));
+  // two rows of seats seen in the opening
+  for (const [dy, dz] of [
+    [-3, -4],
+    [-3, 4],
+    [2, -5],
+    [2, 5],
+  ])
+    parent.add(box(1.8, 3.2, 3.4, BLUE, x + dir * 0.9, y + dy - 1.6, dz));
+  // ragged skin: panels standing out round the rim, turned this way and that
+  const teeth = [0.3, 0.95, 1.6, 2.15, 2.8, 3.55, 4.2, 5.0, 5.6];
+  teeth.forEach((a, i) => {
+    const len = 2 + (i % 3) * 1.2;
+    const m = box(len, 2.8, 0.7, i % 2 ? WHITE : GREY, x + dir * (len / 2 - 0.2), 0, 0);
+    m.position.set(x + dir * (len / 2 - 0.2), y + Math.sin(a) * (r - 0.5), Math.cos(a) * (r - 0.5));
+    m.rotation.x = a + Math.PI / 2;
+    m.rotation.y = dir * (0.15 + 0.07 * i);
+    parent.add(m);
+  });
+}
+
+/** A row of cabin windows along a fuselage, on both sides. */
+function windows(parent: Group, from: number, to: number, step: number, y: number, r: number) {
+  const dz = Math.sqrt(Math.max(0, r * r - 2.5 * 2.5)) + 0.1;
+  for (let x = from; x <= to; x += step)
+    for (const side of [-1, 1]) parent.add(box(1.8, 2, 0.7, DARK, x, y + 2.5 - 1, side * dz));
+}
+
+/** The front of the airliner: nose, cockpit, a stub of the north wing, the torn end to the west. Length 56 (the nose reaches 14 further). */
+export function fuselageModel(): Group {
+  const L = 56;
+  const y0 = R - 0.5;
+  const g = new Group();
+  g.add(tube(R, R, L, WHITE, 0, y0, 0, 22));
+  g.add(tube(3.5, R, 14, WHITE, L / 2 + 7, y0, 0, 22, true)); // the nose, narrowing to the front
+  g.add(box(4, 1.4, 5.6, DARK, L / 2 + 2.5, y0 + 10.6 - 0.7, 0)); // cockpit windows on top of the nose
+  for (const side of [-1, 1]) g.add(box(L - 2, 1.8, 0.8, BLUE, 0, y0 - 3 - 0.9, side * (R - 0.1))); // the cheat line
+  windows(g, -22, 18, 6, y0, R);
+  brokenEnd(g, -L / 2, -1, R, y0);
+
+  // a stub of the north wing, swept back, with a jagged end
+  const stub = new Group();
+  stub.position.set(6, 3, -(R - 1));
+  stub.rotation.y = 0.35;
+  stub.add(box(14, 1.6, 17, WHITE, 0, 0, -8.5));
+  stub.add(box(5, 1.4, 3.4, GREY, -4.5, 0.1, -17.8));
+  stub.add(box(4, 1.2, 2.4, WHITE, 2.5, 0.2, -19));
+  g.add(stub);
+  // the belly, a little darker than the sides
+  g.add(box(L, 1.4, 7, "#c4c9d3", 0, -0.5, 0));
+  return g;
+}
+
+/** The tail: the rear of the fuselage lying on its side, the fin leaning over, the broken end to the east. Length 40. */
+export function tailModel(): Group {
+  const L = 40;
+  const g = new Group();
+  const shell = new Group();
+  shell.position.y = R - 0.5;
+  shell.rotation.x = 0.55; // rolled over, so that the fin leans
+  g.add(shell);
+  shell.add(tube(4.5, R, L, WHITE, 0, 0, 0, 22));
+  shell.add(tube(5, 5, 2.4, "#c4c9d3", -L / 2 - 0.4, 0, 0, 12)); // the cone at the tail's tip
+  // the fin: swept back from the top of the tail
+  const fin = box(11, 17, 1.4, "#d8322c", 0, 0, 0);
+  fin.position.set(-L / 2 + 8, 4.5 + 8.2, 0);
+  fin.rotation.z = 0.4;
+  shell.add(fin);
+  shell.add(box(7, 0.9, 25, WHITE, -L / 2 + 6, 0.3, 0)); // the tailplane
+  for (const side of [-1, 1]) shell.add(box(5, 0.9, 5, GREY, -L / 2 + 5, 0.3, side * 12)); // its tips
+  // windows and the cheat line follow the skin, which narrows toward the tip
+  const skin = (x: number) => 4.5 + ((R - 4.5) * (x + L / 2)) / L;
+  for (let x = -2; x <= 16; x += 6)
+    for (const side of [-1, 1]) {
+      shell.add(box(1.8, 2, 0.7, DARK, x, 1.5, side * (Math.sqrt(skin(x) ** 2 - 2.5 ** 2) + 0.1)));
+      shell.add(box(6.4, 1.6, 0.8, BLUE, x, -3.8, side * (Math.sqrt(skin(x) ** 2 - 3 ** 2) - 0.1)));
+    }
+  brokenEnd(shell, L / 2, 1, R, 0);
+  return g;
+}
+
+/** The wing that came off: lying flat, a little up on the engine under it. Chord along x, span along z. */
+export function wingModel(): Group {
+  const g = new Group();
+  const wing = new Group();
+  wing.rotation.x = 0.28; // the outer end rests on the ground, the inner one on the engine
+  wing.position.y = 6.3;
+  wing.add(box(14, 1.6, 18, WHITE, 0, 0, -9));
+  wing.add(box(10, 1.4, 18, WHITE, 2, 0, 9));
+  wing.add(box(3, 1.1, 16, "#cfd4de", -8.2, -0.1, -9)); // flaps along the back
+  wing.add(box(2.4, 1.1, 14, "#cfd4de", -6.4, -0.1, 9));
+  wing.add(box(4, 3.2, 0.9, WHITE, 3, 1.6, 17.6)); // a winglet, bent
+  g.add(wing);
+  // the engine under the inner part of it
+  g.add(tube(3.3, 3.5, 10, GREY, 4, 4.2, -8, 14));
+  g.add(tube(3.0, 3.0, 0.8, DARK, 9.2, 4.2, -8, 14));
+  return g;
+}
+
+/** An engine torn off and lying on its side, with the fan at its front. */
+export function engineModel(): Group {
+  const g = new Group();
+  const body = new Group();
+  body.position.y = 3.8;
+  body.rotation.z = 0.12;
+  body.add(tube(3.8, 4.1, 11, WHITE, 0, 0, 0, 14));
+  body.add(tube(3.2, 3.2, 1, DARK, 5.6, 0, 0, 14)); // the intake
+  body.add(box(0.4, 5.6, 0.7, GREY, 6.2, 0, 0)); // fan blades
+  body.add(box(0.4, 0.7, 5.6, GREY, 6.2, 0, 0));
+  body.add(tube(3.4, 3.6, 3, "#4a4d57", -5.8, 0, 0, 14)); // the burnt rear
+  g.add(body);
+  return g;
+}
+
+/** Flames and a column of smoke where the engine burns (the smoke rises, spreads and thins, over and over). */
+export function fireModel(): Group {
+  const g = new Group();
+  const flames = [
+    { x: -1.2, z: 0.6, r: 2.2, h: 7, color: "#ff7a1a", ph: 0 },
+    { x: 1.4, z: -0.8, r: 1.8, h: 9, color: "#ffb02e", ph: 1.7 },
+    { x: 0.2, z: 1.4, r: 1.4, h: 5.5, color: "#ffd84a", ph: 3.1 },
+  ].map((f) => {
+    const m = new Mesh(new ConeGeometry(f.r, f.h, 7), new MeshBasicMaterial({ color: f.color }));
+    m.position.set(f.x, f.h / 2 + 6.5, f.z);
+    g.add(m);
+    return { m, ...f };
+  });
+  const puffs = Array.from({ length: 6 }, (_, i) => {
+    const m = new Mesh(new SphereGeometry(2.6, 8, 6), new MeshBasicMaterial({ color: "#5d6068", transparent: true, opacity: 0, depthWrite: false }));
+    g.add(m);
+    return { m, ph: i / 6 };
+  });
+  const place = (t: number) => {
+    for (const f of flames) {
+      const k = 1 + 0.22 * Math.sin(t * 9 + f.ph) + 0.1 * Math.sin(t * 17 + f.ph * 2);
+      f.m.scale.set(1 - 0.08 * (k - 1), k, 1 - 0.08 * (k - 1));
+      f.m.position.y = (f.h * k) / 2 + 6.5;
+    }
+    for (const p of puffs) {
+      const u = (t * 0.16 + p.ph) % 1;
+      p.m.position.set(u * 7 + Math.sin(u * 6 + p.ph * 9) * 1.5, 13 + u * 36, Math.cos(u * 5 + p.ph * 7) * 1.5);
+      p.m.scale.setScalar(0.7 + u * 2.3);
+      (p.m.material as MeshBasicMaterial).opacity = Math.min(1, u * 6) * (1 - u) * 0.62;
+    }
+  };
+  place(0);
+  g.userData.animate = ({ t }: AnimCtx) => {
+    if (t > 0) place(t);
+  };
+  markMoving(g, ...flames.map((f) => f.m), ...puffs.map((p) => p.m));
+  return g;
+}
+
+/** Loose wreckage: a torn panel, a row of seats, a suitcase, a wheel. */
+export function debrisModel(key: string): Group {
+  const g = new Group();
+  const [kind, variant = "0"] = key.split("-");
+  if (kind === "panel") {
+    const colors = [WHITE, GREY, "#d8dbe2"];
+    const c = colors[Number(variant) % colors.length];
+    g.add(box(7, 0.6, 4.6, c, 0, 0, 0));
+    g.add(box(2.6, 0.6, 2.2, c, 3.2, 0.3, -1.8)); // a torn corner, lifted
+  } else if (kind === "seat") {
+    g.add(box(6, 1.6, 4, BLUE, 0, 0, 0));
+    g.add(box(1.2, 4.2, 4, BLUE_DK, -2.4, 1.6, 0));
+    g.add(box(6, 1.6, 0.8, "#4a4d57", 0, 1.6, 2.2)); // the arm rest
+  } else if (kind === "case") {
+    const colors: Record<string, string> = { r: "#d8322c", b: "#2f74e0", g: "#7a5a3a" };
+    g.add(box(5, 3.2, 3.2, colors[variant] ?? colors.g, 0, 0, 0));
+    g.add(box(1.8, 0.5, 0.7, "#16161d", 0, 3.2, 0));
+  } else if (kind === "wheel") {
+    const tyre = cyl(3.4, 3.4, 2.4, "#1a1a20", 0, 0, 0, 14);
+    tyre.rotation.x = Math.PI / 2;
+    tyre.position.y = 3.4;
+    g.add(tyre);
+    const hub = cyl(1.6, 1.6, 2.7, GREY, 0, 0, 0, 10);
+    hub.rotation.x = Math.PI / 2;
+    hub.position.y = 3.4;
+    g.add(hub);
+  }
+  return g;
+}
+
+// ---------------------------------------------------------------- the casualties
+
+const SHIRTS = ["#d8322c", "#2f74e0", "#f4f4f4", "#3fae5a", "#8a4fd0", "#e8873c"];
+const SKINS = ["#e8b890", "#c98f68", "#8d5a3b", "#f0c8a0"];
+const BREATH: Record<string, number> = { g: 1.9, y: 2.6, r: 5.2, k: 0 }; // radians a second: the casualty's breathing rate (the dead do not)
+
+const limeMat = new MeshBasicMaterial({ color: LIME });
+
+/**
+ * A casualty lying on the ground, head to +x. `key` is the triage colour (g, y, r, k) and a number for what they wear and how they lie.
+ * Their vest starts grey (nobody has looked at them yet); when the drone's or the robot's sensor is on them a lime box flashes round
+ * them, a marker floats above, and the vest takes the triage colour.
+ */
+export function casualtyModel(key: string): Group {
+  const tag = key[0] in TAGS ? key[0] : "g";
+  const v = Number(key.slice(1)) || 0;
+  const shirt = SHIRTS[(v * 2 + "gyrk".indexOf(tag)) % SHIRTS.length];
+  const skin = SKINS[(v + "gyrk".indexOf(tag)) % SKINS.length];
+  const g = new Group();
+
+  for (const z of [-1.1, 1.1]) g.add(box(4.8, 1.6, 1.5, "#2a3a6a", -4.9, 0, z));
+  g.add(box(5, 2.6, 4.4, shirt, 0, 0, 0));
+  const head = new Group();
+  head.add(box(3, 2.8, 3, skin, 0, 0, 0));
+  head.add(box(3.2, 0.7, 3.2, v % 2 ? "#2a2d38" : "#6a4a2a", 0, 2.6, 0));
+  head.position.set(4.1, 0, 0);
+  g.add(head);
+  g.add(box(4, 1.2, 1.2, shirt, -0.2, 0.3, -2.9)); // the arm that lies at their side
+
+  const waving = tag === "g" && v === 1; // a green casualty (walking wounded) waves to be seen
+  const arm = new Group();
+  arm.position.set(1.8, 0.9, 2.9);
+  arm.add(box(4, 1.2, 1.2, shirt, -2, -0.6, 0));
+  if (waving) arm.add(box(1.4, 1.2, 1.2, skin, 0.8, -0.6, 0));
+  arm.rotation.z = waving ? -1.35 : 0;
+  g.add(arm);
+
+  // the vest on the chest: grey until they are seen
+  const vestMat = new MeshBasicMaterial({ color: tagGrey.clone() });
+  const vest = new Mesh(new BoxGeometry(4.6, 0.5, 4), vestMat);
+  vest.position.set(0, 2.85, 0);
+  g.add(vest);
+
+  // the detection: a box round the body, flat on the ground, and a marker above
+  const bbox = new Group();
+  const hx = 8.4;
+  const hz = 6.2;
+  for (const s of [-1, 1]) {
+    bbox.add(new Mesh(new BoxGeometry(2 * hx, 0.4, 0.9), limeMat).translateX(-0.8).translateZ(s * hz).translateY(0.3));
+    bbox.add(new Mesh(new BoxGeometry(0.9, 0.4, 2 * hz), limeMat).translateX(-0.8 + s * hx).translateY(0.3));
+  }
+  bbox.visible = false;
+  g.add(bbox);
+  const chipMat = new MeshBasicMaterial({ color: TAGS[tag] });
+  const chip = new Mesh(new BoxGeometry(2.8, 2.8, 2.8), chipMat);
+  chip.rotation.set(Math.PI / 4, Math.PI / 4, 0);
+  chip.visible = false;
+  g.add(chip);
+
+  const tagColor = new Color(TAGS[tag]);
+  const rate = BREATH[tag];
+  const apply = (seen: number, boxAmt: number, t: number) => {
+    vestMat.color.copy(tagGrey).lerp(tagColor, seen);
+    vest.position.y = 2.85 + (rate ? 0.2 * Math.sin(t * rate + v) : 0);
+    bbox.visible = boxAmt > 0.03;
+    bbox.scale.set(1 + (1 - boxAmt) * 0.7, 1, 1 + (1 - boxAmt) * 0.7);
+    chip.visible = seen > 0.05;
+    chip.position.set(1, 10 + 0.5 * Math.sin(t * 3 + v) + (1 - seen) * 3, 0);
+    chip.scale.setScalar(0.4 + 0.6 * seen);
+    if (waving) arm.rotation.z = -1.3 + 0.45 * Math.sin(t * 5);
+  };
+  apply(0, 0, 0);
+
+  let hold = 0; // seconds the tag stays lit after the last sensor left
+  let seen = 0;
+  let boxAmt = 0;
+  let last = -1;
+  g.userData.animate = ({ t }: AnimCtx) => {
+    if (t <= 0) {
+      apply(1, 0, 0); // reduced motion: everybody is tagged, and nothing flashes
+      return;
+    }
+    const dt = last < 0 ? 0 : Math.min(0.1, Math.max(0, t - last));
+    last = t;
+    const near = (s: { on: boolean; x: number; z: number }, r: number) => s.on && Math.hypot(s.x - g.position.x, s.z - g.position.z) < r;
+    const hit = near(dtcScan.drone, DRONE.hit) || near(dtcScan.spot, SPOT.hit);
+    hold = hit ? 5 : Math.max(0, hold - dt);
+    seen += ((hold > 0 ? 1 : 0) - seen) * (1 - Math.exp(-dt * (hold > 0 ? 7 : 2.2)));
+    boxAmt += ((hit ? 1 : 0) - boxAmt) * (1 - Math.exp(-dt * 10));
+    apply(seen < 0.01 ? 0 : seen, boxAmt, t);
+  };
+  markMoving(g, vest, bbox, chip, arm);
+  return g;
+}
+
+// ---------------------------------------------------------------- the drone
+
+/** The survey drone: four rotors, a camera under it, and (when it flies) the cone of what the camera sees. See `attachFlight`. */
+export function droneModel(): Group {
+  const g = new Group();
+  const rig = new Group(); // everything that flies, lifted as one
+  g.add(rig);
+
+  // skids, body, a top plate, indicator lights, the camera
+  for (const z of [-2.2, 2.2]) rig.add(box(6.4, 0.5, 0.6, "#1b1b22", 0, 0, z));
+  rig.add(box(5.4, 2, 5.4, "#2c2f38", 0, 0.8, 0));
+  rig.add(box(3.6, 0.6, 3.6, WHITE, 0, 2.8, 0));
+  rig.add(box(0.8, 0.7, 0.8, LIME, 2.5, 1.8, 0)); // front light
+  rig.add(box(0.8, 0.7, 0.8, "#ff3b30", -2.5, 1.8, 0)); // rear light
+  rig.add(mesh(new SphereGeometry(1.3, 10, 8), toon("#16161d"), 1.4, 0.4, 0));
+  rig.add(box(0.5, 0.8, 0.8, "#7fe8ff", 2.55, 0.4, 0));
+  // the arms and the rotors at their ends
+  for (const rot of [Math.PI / 4, -Math.PI / 4]) {
+    const arm = box(15, 0.7, 0.9, "#3d4048", 0, 1.4, 0);
+    arm.rotation.y = rot;
+    rig.add(arm);
+  }
+  const pivots: Group[] = [];
+  const discs: MeshBasicMaterial[] = [];
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) {
+      const pivot = new Group();
+      pivot.position.set(sx * 5.3, 2.4, sz * 5.3);
+      rig.add(box(1.6, 1.2, 1.6, "#1b1b22", sx * 5.3, 1, sz * 5.3));
+      pivot.add(box(7, 0.2, 0.7, WHITE, 0, 0, 0));
+      const mat = new MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.1, depthWrite: false });
+      const disc = new Mesh(new CylinderGeometry(3.6, 3.6, 0.1, 14), mat);
+      pivot.add(disc);
+      rig.add(pivot);
+      pivots.push(pivot);
+      discs.push(mat);
+    }
+
+  // the cone of what its camera sees, from the drone down to a ring on the ground (no shadows: it is light)
+  const coneMat = new MeshBasicMaterial({ color: "#7fe8ff", transparent: true, opacity: 0, depthWrite: false, side: DoubleSide, blending: AdditiveBlending });
+  const cone = new Mesh(new ConeGeometry(DRONE.reach, 1, 28, 1, true), coneMat);
+  cone.visible = false;
+  g.add(cone);
+  const ringMat = new MeshBasicMaterial({ color: "#7fe8ff", transparent: true, opacity: 0, depthWrite: false, blending: AdditiveBlending });
+  const ring = new Mesh(new RingGeometry(DRONE.reach - 1.6, DRONE.reach, 40), ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.35;
+  ring.visible = false;
+  g.add(ring);
+  const fill = new Mesh(new RingGeometry(0, DRONE.reach - 1.6, 40), new MeshBasicMaterial({ color: "#7fe8ff", transparent: true, opacity: 0.1, depthWrite: false, blending: AdditiveBlending }));
+  fill.rotation.x = -Math.PI / 2;
+  fill.position.y = 0.3;
+  fill.visible = false;
+  g.add(fill);
+
+  let spin = 0;
+  const flight = ({ alt, power, dt, t }: FlightPose) => {
+    rig.position.y = alt + (alt > 1 ? 0.6 * Math.sin(t * 2.4) : 0);
+    spin += dt * power * 70;
+    pivots.forEach((p, i) => (p.rotation.y = spin * (i % 3 === 0 ? 1 : -1) + i));
+    for (const m of discs) m.opacity = 0.06 + 0.2 * power;
+    const k = smooth(alt / DRONE.alt);
+    const on = k > 0.02;
+    cone.visible = ring.visible = fill.visible = on;
+    if (on) {
+      cone.scale.set(1, alt, 1);
+      cone.position.y = alt / 2;
+      coneMat.opacity = 0.1 * k;
+      ringMat.opacity = 0.45 * k;
+      (fill.material as MeshBasicMaterial).opacity = 0.09 * k;
+    }
+  };
+  g.userData.setFlight = flight;
+  flight({ alt: 0, power: 0, dt: 0, t: 0 });
+  markMoving(g, rig, cone, ring, fill, ...pivots);
+  return g;
+}
+
+// ---------------------------------------------------------------- the robot
+
+/**
+ * A Spot-like legged robot, yellow with a black head, a sensor mast on its back, facing +x. `attachPatrol` moves it and calls
+ * `userData.pose` with the stride and how far the mast is up and sweeping.
+ */
+export function spotModel(): Group {
+  const BLACK = "#1b1b22";
+  const g = new Group();
+  const figure = new Group(); // everything but the placement, so that the stride's bob can lift it
+  g.add(figure);
+  figure.add(box(11, 3.4, 5.2, YELLOW, 0, 3.7, 0));
+  figure.add(box(9, 0.8, 4.6, BLACK, 0, 3.3, 0)); // the belly
+  figure.add(box(2.6, 2.6, 4.4, BLACK, 6.3, 4, 0)); // the head
+  for (const z of [-1.2, 1.2]) figure.add(box(0.4, 0.9, 0.9, "#7fe8ff", 7.65, 4.6, z)); // its eyes
+  figure.add(box(4.6, 0.8, 3.2, "#3d4048", -1.4, 7.1, 0)); // the payload's base plate
+
+  const mast = new Group(); // rises and sweeps while it scans
+  mast.position.set(-1.4, 7.9, 0);
+  mast.add(box(1.4, 2.2, 1.4, BLACK, 0, 0, 0));
+  mast.add(box(2.6, 1.7, 2.6, "#3d4048", 0, 2.2, 0));
+  mast.add(box(0.5, 0.9, 0.9, "#7fe8ff", 1.4, 2.7, 0)); // its lens
+  figure.add(mast);
+
+  const legs = [] as { hip: Group; knee: Group; off: number }[];
+  for (const sx of [1, -1])
+    for (const sz of [1, -1]) {
+      const hip = new Group();
+      hip.position.set(sx * 4.2, 5.2, sz * 2.9);
+      hip.add(box(1.3, 2.9, 1.3, YELLOW, 0, -2.9, 0));
+      const knee = new Group();
+      knee.position.set(0, -2.9, 0);
+      knee.add(box(1, 3.1, 1, BLACK, 0, -3.1, 0));
+      hip.add(knee);
+      figure.add(hip);
+      legs.push({ hip, knee, off: sx * sz > 0 ? 0 : Math.PI }); // diagonal pairs step together
+    }
+
+  g.userData.pose = ({ phase, swing, scan, t }: SpotPose) => {
+    for (const { hip, knee, off } of legs) {
+      hip.rotation.z = 0.55 + 0.42 * swing * Math.sin(phase + off);
+      knee.rotation.z = -1.1 - 0.5 * swing * Math.max(0, Math.cos(phase + off));
+    }
+    figure.position.y = 0.05 + 0.25 * swing * Math.abs(Math.sin(phase));
+    mast.position.y = 7.9 + 2.2 * scan;
+    mast.rotation.y = scan * 1.1 * Math.sin(t * 2.6);
+  };
+  g.userData.pose({ phase: 0, swing: 0, scan: 0, t: 0 });
+  markMoving(g, figure, mast, ...legs.flatMap((l) => [l.hip, l.knee]));
+  return g;
+}
+
+/** Builds the model for a DARPA Triage Challenge area prop id, or null when the id is not one of ours. */
+export function dtcModel(id: string): Group | null {
+  if (!id.startsWith("dtc-")) return null;
+  const key = id.slice(4);
+  if (key.startsWith("casualty-")) return casualtyModel(key.slice(9));
+  if (key.startsWith("debris-")) return debrisModel(key.slice(7));
+  switch (key) {
+    case "fuselage":
+      return fuselageModel();
+    case "tail":
+      return tailModel();
+    case "wing":
+      return wingModel();
+    case "engine":
+      return engineModel();
+    case "fire":
+      return fireModel();
+    case "drone":
+      return droneModel();
+    case "spot":
+      return spotModel();
+  }
+  throw new Error(`Unknown DTC model: ${id}`);
+}
