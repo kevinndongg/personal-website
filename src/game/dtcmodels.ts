@@ -7,6 +7,7 @@ import {
   DoubleSide,
   ExtrudeGeometry,
   Group,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   RingGeometry,
@@ -104,28 +105,40 @@ function wingOutline(side: 1 | -1, span: number, lead: number, rootChord: number
   ];
 }
 
+const NOSE = 1.4; // the nose is half an ellipsoid: R across and above, NOSE * R long
+
+/**
+ * A pane of cockpit glass on the nose, lying on its skin: `y` above the fuselage's axis and `z` across (the nose's outline is an ellipsoid,
+ * so that fixes where it is), `w` wide along the skin and `h` tall up it. It is turned to face the way the skin does, forward and out at the
+ * windshield and out at the sides, and stands a little proud of it.
+ */
+function nosePane(parent: Group, from: number, y0: number, y: number, z: number, w: number, h: number): void {
+  const x = NOSE * R * Math.sqrt(Math.max(0, 1 - (y * y + z * z) / (R * R)));
+  const normal = new Vector3(x / (NOSE * R * NOSE * R), y / (R * R), z / (R * R)).normalize();
+  const along = new Vector3().crossVectors(normal, UP).normalize(); // horizontal, along the skin
+  const up = new Vector3().crossVectors(along, normal); // up the skin
+  const pane = mesh(new BoxGeometry(w, 0.9, h), toon(GLASS));
+  pane.quaternion.setFromRotationMatrix(new Matrix4().makeBasis(along, normal, up));
+  pane.position.set(from + x, y0 + y, z).addScaledVector(normal, 0.15);
+  parent.add(pane);
+}
+
 /** The front of the airliner: rounded nose and cockpit glass, the north wing (an engine torn off it), the stub of the south one, the torn end to the west. Length 62 (the nose reaches 13 further). */
 export function fuselageModel(): Group {
   const L = 62;
   const y0 = R - 0.5;
   const g = new Group();
   g.add(tube(R, R, L, WHITE, 0, y0, 0, 22));
-  // the nose: a rounded dome that tapers to a point (the 737's is somewhat pointed), ending in a dark radome
+  // the nose: a rounded dome, white to the tip
   const nose = mesh(new SphereGeometry(R, 22, 14), toon(WHITE), L / 2, y0, 0);
-  nose.scale.set(1.5, 1, 1);
+  nose.scale.set(NOSE, 1, 1);
   g.add(nose);
-  const radome = mesh(new SphereGeometry(3.4, 12, 10), toon("#4a4d57"), L / 2 + 13.2, y0 - 0.3, 0);
-  radome.scale.set(1.6, 1, 1);
-  g.add(radome);
-  // the cockpit, as on a 737: two windshield panes on the upper front of the nose that meet at a post in a shallow V (each tipped to follow
-  // the slope and turned in toward the front), and two side windows each side, behind them
+  // the cockpit, as on a 737: one dark band round the nose at a single height. Two windshield panes face forward, with a thin white post
+  // between them, and behind them each side has a sliding window and a fixed one, close together
   for (const side of [-1, 1]) {
-    const pane = box(3.6, 0.9, 5.2, GLASS, L / 2 + 8.3, 0, side * 2.9);
-    pane.position.y = y0 + 8.1; // (a little proud of the nose, or the dome would hide it)
-    pane.rotation.set(0, side * 0.45, -0.45);
-    g.add(pane);
-    g.add(box(2.4, 1.7, 0.7, GLASS, L / 2 + 5.0, y0 + 3.4, side * 8.5)); // the sliding window
-    g.add(box(2.2, 1.7, 0.7, GLASS, L / 2 + 1.8, y0 + 3.2, side * 9.25)); // and the fixed one behind it
+    nosePane(g, L / 2, y0, 4.6, side * 2.7, 3.6, 4.2); // the windshield pane
+    nosePane(g, L / 2, y0, 4.5, side * 6.3, 3.4, 3.8); // the sliding window, just behind it
+    nosePane(g, L / 2, y0, 4.3, side * 8.2, 2.6, 3.6); // and the fixed one behind that
   }
   for (const side of [-1, 1]) g.add(box(L - 2, 1.8, 0.8, BLUE, 0, y0 - 2.5 - 0.9, side * (R - 0.2))); // the cheat line
   windows(g, -24, 22, 6, y0, R);
