@@ -32,6 +32,7 @@ const BLUE = "#2f4a8a";
 const BLUE_DK = "#243a6e";
 const YELLOW = "#f2c230";
 const LIME = "#3dff8a";
+const TIP_GREEN = "#00a846"; // darker than the lime of the detection, so that it shows over the white fuselage
 
 const R = 10; // the airliner's radius
 const tagGrey = new Color("#9aa0ab");
@@ -520,8 +521,8 @@ export function droneModel(): Group {
       const pivot = new Group();
       pivot.position.set(sx * 5.3, 2.4, sz * 5.3);
       rig.add(box(1.6, 1.2, 1.6, "#1b1b22", sx * 5.3, 1, sz * 5.3));
-      pivot.add(box(7, 0.2, 0.7, "#1b1b22", 0, 0, 0)); // dark blades, lime at the tips, so they show over the white fuselage
-      for (const end of [-1, 1]) pivot.add(box(1.2, 0.25, 0.9, LIME, end * 3, 0, 0));
+      pivot.add(box(7, 0.2, 0.7, "#1b1b22", 0, 0, 0)); // dark blades, deep green at the tips, so they show over the white fuselage
+      for (const end of [-1, 1]) pivot.add(box(1.8, 0.25, 1.2, TIP_GREEN, end * 2.8, 0, 0));
       const mat = new MeshBasicMaterial({ color: "#16161d", transparent: true, opacity: 0.1, depthWrite: false });
       const disc = new Mesh(new CylinderGeometry(3.6, 3.6, 0.1, 14), mat);
       pivot.add(disc);
