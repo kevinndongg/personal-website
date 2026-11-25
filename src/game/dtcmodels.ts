@@ -13,6 +13,7 @@ import {
   Shape,
   SphereGeometry,
   Vector2,
+  Vector3,
 } from "three";
 import { markMoving } from "./bake";
 import { DRONE, SPOT, dtcScan } from "./dtcflight";
@@ -35,6 +36,8 @@ const LIME = "#3dff8a";
 const R = 10; // the airliner's radius
 const tagGrey = new Color("#9aa0ab");
 const TAGS: Record<string, string> = { g: "#2fc25b", y: "#f2c230", r: "#e03131", k: "#16161d" };
+
+const UP = new Vector3(0, 1, 0);
 
 const smooth = (k: number) => {
   const c = Math.min(1, Math.max(0, k));
@@ -343,12 +346,21 @@ export function casualtyModel(key: string): Group {
   const bbox = new Group();
   const hx = 8.4;
   const hz = 6.2;
-  for (const s of [-1, 1]) {
-    bbox.add(new Mesh(new BoxGeometry(2 * hx, 0.4, 0.9), limeMat).translateX(-0.8).translateZ(s * hz).translateY(0.3));
-    bbox.add(new Mesh(new BoxGeometry(0.9, 0.4, 2 * hz), limeMat).translateX(-0.8 + s * hx).translateY(0.3));
-  }
+  const arm4 = 3.6; // how far each bracket runs along the box's sides
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) {
+      const cx = -0.8 + sx * hx;
+      const cz = sz * hz;
+      bbox.add(new Mesh(new BoxGeometry(arm4, 0.4, 0.9), limeMat).translateX(cx - (sx * arm4) / 2 + sx * 0.45).translateZ(cz).translateY(0.3));
+      bbox.add(new Mesh(new BoxGeometry(0.9, 0.4, arm4), limeMat).translateX(cx).translateZ(cz - (sz * arm4) / 2 + sz * 0.45).translateY(0.3));
+    }
   bbox.visible = false;
   g.add(bbox);
+  // a line that sweeps back and forth along them inside the brackets while they are being looked at
+  const scan = new Mesh(new BoxGeometry(0.5, 0.35, 2 * hz - 1), limeMat);
+  scan.position.y = 0.35;
+  scan.visible = false;
+  g.add(scan);
   const chipMat = new MeshBasicMaterial({ color: TAGS[tag] });
   const chip = new Mesh(new BoxGeometry(2.8, 2.8, 2.8), chipMat);
   chip.rotation.set(Math.PI / 4, Math.PI / 4, 0);
@@ -365,7 +377,7 @@ export function casualtyModel(key: string): Group {
 
   const tagColor = new Color(TAGS[tag]);
   const rate = BREATH[tag];
-  const apply = (seen: number, boxAmt: number, t: number, pinging: boolean) => {
+  const apply = (seen: number, boxAmt: number, t: number, pinging: boolean, sweep = -1) => {
     vestMat.color.copy(tagGrey).lerp(tagColor, seen);
     vest.position.y = 2.85 + (rate ? 0.2 * Math.sin(t * rate + v) : 0);
     bbox.visible = boxAmt > 0.03;
@@ -373,6 +385,8 @@ export function casualtyModel(key: string): Group {
     chip.visible = seen > 0.05;
     chip.position.set(1, 10 + 0.5 * Math.sin(t * 3 + v) + (1 - seen) * 3, 0);
     chip.scale.setScalar(0.4 + 0.6 * seen);
+    scan.visible = sweep >= 0 && boxAmt > 0.5;
+    if (scan.visible) scan.position.x = -0.8 - hx + 2 * hx * sweep;
     ping.visible = pinging;
     if (pinging) {
       const k = (t * 0.8 + v * 0.3) % 1;
@@ -389,6 +403,7 @@ export function casualtyModel(key: string): Group {
   let seen = 0;
   let boxAmt = 0;
   let wasHit = false;
+  let hitStart = 0;
   let last = -1;
   g.userData.animate = ({ t }: AnimCtx) => {
     if (t <= 0) {
@@ -404,15 +419,17 @@ export function casualtyModel(key: string): Group {
     const near = (s: { on: boolean; x: number; z: number }, r: number) => s.on && Math.hypot(s.x - g.position.x, s.z - g.position.z) < r;
     const hit = near(dtcScan.drone, DRONE.hit) || near(dtcScan.spot, SPOT.hit);
     if (hit && !wasHit) {
+      hitStart = t;
       if (!state.found) state.found = true;
       else if (state.helped) state.helped = state.claimed = false; // looked at again: a medic is due back
     }
     wasHit = hit;
     seen += ((state.found ? 1 : 0) - seen) * (1 - Math.exp(-dt * (state.found ? 7 : 2.2)));
     boxAmt += ((hit ? 1 : 0) - boxAmt) * (1 - Math.exp(-dt * 10));
-    apply(seen < 0.01 ? 0 : seen, boxAmt, t, state.found && !state.helped && seen > 0.9);
+    const sweep = hit ? 1 - Math.abs((((t - hitStart) / 1.1) % 2) - 1) : -1; // 0 .. 1 .. 0, back and forth along the casualty
+    apply(seen < 0.01 ? 0 : seen, boxAmt, t, state.found && !state.helped && seen > 0.9, sweep);
   };
-  markMoving(g, vest, bbox, chip, arm, ping);
+  markMoving(g, vest, bbox, chip, arm, ping, scan);
   return g;
 }
 
@@ -486,7 +503,10 @@ export function droneModel(): Group {
   rig.add(box(0.8, 0.7, 0.8, LIME, 2.5, 1.8, 0)); // front light
   rig.add(box(0.8, 0.7, 0.8, "#ff3b30", -2.5, 1.8, 0)); // rear light
   rig.add(mesh(new SphereGeometry(1.3, 10, 8), toon("#16161d"), 1.4, 0.4, 0));
-  rig.add(box(0.5, 0.8, 0.8, "#7fe8ff", 2.55, 0.4, 0));
+  const lensMat = new MeshBasicMaterial({ color: "#7fe8ff" }); // lights up lime while it is locked on
+  const lens = new Mesh(new BoxGeometry(0.5, 0.8, 0.8), lensMat);
+  lens.position.set(2.55, 0.8, 0);
+  rig.add(lens);
   // the arms and the rotors at their ends
   for (const rot of [Math.PI / 4, -Math.PI / 4]) {
     const arm = box(15, 0.7, 0.9, "#3d4048", 0, 1.4, 0);
@@ -509,47 +529,40 @@ export function droneModel(): Group {
       discs.push(mat);
     }
 
-  // the cone of what its camera sees, from the drone down to a ring on the ground (no shadows: it is light)
-  const coneMat = new MeshBasicMaterial({ color: "#7fe8ff", transparent: true, opacity: 0, depthWrite: false, side: DoubleSide, blending: AdditiveBlending });
-  const cone = new Mesh(new ConeGeometry(DRONE.reach, 1, 28, 1, true), coneMat);
-  cone.visible = false;
-  g.add(cone);
-  const ringMat = new MeshBasicMaterial({ color: "#7fe8ff", transparent: true, opacity: 0, depthWrite: false, blending: AdditiveBlending });
-  const ring = new Mesh(new RingGeometry(DRONE.reach - 1.6, DRONE.reach, 40), ringMat);
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.35;
-  ring.visible = false;
-  g.add(ring);
-  const fill = new Mesh(new RingGeometry(0, DRONE.reach - 1.6, 40), new MeshBasicMaterial({ color: "#7fe8ff", transparent: true, opacity: 0.1, depthWrite: false, blending: AdditiveBlending }));
-  fill.rotation.x = -Math.PI / 2;
-  fill.position.y = 0.3;
-  fill.visible = false;
-  g.add(fill);
+  // the lock-on: while it looks at a casualty, a narrow beam of light runs from its camera down to them (no shadows: it is light)
+  const beamMat = new MeshBasicMaterial({ color: LIME, transparent: true, opacity: 0, depthWrite: false, side: DoubleSide, blending: AdditiveBlending });
+  const beam = new Mesh(new CylinderGeometry(0.35, 1.7, 1, 12, 1, true), beamMat); // narrow end up, at the camera
+  beam.visible = false;
+  g.add(beam);
+  const lime = new Color(LIME);
+  const lensOff = new Color("#7fe8ff");
+  const camera = new Vector3(1.4, 0, 0);
+  const target = new Vector3();
+  const along = new Vector3();
 
   let spin = 0;
-  const flight = ({ alt, lift, focus, power, dt, t }: FlightPose) => {
+  const flight = ({ alt, focus, power, dt, t, aim }: FlightPose) => {
     rig.position.y = alt + (alt > 1 ? 0.6 * Math.sin(t * 2.4) : 0);
     spin += dt * power * 70;
     pivots.forEach((p, i) => (p.rotation.y = spin * (i % 3 === 0 ? 1 : -1) + i));
     for (const m of discs) m.opacity = 0.06 + 0.2 * power;
-    const k = smooth(lift);
-    const on = k > 0.02;
-    cone.visible = ring.visible = fill.visible = on;
-    if (on) {
-      // the camera's circle narrows and brightens as it looks closely at a casualty
-      const r = 1 - 0.58 * focus;
-      cone.scale.set(r, alt, r);
-      cone.position.y = alt / 2;
-      ring.scale.set(r, r, 1);
-      fill.scale.set(r, r, 1);
-      coneMat.opacity = (0.07 + 0.1 * focus) * k;
-      ringMat.opacity = (0.3 + 0.55 * focus) * k;
-      (fill.material as MeshBasicMaterial).opacity = (0.06 + 0.12 * focus) * k;
+    const k = smooth((focus - 0.6) / 0.4); // locked on only once it is nearly over them
+    lensMat.color.copy(lensOff).lerp(lime, k);
+    beam.visible = k > 0.02;
+    if (beam.visible) {
+      camera.y = rig.position.y + 0.4;
+      target.set(aim.dx, 0.4, aim.dz);
+      along.subVectors(camera, target); // from the casualty up to the camera
+      const len = along.length();
+      beam.position.copy(target).addScaledVector(along, 0.5);
+      beam.scale.set(1, len, 1);
+      beam.quaternion.setFromUnitVectors(UP, along.divideScalar(len));
+      beamMat.opacity = 0.3 * k * (0.8 + 0.2 * Math.sin(t * 38));
     }
   };
   g.userData.setFlight = flight;
-  flight({ alt: 0, lift: 0, focus: 0, power: 0, dt: 0, t: 0 });
-  markMoving(g, rig, cone, ring, fill, ...pivots);
+  flight({ alt: 0, lift: 0, focus: 0, power: 0, dt: 0, t: 0, aim: { dx: 0, dz: 0 } });
+  markMoving(g, rig, beam, ...pivots);
   return g;
 }
 
