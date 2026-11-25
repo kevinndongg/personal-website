@@ -32,6 +32,7 @@ const BLUE = "#2f4a8a";
 const BLUE_DK = "#243a6e";
 const YELLOW = "#f2c230";
 const LIME = "#3dff8a";
+const GLASS = "#1b2a4a"; // cockpit glass
 const TIP_GREEN = "#00a846"; // darker than the lime of the detection, so that it shows over the white fuselage
 
 const R = 10; // the airliner's radius
@@ -109,16 +110,23 @@ export function fuselageModel(): Group {
   const y0 = R - 0.5;
   const g = new Group();
   g.add(tube(R, R, L, WHITE, 0, y0, 0, 22));
-  // the nose: a blunt dome, not a cone
+  // the nose: a rounded dome that tapers to a point (the 737's is somewhat pointed), ending in a dark radome
   const nose = mesh(new SphereGeometry(R, 22, 14), toon(WHITE), L / 2, y0, 0);
-  nose.scale.set(1.3, 1, 1);
+  nose.scale.set(1.5, 1, 1);
   g.add(nose);
-  // the cockpit: the windshield on the front-upper slope of the nose, right at the tip (tipped to follow the slope), and a side window each side
-  const glass = mesh(new SphereGeometry(1, 14, 10), toon("#1b2a4a"), L / 2 + 9.4, y0 + 6.5, 0);
-  glass.scale.set(2.4, 0.8, 2.6);
-  glass.rotation.z = -0.69;
-  g.add(glass);
-  for (const side of [-1, 1]) g.add(box(2.4, 1.4, 0.7, "#1b2a4a", L / 2 + 7.8, y0 + 3.3, side * 7.3));
+  const radome = mesh(new SphereGeometry(3.4, 12, 10), toon("#4a4d57"), L / 2 + 13.2, y0 - 0.3, 0);
+  radome.scale.set(1.6, 1, 1);
+  g.add(radome);
+  // the cockpit, as on a 737: two windshield panes on the upper front of the nose that meet at a post in a shallow V (each tipped to follow
+  // the slope and turned in toward the front), and two side windows each side, behind them
+  for (const side of [-1, 1]) {
+    const pane = box(3.6, 0.9, 5.2, GLASS, L / 2 + 8.3, 0, side * 2.9);
+    pane.position.y = y0 + 8.1; // (a little proud of the nose, or the dome would hide it)
+    pane.rotation.set(0, side * 0.45, -0.45);
+    g.add(pane);
+    g.add(box(2.4, 1.7, 0.7, GLASS, L / 2 + 5.0, y0 + 3.4, side * 8.5)); // the sliding window
+    g.add(box(2.2, 1.7, 0.7, GLASS, L / 2 + 1.8, y0 + 3.2, side * 9.25)); // and the fixed one behind it
+  }
   for (const side of [-1, 1]) g.add(box(L - 2, 1.8, 0.8, BLUE, 0, y0 - 2.5 - 0.9, side * (R - 0.2))); // the cheat line
   windows(g, -24, 22, 6, y0, R);
   brokenEnd(g, -L / 2, -1, R, y0);
