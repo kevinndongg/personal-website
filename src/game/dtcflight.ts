@@ -36,8 +36,7 @@ export interface CasualtyState {
 
 
 export const DRONE = {
-  alt: 30, // how high it cruises (px)
-  inspect: 15, // how low it drops to look at a casualty
+  alt: 30, // how high it flies (px), cruising and looking at a casualty alike
   hit: 12, // a casualty this near (horizontally) is scanned, which only happens while it is down over them
 };
 export const SPOT = { hit: 16 };
@@ -98,8 +97,8 @@ const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 /**
  * Makes `model` (a drone with `userData.setFlight`) take off from where it stands, fly the survey along `path` (world px; the first and
- * last points are its pad) and land again, over and over. A point with a `hold` is a casualty: the drone slows into it, drops down,
- * narrows its camera onto them and circles a little above them for that many seconds, then climbs and goes on to the next. It does not
+ * last points are its pad) and land again, over and over. A point with a `hold` is a casualty: the drone slows into it, locks its
+ * camera onto them and circles a little above them for that many seconds, then goes on to the next. It does not
  * turn: a quadcopter flies sideways.
  */
 export function attachFlight(model: Group, path: { x: number; y: number; hold?: number }[]) {
@@ -189,7 +188,7 @@ export function attachFlight(model: Group, path: { x: number; y: number; hold?: 
     model.position.z = p.z + Math.sin(t * 1.4) * swirl;
     const q = looking >= 0 ? curve.getPointAt(Math.min(1, looking / total)) : p;
     setFlight({
-      alt: lift * (DRONE.alt + (DRONE.inspect - DRONE.alt) * focus),
+      alt: lift * DRONE.alt, // it stays up while it looks
       power: Math.min(1, e / 0.6, (flightTime - e) / 0.3 + 0.2),
       lift,
       focus,
