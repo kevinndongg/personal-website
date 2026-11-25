@@ -15,8 +15,8 @@ import {
   Vector2,
 } from "three";
 import { markMoving } from "./bake";
-import { DRONE, SPOT, dtcScan } from "./dtcflight";
-import type { FlightPose, SpotPose } from "./dtcflight";
+import { DRONE, HELPED_FOR, SPOT, dtcScan } from "./dtcflight";
+import type { CasualtyState, FlightPose, MedicPose, SpotPose } from "./dtcflight";
 import { box, cyl, mesh, toon } from "./models";
 import type { AnimCtx } from "./models";
 
@@ -355,9 +355,17 @@ export function casualtyModel(key: string): Group {
   chip.visible = false;
   g.add(chip);
 
+  // a ping on the ground round a casualty who has been found and is waiting for a medic: a ring in their colour that swells and fades
+  const pingMat = new MeshBasicMaterial({ color: TAGS[tag], transparent: true, opacity: 0, depthWrite: false });
+  const ping = new Mesh(new RingGeometry(5.2, 6.4, 24), pingMat);
+  ping.rotation.x = -Math.PI / 2;
+  ping.position.y = 0.25;
+  ping.visible = false;
+  g.add(ping);
+
   const tagColor = new Color(TAGS[tag]);
   const rate = BREATH[tag];
-  const apply = (seen: number, boxAmt: number, t: number) => {
+  const apply = (seen: number, boxAmt: number, t: number, pinging: boolean) => {
     vestMat.color.copy(tagGrey).lerp(tagColor, seen);
     vest.position.y = 2.85 + (rate ? 0.2 * Math.sin(t * rate + v) : 0);
     bbox.visible = boxAmt > 0.03;
@@ -365,29 +373,97 @@ export function casualtyModel(key: string): Group {
     chip.visible = seen > 0.05;
     chip.position.set(1, 10 + 0.5 * Math.sin(t * 3 + v) + (1 - seen) * 3, 0);
     chip.scale.setScalar(0.4 + 0.6 * seen);
+    ping.visible = pinging;
+    if (pinging) {
+      const k = (t * 0.8 + v * 0.3) % 1;
+      ping.scale.setScalar(0.8 + 1.1 * k);
+      pingMat.opacity = 0.85 * (1 - k);
+    }
     if (waving) arm.rotation.z = -1.3 + 0.45 * Math.sin(t * 5);
   };
-  apply(0, 0, 0);
+  apply(0, 0, 0, false);
 
-  let hold = 0; // seconds the tag stays lit after the last sensor left
+  // What the others know of them (see `dtcScan.casualties`): found by the drone or the robot, then waiting for a medic, who kneels by them
+  // and so they are helped. A while after that the scene starts over: they go grey again, to be found again.
+  let state: CasualtyState | null = null;
   let seen = 0;
   let boxAmt = 0;
   let last = -1;
   g.userData.animate = ({ t }: AnimCtx) => {
     if (t <= 0) {
-      apply(1, 0, 0); // reduced motion: everybody is tagged, and nothing flashes
+      apply(1, 0, 0, false); // reduced motion: everybody is tagged, and nothing flashes
       return;
+    }
+    if (!state) {
+      state = { x: g.position.x, z: g.position.z, tag, found: false, claimed: false, helped: false, helpedAt: 0 };
+      dtcScan.casualties.set(`${Math.round(state.x)},${Math.round(state.z)}`, state);
     }
     const dt = last < 0 ? 0 : Math.min(0.1, Math.max(0, t - last));
     last = t;
     const near = (s: { on: boolean; x: number; z: number }, r: number) => s.on && Math.hypot(s.x - g.position.x, s.z - g.position.z) < r;
     const hit = near(dtcScan.drone, DRONE.hit) || near(dtcScan.spot, SPOT.hit);
-    hold = hit ? 5 : Math.max(0, hold - dt);
-    seen += ((hold > 0 ? 1 : 0) - seen) * (1 - Math.exp(-dt * (hold > 0 ? 7 : 2.2)));
+    if (hit) state.found = true;
+    if (state.helped && t - state.helpedAt > HELPED_FOR) state.found = state.claimed = state.helped = false;
+    seen += ((state.found ? 1 : 0) - seen) * (1 - Math.exp(-dt * (state.found ? 7 : 2.2)));
     boxAmt += ((hit ? 1 : 0) - boxAmt) * (1 - Math.exp(-dt * 10));
-    apply(seen < 0.01 ? 0 : seen, boxAmt, t);
+    apply(seen < 0.01 ? 0 : seen, boxAmt, t, state.found && !state.helped && seen > 0.9);
   };
-  markMoving(g, vest, bbox, chip, arm);
+  markMoving(g, vest, bbox, chip, arm, ping);
+  return g;
+}
+
+// ---------------------------------------------------------------- the medics
+
+/**
+ * A medic, white helmet with a red cross, red pack on the back, facing +x. `attachMedic` moves it and calls `userData.pose` with the
+ * stride and how far it has knelt (`kneel`, 0 .. 1) to treat someone: it puts its bag down beside it and works with both hands.
+ */
+export function medicModel(): Group {
+  const SCRUBS = "#2f7fd0";
+  const RED = "#d8322c";
+  const g = new Group();
+  const figure = new Group(); // everything but the placement, so that the stride's bob and the kneel can move it
+  g.add(figure);
+  const limb = (z: number, y: number, len: number, color: string, w: number) => {
+    const pivot = new Group(); // rotation.z swings it forward (+x)
+    pivot.position.set(0, y, z);
+    pivot.add(box(w, len, w, color, 0, -len, 0));
+    figure.add(pivot);
+    return pivot;
+  };
+  const legL = limb(-1.1, 4.5, 4.5, "#1f2a4a", 1.5);
+  const legR = limb(1.1, 4.5, 4.5, "#1f2a4a", 1.5);
+  const armL = limb(-2.7, 9.2, 4, SCRUBS, 1.1);
+  const armR = limb(2.7, 9.2, 4, SCRUBS, 1.1);
+  figure.add(box(2.6, 5, 4.4, SCRUBS, 0, 4.5, 0));
+  figure.add(box(1.8, 3.6, 3.6, RED, -2.2, 5, 0)); // the pack on the back
+  figure.add(box(3.2, 3, 3.2, "#e8b890", 0, 9.5, 0));
+  figure.add(box(3.6, 1.3, 3.6, "#f4f4f4", 0, 12, 0)); // the helmet, with a red cross on top
+  figure.add(box(2.6, 0.2, 0.8, RED, 0, 13.3, 0));
+  figure.add(box(0.8, 0.2, 2.6, RED, 0, 13.3, 0));
+  figure.add(box(1.6, 0.4, 3.2, "#f4f4f4", 2.4, 12, 0)); // brim: shows which way it faces
+
+  const bag = new Group(); // set down beside the casualty while it works
+  bag.position.set(0.5, 0, 5.6);
+  bag.add(box(4.2, 2.4, 5.4, RED, 0, 0, 0));
+  bag.add(box(2.4, 0.2, 0.7, "#f4f4f4", 0, 2.4, 0));
+  bag.add(box(0.7, 0.2, 2.4, "#f4f4f4", 0, 2.4, 0));
+  bag.visible = false;
+  g.add(bag);
+
+  g.userData.pose = ({ phase, swing, kneel, t }: MedicPose) => {
+    const step = Math.sin(phase) * 0.6 * swing * (1 - kneel);
+    legL.rotation.z = step + kneel * 1.0;
+    legR.rotation.z = -step - kneel * 0.35;
+    figure.position.y = 0.05 + Math.abs(Math.sin(phase)) * 0.25 * swing - kneel * 2.8;
+    figure.rotation.z = -kneel * 0.42; // leans in over the casualty
+    const press = Math.sin(t * 7) * 0.18; // the hands working
+    armL.rotation.z = -step * 1.3 + kneel * (1.15 + press);
+    armR.rotation.z = step * 1.3 + kneel * (1.15 - press);
+    bag.visible = kneel > 0.4;
+  };
+  g.userData.pose({ phase: 0, swing: 0, kneel: 0, t: 0 });
+  markMoving(g, figure, legL, legR, armL, armR, bag);
   return g;
 }
 
@@ -542,6 +618,8 @@ export function dtcModel(id: string): Group | null {
       return droneModel();
     case "spot":
       return spotModel();
+    case "medic":
+      return medicModel();
   }
   throw new Error(`Unknown DTC model: ${id}`);
 }
