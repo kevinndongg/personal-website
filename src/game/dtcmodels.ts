@@ -499,7 +499,7 @@ export function droneModel(): Group {
   // skids, body, a top plate, indicator lights, the camera
   for (const z of [-2.2, 2.2]) rig.add(box(6.4, 0.5, 0.6, "#1b1b22", 0, 0, z));
   rig.add(box(5.4, 2, 5.4, "#2c2f38", 0, 0.8, 0));
-  rig.add(box(3.6, 0.6, 3.6, WHITE, 0, 2.8, 0));
+  rig.add(box(3.6, 0.6, 3.6, YELLOW, 0, 2.8, 0)); // (not white: it flies over the white fuselage)
   rig.add(box(0.8, 0.7, 0.8, LIME, 2.5, 1.8, 0)); // front light
   rig.add(box(0.8, 0.7, 0.8, "#ff3b30", -2.5, 1.8, 0)); // rear light
   rig.add(mesh(new SphereGeometry(1.3, 10, 8), toon("#16161d"), 1.4, 0.4, 0));
@@ -520,8 +520,9 @@ export function droneModel(): Group {
       const pivot = new Group();
       pivot.position.set(sx * 5.3, 2.4, sz * 5.3);
       rig.add(box(1.6, 1.2, 1.6, "#1b1b22", sx * 5.3, 1, sz * 5.3));
-      pivot.add(box(7, 0.2, 0.7, WHITE, 0, 0, 0));
-      const mat = new MeshBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.1, depthWrite: false });
+      pivot.add(box(7, 0.2, 0.7, "#1b1b22", 0, 0, 0)); // dark blades, lime at the tips, so they show over the white fuselage
+      for (const end of [-1, 1]) pivot.add(box(1.2, 0.25, 0.9, LIME, end * 3, 0, 0));
+      const mat = new MeshBasicMaterial({ color: "#16161d", transparent: true, opacity: 0.1, depthWrite: false });
       const disc = new Mesh(new CylinderGeometry(3.6, 3.6, 0.1, 14), mat);
       pivot.add(disc);
       rig.add(pivot);
@@ -545,7 +546,7 @@ export function droneModel(): Group {
     rig.position.y = alt + (alt > 1 ? 0.6 * Math.sin(t * 2.4) : 0);
     spin += dt * power * 70;
     pivots.forEach((p, i) => (p.rotation.y = spin * (i % 3 === 0 ? 1 : -1) + i));
-    for (const m of discs) m.opacity = 0.06 + 0.2 * power;
+    for (const m of discs) m.opacity = 0.08 + 0.22 * power;
     const k = smooth((focus - 0.6) / 0.4); // locked on only once it is nearly over them
     lensMat.color.copy(lensOff).lerp(lime, k);
     beam.visible = k > 0.02;
