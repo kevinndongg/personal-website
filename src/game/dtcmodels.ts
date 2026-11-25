@@ -153,13 +153,13 @@ export function fuselageModel(): Group {
   return g;
 }
 
-/** The tail: the rear of the fuselage lying on its side, the fin leaning over, the broken end to the east. Length 40. */
+/** The tail: the rear of the fuselage, upright, the fin leaning a little, the broken end to the east. Length 40. */
 export function tailModel(): Group {
   const L = 40;
   const g = new Group();
   const shell = new Group();
-  shell.position.y = R + 1;
-  shell.rotation.x = 1.15; // rolled well over: the fin lies out to the side, its broad face to the camera
+  shell.position.y = R - 0.5;
+  shell.rotation.x = 0.12; // upright but for a slight lean toward the camera: a fin standing up shows its broad face, and every airliner's tail looks like that
   g.add(shell);
   const TIP = 3.5; // the radius at the tail's tip
   shell.add(tube(TIP, R, L, WHITE, 0, 0, 0, 22));
