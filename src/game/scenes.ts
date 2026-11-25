@@ -56,6 +56,8 @@ export interface Prop {
   flight?: { x: number; y: number }[];
   /** A walk the robot makes now and then (world px, from where it is parked to where it stops). See dtcflight.ts. */
   patrol?: { x: number; y: number }[];
+  /** A medic's post is where it stands; it is sent to casualties the drone and the robot find, along these routes. See dtcflight.ts. */
+  medic?: { at: { x: number; y: number }; route: { x: number; y: number }[]; face: number }[];
 }
 
 /**
