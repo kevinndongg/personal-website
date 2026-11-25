@@ -114,10 +114,12 @@ export function fuselageModel(): Group {
   nose.scale.set(1.3, 1, 1);
   g.add(nose);
   // the cockpit glass: a dark oval lying on the top of the nose, tipped to follow it
-  const glass = mesh(new SphereGeometry(1, 14, 10), toon("#23314d"), L / 2 + 5.2, y0 + R - 1, 0);
-  glass.scale.set(2.4, 0.7, 3.8);
+  const glass = mesh(new SphereGeometry(1, 14, 10), toon("#1b2a4a"), L / 2 + 4.6, y0 + R - 0.9, 0);
+  glass.scale.set(3.2, 0.9, 5.4);
   glass.rotation.z = -0.3;
   g.add(glass);
+  // ...and a side window each side of it, so that the cockpit reads from every angle
+  for (const side of [-1, 1]) g.add(box(2.8, 1.5, 0.7, "#1b2a4a", L / 2 + 4.6, y0 + 3.4, side * 8.9));
   g.add(box(L - 14, 0.6, 4, BLUE, -4, y0 + R - 0.3, 0)); // the airline's stripe along the spine, which shows from above
   for (const side of [-1, 1]) g.add(box(L - 2, 1.8, 0.8, BLUE, 0, y0 - 2.5 - 0.9, side * (R - 0.2))); // the cheat line
   windows(g, -24, 22, 6, y0, R);
@@ -126,8 +128,8 @@ export function fuselageModel(): Group {
   // the wings, low on the body, swept back. The north one is whole but for its engine (a stub of the pylon is left) and droops to the
   // ground; the south one broke off a few pixels out (the loose wing lies beyond it).
   for (const [side, span] of [
-    [-1, 27],
-    [1, 5],
+    [-1, 21],
+    [1, 10],
   ] as const) {
     const wing = new Group();
     wing.position.set(8, 2.6, side * (R - 2.5));
@@ -137,7 +139,7 @@ export function fuselageModel(): Group {
       wing.add(planform(wingOutline(side, span - 1, -7, 4, 4.4, 2.6), 0.5, "#cfd4de").translateY(1.5)); // the flaps' lighter band along the back
       wing.add(box(3.4, 2.4, 2.6, GREY, -1.2, -2.4, side * 9)); // where the engine was
     } else {
-      wing.add(box(2.4, 1.2, 2, WHITE, -2, 0.2, side * 5.6)); // torn edge
+      wing.add(box(2.4, 1.2, 2, WHITE, -2, 0.2, side * 10.6)); // torn edge
     }
     g.add(wing);
   }
@@ -150,8 +152,8 @@ export function tailModel(): Group {
   const L = 40;
   const g = new Group();
   const shell = new Group();
-  shell.position.y = R - 0.5;
-  shell.rotation.x = 0.55; // rolled over, so that the fin leans
+  shell.position.y = R + 1;
+  shell.rotation.x = 1.15; // rolled well over: the fin lies out to the side, its broad face to the camera
   g.add(shell);
   const TIP = 3.5; // the radius at the tail's tip
   shell.add(tube(TIP, R, L, WHITE, 0, 0, 0, 22));
@@ -161,10 +163,10 @@ export function tailModel(): Group {
     new ExtrudeGeometry(
       new Shape(
         [
-          [5, 0],
-          [-3, 17],
-          [-7.5, 17],
-          [-8, 0],
+          [6, 0],
+          [-4, 21],
+          [-9, 21],
+          [-10, 0],
         ].map(([x, y]) => new Vector2(x, y))
       ),
       { depth: 1.4, bevelEnabled: false }

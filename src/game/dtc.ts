@@ -79,8 +79,8 @@ export function dtcScene(ox: number, oy: number): Scene {
     e2: [156, 88],
     e3: [158, 98],
     e4: [156, 108],
-    s1: [134, 90], // the corridor between the front section and the wing
-    s2: [112, 90],
+    s1: [134, 91.5], // the corridor between the front section and the wing
+    s2: [112, 91.5],
     s3: [90, 90],
     v1: [80, 87],
     w1: [104, 98],
