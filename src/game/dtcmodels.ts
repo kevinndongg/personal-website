@@ -7,7 +7,6 @@ import {
   DoubleSide,
   ExtrudeGeometry,
   Group,
-  Matrix4,
   Mesh,
   MeshBasicMaterial,
   RingGeometry,
@@ -107,20 +106,22 @@ function wingOutline(side: 1 | -1, span: number, lead: number, rootChord: number
 
 const NOSE = 1.4; // the nose is half an ellipsoid: R across and above, NOSE * R long
 
-/**
- * A pane of cockpit glass on the nose, lying on its skin: `y` above the fuselage's axis and `z` across (the nose's outline is an ellipsoid,
- * so that fixes where it is), `w` wide along the skin and `h` tall up it. It is turned to face the way the skin does, forward and out at the
- * windshield and out at the sides, and stands a little proud of it.
- */
-function nosePane(parent: Group, from: number, y0: number, y: number, z: number, w: number, h: number): void {
-  const x = NOSE * R * Math.sqrt(Math.max(0, 1 - (y * y + z * z) / (R * R)));
-  const normal = new Vector3(x / (NOSE * R * NOSE * R), y / (R * R), z / (R * R)).normalize();
-  const along = new Vector3().crossVectors(normal, UP).normalize(); // horizontal, along the skin
-  const up = new Vector3().crossVectors(along, normal); // up the skin
-  const pane = mesh(new BoxGeometry(w, 0.9, h), toon(GLASS));
-  pane.quaternion.setFromRotationMatrix(new Matrix4().makeBasis(along, normal, up));
-  pane.position.set(from + x, y0 + y, z).addScaledVector(normal, 0.15);
-  parent.add(pane);
+// Cockpit glass is painted on the nose: patches of a sphere with the nose's own shape, a hair larger, so that they lie right on the skin and
+// follow its curve, with no thickness. The sphere has its poles up, so a patch is a range of angles from the top (theta, which sets the
+// height: 0 is straight up) and of angles round it (phi, which sets where along the nose and which side); the bars between the panes are
+// the skin left bare between two patches. `from` and `to` are degrees round from the front of the nose, on `side` (+1 south, -1 north).
+const glassMat = new MeshBasicMaterial({ color: GLASS, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+function nosePane(parent: Group, centre: number, y0: number, side: 1 | -1, from: number, to: number, top: number, bottom: number): void {
+  const deg = Math.PI / 180;
+  const front = Math.PI; // phi of the front of the nose (the sphere's +x)
+  const phiStart = side > 0 ? front - to * deg : front + from * deg;
+  const patch = new Mesh(
+    new SphereGeometry(R * 1.015, Math.max(4, Math.round((to - from) / 3)), 6, phiStart, (to - from) * deg, top * deg, (bottom - top) * deg),
+    glassMat
+  );
+  patch.scale.set(NOSE, 1, 1);
+  patch.position.set(centre, y0, 0);
+  parent.add(patch);
 }
 
 /** The front of the airliner: rounded nose and cockpit glass, the north wing (an engine torn off it), the stub of the south one, the torn end to the west. Length 62 (the nose reaches 13 further). */
@@ -133,12 +134,12 @@ export function fuselageModel(): Group {
   const nose = mesh(new SphereGeometry(R, 22, 14), toon(WHITE), L / 2, y0, 0);
   nose.scale.set(NOSE, 1, 1);
   g.add(nose);
-  // the cockpit, as on a 737: one dark band round the nose at a single height. Two windshield panes face forward, with a thin white post
-  // between them, and behind them each side has a sliding window and a fixed one, close together
-  for (const side of [-1, 1]) {
-    nosePane(g, L / 2, y0, 4.6, side * 2.7, 3.6, 4.2); // the windshield pane
-    nosePane(g, L / 2, y0, 4.5, side * 6.3, 3.4, 3.8); // the sliding window, just behind it
-    nosePane(g, L / 2, y0, 4.3, side * 8.2, 2.6, 3.6); // and the fixed one behind that
+  // the cockpit, as on a 737: one dark band round the nose. Two windshield panes face forward with a thin post between them, and behind them
+  // each side has a sliding window and a fixed one, close together, each pair separated by a bar of bare skin of the same width
+  for (const side of [-1, 1] as const) {
+    nosePane(g, L / 2, y0, side, 3, 27, 44, 76); // the windshield pane (the post is the 6 degrees between the two)
+    nosePane(g, L / 2, y0, side, 31, 50, 50, 74); // the sliding window
+    nosePane(g, L / 2, y0, side, 54, 70, 52, 72); // the fixed one
   }
   for (const side of [-1, 1]) g.add(box(L - 2, 1.8, 0.8, BLUE, 0, y0 - 2.5 - 0.9, side * (R - 0.2))); // the cheat line
   windows(g, -24, 22, 6, y0, R);
