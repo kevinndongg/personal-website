@@ -402,11 +402,6 @@ export function casualtyModel(key: string): Group {
     }
   bbox.visible = false;
   g.add(bbox);
-  // a line that sweeps back and forth along them inside the brackets while they are being looked at
-  const scan = new Mesh(new BoxGeometry(0.5, 0.35, 2 * hz - 1), limeMat);
-  scan.position.y = 0.35;
-  scan.visible = false;
-  g.add(scan);
 
   // a ping on the ground round a casualty who has been found and is waiting for a medic: a ring in their colour that swells and fades
   const pingMat = new MeshBasicMaterial({ color: TAGS[tag], transparent: true, opacity: 0, depthWrite: false });
@@ -418,13 +413,11 @@ export function casualtyModel(key: string): Group {
 
   const tagColor = new Color(TAGS[tag]);
   const rate = BREATH[tag];
-  const apply = (seen: number, boxAmt: number, t: number, pinging: boolean, sweep = -1) => {
+  const apply = (seen: number, boxAmt: number, t: number, pinging: boolean) => {
     vestMat.color.copy(tagGrey).lerp(tagColor, seen);
     vest.position.y = 2.85 + (rate ? 0.2 * Math.sin(t * rate + v) : 0);
     bbox.visible = boxAmt > 0.03;
     bbox.scale.set(1 + (1 - boxAmt) * 0.7, 1, 1 + (1 - boxAmt) * 0.7);
-    scan.visible = sweep >= 0 && boxAmt > 0.5;
-    if (scan.visible) scan.position.x = -0.8 - hx + 2 * hx * sweep;
     ping.visible = pinging;
     if (pinging) {
       const k = (t * 0.8 + v * 0.3) % 1;
@@ -441,7 +434,6 @@ export function casualtyModel(key: string): Group {
   let seen = 0;
   let boxAmt = 0;
   let wasHit = false;
-  let hitStart = 0;
   let last = -1;
   g.userData.animate = ({ t }: AnimCtx) => {
     if (t <= 0) {
@@ -457,17 +449,15 @@ export function casualtyModel(key: string): Group {
     const near = (s: { on: boolean; x: number; z: number }, r: number) => s.on && Math.hypot(s.x - g.position.x, s.z - g.position.z) < r;
     const hit = near(dtcScan.drone, DRONE.hit) || near(dtcScan.spot, SPOT.hit);
     if (hit && !wasHit) {
-      hitStart = t;
       if (!state.found) state.found = true;
       else if (state.helped) state.helped = state.claimed = false; // looked at again: a medic is due back
     }
     wasHit = hit;
     seen += ((state.found ? 1 : 0) - seen) * (1 - Math.exp(-dt * (state.found ? 7 : 2.2)));
     boxAmt += ((hit ? 1 : 0) - boxAmt) * (1 - Math.exp(-dt * 10));
-    const sweep = hit ? 1 - Math.abs((((t - hitStart) / 1.1) % 2) - 1) : -1; // 0 .. 1 .. 0, back and forth along the casualty
-    apply(seen < 0.01 ? 0 : seen, boxAmt, t, state.found && !state.helped && seen > 0.9, sweep);
+    apply(seen < 0.01 ? 0 : seen, boxAmt, t, state.found && !state.helped && seen > 0.9);
   };
-  markMoving(g, vest, bbox, arm, ping, scan);
+  markMoving(g, vest, bbox, arm, ping);
   return g;
 }
 
