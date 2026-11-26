@@ -17,7 +17,9 @@
 import type { Group } from "three";
 import { lapCurve } from "./drive";
 import type { AnimCtx } from "./models";
-import type { MedicPlan } from "./scenes";
+import { Nav, PEOPLE } from "./dtcnav";
+import type { Pt } from "./dtcnav";
+import type { MedicPlan, NavShape } from "./scenes";
 
 /** Where each sensor is (world px, z being the world's y) and whether it is scanning now. */
 export const dtcScan = {
@@ -98,6 +100,7 @@ const STRIDE = 8.5; // rad/s of a medic's stride at full swing
 const REACT = 1.0; // seconds from a casualty being confirmed to the medic setting off
 const TREAT = 4.6; // seconds spent kneeling by them
 const KNEEL = 0.5; // seconds to get down, and up again
+const SEPARATE = 6.4; // walkers closer than this ease apart
 
 /** Who is seen to first: red, then yellow, then green (and black last, by the robot only: a medic does not go to them). */
 const RANK: Record<string, number> = { r: 0, y: 1, g: 2, k: 3 };
@@ -216,84 +219,149 @@ export function attachFlight(model: Group, path: { x: number; y: number; hold?: 
   };
 }
 
-type Pt = { x: number; y: number };
-
 const mix = (a: number, b: number, k: number) => a + wrap(b - a) * k;
 
-/** The site's paths as something to walk: the curve of the shortest way from a point to a node (Dijkstra; there are few of them). */
-function navigator(plan: MedicPlan) {
-  const ids = Object.keys(plan.nodes);
-  const adjacent = new Map<string, { to: string; w: number }[]>(ids.map((id) => [id, []]));
-  for (const [a, b] of plan.edges) {
-    const w = Math.hypot(plan.nodes[a].x - plan.nodes[b].x, plan.nodes[a].y - plan.nodes[b].y);
-    adjacent.get(a)!.push({ to: b, w });
-    adjacent.get(b)!.push({ to: a, w });
+/** Where every walker is (world px, y being the world's z) and whether it is standing still: the walkers read it to keep out of each other's way. */
+const walkers = new Map<number, { x: number; y: number; still: boolean; t: number }>();
+let walkerCount = 0;
+
+const navCache = new WeakMap<object, Nav>();
+/** The casualty's body as the walkers see it: where they lie, head to +x, a little longer than wide. */
+const bodyOf = (c: MedicPlan["calls"][number]): NavShape => ({
+  kind: "rect",
+  x: c.at.x - 0.8 * Math.cos(c.angle),
+  y: c.at.y - 0.8 * Math.sin(c.angle),
+  w: 13.5,
+  h: 6.5,
+  angle: c.angle,
+});
+function navFor(plan: MedicPlan): Nav {
+  let nav = navCache.get(plan.obstacles);
+  if (!nav) {
+    nav = new Nav(plan.area, plan.obstacles, plan.calls.map(bodyOf));
+    navCache.set(plan.obstacles, nav);
   }
-  const gap = (p: Pt, id: string) => Math.hypot(plan.nodes[id].x - p.x, plan.nodes[id].y - p.y);
-  const nearest = (p: Pt) => ids.reduce((best, id) => (gap(p, id) < gap(p, best) ? id : best), ids[0]);
-  const shortest = (from: string, to: string): string[] => {
-    const dist = new Map(ids.map((id) => [id, Infinity]));
-    const prev = new Map<string, string>();
-    const todo = new Set(ids);
-    dist.set(from, 0);
-    while (todo.size) {
-      let u: string | null = null;
-      for (const id of todo) if (u === null || dist.get(id)! < dist.get(u)!) u = id;
-      if (u === null || dist.get(u) === Infinity) break;
-      todo.delete(u);
-      if (u === to) break;
-      for (const { to: v, w } of adjacent.get(u)!) {
-        const d = dist.get(u)! + w;
-        if (d < dist.get(v)!) {
-          dist.set(v, d);
-          prev.set(v, u);
-        }
-      }
-    }
-    const way = [to];
-    while (way[0] !== from) {
-      const before = prev.get(way[0]);
-      if (!before) break;
-      way.unshift(before);
-    }
-    return way;
-  };
-  return (from: Pt, to: string) => {
-    const way = shortest(nearest(from), to).map((id) => plan.nodes[id]);
-    const points = way.length && Math.hypot(way[0].x - from.x, way[0].y - from.y) > 1 ? [{ x: from.x, y: from.y }, ...way] : way.slice();
-    if (points.length < 2) points.push({ x: points[0].x + 0.01, y: points[0].y });
-    const curve = lapCurve(points);
-    return { curve, L: curve.getLength() };
-  };
-}
-
-/** A walk along a curve: when it began, how long it stands first, the heading it turns from onto the way, and whether it is the walk home. */
-interface Leg {
-  curve: ReturnType<typeof lapCurve>;
-  L: number;
-  start: number;
-  delay: number;
-  headStart: number;
-  toHome: boolean;
-}
-
-/** Where a walker is on its leg at time `t` going `speed` px/s, the way it faces, whether it is walking and whether it has got there. */
-function walkLeg(l: Leg, t: number, speed: number) {
-  const e = t - l.start - l.delay;
-  const s = Math.min(l.L, Math.max(0, e) * speed);
-  const u = Math.min(1, Math.max(0, s / l.L));
-  const v = l.curve.getTangentAt(u);
-  const q = l.curve.getPointAt(u);
-  return {
-    at: { x: q.x, y: q.z } as Pt,
-    heading: mix(l.headStart, Math.atan2(v.z, v.x), smooth(e / 0.35)),
-    walking: e > 0,
-    arrived: e > 0 && s >= l.L,
-  };
+  return nav;
 }
 
 /** The plan's call for a casualty at (x, z), or -1. */
 const callFor = (plan: MedicPlan, x: number, z: number) => plan.calls.findIndex((c) => Math.hypot(c.at.x - x, c.at.y - z) < 4);
+
+/**
+ * What the robot and the medics have in common: walking (`speed` px/s) to a place by a path that keeps clear of the wreck and the bodies
+ * and of anybody standing still, turning to face the way it goes, easing round anybody else who is moving, and being pushed out of anything
+ * it has been nudged into. A walker publishes where it is and whether it stands still, so that the others can walk round it.
+ */
+function makeWalker(model: Group, plan: MedicPlan, speed: number) {
+  const id = ++walkerCount;
+  const nav = navFor(plan);
+  const home = { x: model.position.x, y: model.position.z, ry: model.rotation.y };
+  const w = {
+    at: { x: home.x, y: home.y } as Pt,
+    heading: -home.ry,
+    homeHeading: -home.ry,
+    home: { x: home.x, y: home.y } as Pt,
+    still: true,
+  };
+  interface Leg {
+    pts: Pt[];
+    cum: number[];
+    L: number;
+    start: number;
+    delay: number;
+    target: number;
+    to: Pt;
+    toHome: boolean;
+  }
+  let leg: Leg | null = null;
+  let lastReplan = -9;
+  const aside = { x: 0, y: 0 }; // how far it is eased off its path to keep clear of the others
+
+  /** The others, as far as they have been seen lately (a walker that has stopped updating is gone: a hot reload leaves them behind). */
+  const others = (t: number, stillOnly: boolean): Pt[] => {
+    const out: Pt[] = [];
+    for (const [k, o] of walkers) if (k !== id && t - o.t < 1 && (!stillOnly || o.still)) out.push({ x: o.x, y: o.y });
+    return out;
+  };
+
+  /** Sets off for `to` after `delay` seconds, along a path round everything (and everybody standing still). `target` is the casualty it is going to, or -1. */
+  const go = (t: number, to: Pt, target: number, toHome: boolean, delay: number) => {
+    // (round everybody standing still; if that leaves no way, as if they were not there, for they will ease aside; and if the ground itself
+    // leaves none, in a line)
+    const pts = nav.path(w.at, to, { target, agents: others(t, true) }) ?? nav.path(w.at, to, { target }) ?? [{ x: w.at.x, y: w.at.y }, to];
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+    leg = { pts, cum, L: cum[cum.length - 1], start: t, delay, target, to, toHome };
+  };
+
+  /** Where on the leg it is at distance `s`, and the way the leg runs there. */
+  const along = (l: Leg, s: number) => {
+    let i = 1;
+    while (i < l.pts.length - 1 && l.cum[i] < s) i++;
+    const a = l.pts[i - 1];
+    const b = l.pts[i];
+    const span = l.cum[i] - l.cum[i - 1];
+    const k = span > 1e-6 ? Math.min(1, Math.max(0, (s - l.cum[i - 1]) / span)) : 1;
+    return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, dir: Math.atan2(b.y - a.y, b.x - a.x) };
+  };
+
+  /** One step of the walk. `walking`: it has set off; `arrived`: it is there. */
+  const walk = (t: number, dt: number) => {
+    const l = leg!;
+    const e = t - l.start - l.delay;
+    const s = Math.min(l.L, Math.max(0, e) * speed);
+    const here = along(l, s);
+    // somebody standing still has turned up on the way: go round them
+    if (e > 0 && t - lastReplan > 0.6) {
+      const still = others(t, true);
+      let blocked = false;
+      for (let d = 3; d <= 15 && !blocked; d += 3) {
+        const p = along(l, Math.min(l.L, s + d));
+        blocked = still.some((o) => Math.hypot(p.x - o.x, p.y - o.y) < PEOPLE - 0.3);
+      }
+      if (blocked) {
+        lastReplan = t;
+        go(t, l.to, l.target, l.toHome, 0);
+        return { walking: false, arrived: false };
+      }
+    }
+    w.heading += wrap(here.dir - w.heading) * (1 - Math.exp(-dt * 10));
+    // ease round anybody else who is close (a walker who is moving moves aside by half, one who is standing still not at all), smoothly
+    let wantX = 0;
+    let wantY = 0;
+    for (const [k, o] of walkers) {
+      if (k === id || t - o.t >= 1) continue;
+      const d = Math.hypot(here.x - o.x, here.y - o.y);
+      if (d >= SEPARATE || d < 1e-6) continue;
+      const push = (SEPARATE - d) * (o.still ? 1 : 0.5);
+      wantX += ((here.x - o.x) / d) * push;
+      wantY += ((here.y - o.y) / d) * push;
+    }
+    const ease = 1 - Math.exp(-dt * 8);
+    aside.x += (wantX - aside.x) * ease;
+    aside.y += (wantY - aside.y) * ease;
+    w.at = nav.resolve({ x: here.x + aside.x, y: here.y + aside.y });
+    const walking = e > 0;
+    w.still = !walking;
+    return { walking, arrived: walking && s >= l.L - 0.01 };
+  };
+
+  /** Turns on the spot toward `heading`. */
+  const turn = (heading: number, dt: number, rate = 9) => {
+    w.heading += wrap(heading - w.heading) * (1 - Math.exp(-dt * rate));
+  };
+
+  /** Writes where it is to the model and tells the others. */
+  const place = (t: number) => {
+    model.position.x = w.at.x;
+    model.position.z = w.at.y;
+    model.rotation.y = -w.heading;
+    walkers.set(id, { x: w.at.x, y: w.at.y, still: w.still, t });
+  };
+
+  return { w, go, walk, turn, place, leg: () => leg };
+}
+
 
 /**
  * Makes `model` (the robot, with `userData.pose`), parked at its post (`plan.home`), the team's scout: when the drone has found a casualty
@@ -303,34 +371,24 @@ const callFor = (plan: MedicPlan, x: number, z: number) => plan.calls.findIndex(
  */
 export function attachScout(model: Group, plan: MedicPlan) {
   const pose = model.userData.pose as (p: SpotPose) => void;
-  const home = { x: model.position.x, z: model.position.z, ry: model.rotation.y };
-  const homeHeading = -home.ry;
-  const route = navigator(plan);
+  const me = makeWalker(model, plan, SCOUT_RUN);
+  const { w } = me;
 
   let mode: "idle" | "walk" | "scan" | "settle" = "idle";
-  let at: Pt = { x: home.x, y: home.z };
-  let heading = homeHeading;
-  let leg: Leg | null = null;
   let job: { st: CasualtyState; face: number } | null = null;
   let scanStart = 0;
-  let scanFrom = 0;
   let marked = false;
   let settleStart = 0;
-  let settleFrom = 0;
   let phase = 0;
   let last = -1;
 
-  const startLeg = (t: number, to: string, toHome: boolean, delay: number) => {
-    leg = { ...route(at, to), start: t, delay, headStart: heading, toHome };
-    mode = "walk";
-  };
   const pick = () => {
     let best: { ci: number; st: CasualtyState; score: number } | null = null;
     for (const st of dtcScan.casualties.values()) {
       if (!st.found || st.scouted || st.confirmed) continue;
       const ci = callFor(plan, st.x, st.z);
       if (ci < 0 || !plan.calls[ci].spot) continue;
-      const score = (RANK[st.tag] ?? 3) * 1000 + Math.hypot(st.x - at.x, st.z - at.y);
+      const score = (RANK[st.tag] ?? 3) * 1000 + Math.hypot(st.x - w.at.x, st.z - w.at.y);
       if (!best || score < best.score) best = { ci, st, score };
     }
     return best;
@@ -339,7 +397,8 @@ export function attachScout(model: Group, plan: MedicPlan) {
     next.st.scouted = true;
     const spot = plan.calls[next.ci].spot!;
     job = { st: next.st, face: spot.face };
-    startLeg(t, spot.node, false, delay);
+    me.go(t, plan.nodes[spot.node], next.ci, false, delay);
+    mode = "walk";
   };
 
   model.userData.animate = ({ t }: AnimCtx) => {
@@ -348,40 +407,38 @@ export function attachScout(model: Group, plan: MedicPlan) {
     last = t;
     let swing = 0;
     let scan = 0;
+    w.still = true;
 
     if (mode === "idle") {
       const next = pick();
       if (next) dispatch(t, next, SCOUT_REACT);
+      me.place(t);
       return;
     }
     if (mode === "walk") {
-      if (leg!.toHome) {
+      if (me.leg()!.toHome) {
         const next = pick(); // somebody was found on the way home: turn back
         if (next) dispatch(t, next, 0.1);
       }
-      const w = walkLeg(leg!, t, SCOUT_RUN);
-      at = w.at;
-      heading = w.heading;
-      swing = w.walking ? 1 : 0;
-      if (w.arrived) {
-        if (leg!.toHome) {
+      const step = me.walk(t, dt);
+      swing = step.walking ? 1 : 0;
+      if (step.arrived) {
+        if (me.leg()!.toHome) {
           mode = "settle";
           settleStart = t;
-          settleFrom = heading;
         } else {
           mode = "scan";
           scanStart = t;
-          scanFrom = heading;
           marked = false;
         }
       }
     } else if (mode === "scan") {
       const k = t - scanStart;
-      heading = mix(scanFrom, job!.face, smooth(k / 0.35));
+      me.turn(job!.face, dt);
       scan = Math.min(smooth(k / 0.5), smooth((SCAN - k) / 0.5));
       dtcScan.spot.on = k > 0.35 && k < SCAN - 0.3;
-      dtcScan.spot.x = at.x;
-      dtcScan.spot.z = at.y;
+      dtcScan.spot.x = w.at.x;
+      dtcScan.spot.z = w.at.y;
       if (!marked && k > SCAN * CONFIRM_AT) {
         marked = true;
         job!.st.confirmed = true; // the medics' cue
@@ -390,23 +447,22 @@ export function attachScout(model: Group, plan: MedicPlan) {
         dtcScan.spot.on = false;
         const next = pick();
         if (next) dispatch(t, next, 0); // straight on to the next one
-        else startLeg(t, plan.home, true, 0.2);
+        else {
+          me.go(t, w.home, -1, true, 0.2);
+          mode = "walk";
+        }
       }
     } else {
-      const k = (t - settleStart) / 0.6;
-      heading = mix(settleFrom, homeHeading, smooth(k));
-      swing = 0.4 * (1 - smooth(k));
-      if (k >= 1) {
+      me.turn(w.homeHeading, dt);
+      swing = 0.3;
+      if (Math.abs(wrap(w.homeHeading - w.heading)) < 0.05 || t - settleStart > 1.2) {
         mode = "idle";
-        at = { x: home.x, y: home.z };
-        heading = homeHeading;
+        w.heading = w.homeHeading;
         swing = 0;
       }
     }
     phase += dt * SCOUT_STRIDE * swing;
-    model.position.x = at.x;
-    model.position.z = at.y;
-    model.rotation.y = -heading;
+    me.place(t);
     pose({ phase, swing, scan, t });
   };
 }
@@ -420,27 +476,17 @@ export function attachScout(model: Group, plan: MedicPlan) {
  */
 export function attachMedic(model: Group, plan: MedicPlan) {
   const pose = model.userData.pose as (p: MedicPose) => void;
-  const home = { x: model.position.x, z: model.position.z, ry: model.rotation.y };
-  const homeHeading = -home.ry;
-  const route = navigator(plan);
+  const me = makeWalker(model, plan, RUN);
+  const { w } = me;
 
   let mode: "idle" | "walk" | "treat" | "settle" = "idle";
-  let at: Pt = { x: home.x, y: home.z };
-  let heading = homeHeading;
-  let leg: Leg | null = null;
   let job: { st: CasualtyState; face: number } | null = null;
   let treatStart = 0;
-  let treatFrom = 0;
   let marked = false;
   let settleStart = 0;
-  let settleFrom = 0;
   let phase = 0;
   let last = -1;
 
-  const startLeg = (t: number, to: string, toHome: boolean, delay: number) => {
-    leg = { ...route(at, to), start: t, delay, headStart: heading, toHome };
-    mode = "walk";
-  };
   /** The casualty to go to: confirmed, nobody on the way, not yet treated, and one of ours; the most urgent, then the nearest. */
   const pick = () => {
     let best: { ci: number; st: CasualtyState; score: number } | null = null;
@@ -448,7 +494,7 @@ export function attachMedic(model: Group, plan: MedicPlan) {
       if (!st.found || !st.confirmed || st.claimed || st.helped || st.tag === "k") continue;
       const ci = callFor(plan, st.x, st.z);
       if (ci < 0) continue;
-      const score = (RANK[st.tag] ?? 3) * 1000 + Math.hypot(st.x - at.x, st.z - at.y);
+      const score = (RANK[st.tag] ?? 3) * 1000 + Math.hypot(st.x - w.at.x, st.z - w.at.y);
       if (!best || score < best.score) best = { ci, st, score };
     }
     return best;
@@ -456,7 +502,8 @@ export function attachMedic(model: Group, plan: MedicPlan) {
   const dispatch = (t: number, next: { ci: number; st: CasualtyState }, delay: number) => {
     next.st.claimed = true;
     job = { st: next.st, face: plan.calls[next.ci].face };
-    startLeg(t, plan.calls[next.ci].node, false, delay);
+    me.go(t, plan.nodes[plan.calls[next.ci].node], next.ci, false, delay);
+    mode = "walk";
   };
 
   model.userData.animate = ({ t }: AnimCtx) => {
@@ -465,36 +512,34 @@ export function attachMedic(model: Group, plan: MedicPlan) {
     last = t;
     let swing = 0;
     let kneel = 0;
+    w.still = true;
 
     if (mode === "idle") {
       const next = pick();
       if (next) dispatch(t, next, REACT);
+      me.place(t);
       return;
     }
     if (mode === "walk") {
-      if (leg!.toHome) {
+      if (me.leg()!.toHome) {
         const next = pick(); // somebody was confirmed on the way home: turn back
         if (next) dispatch(t, next, 0.2);
       }
-      const w = walkLeg(leg!, t, RUN);
-      at = w.at;
-      heading = w.heading;
-      swing = w.walking ? 1 : 0;
-      if (w.arrived) {
-        if (leg!.toHome) {
+      const step = me.walk(t, dt);
+      swing = step.walking ? 1 : 0;
+      if (step.arrived) {
+        if (me.leg()!.toHome) {
           mode = "settle";
           settleStart = t;
-          settleFrom = heading;
         } else {
           mode = "treat";
           treatStart = t;
-          treatFrom = heading;
           marked = false;
         }
       }
     } else if (mode === "treat") {
       const k = t - treatStart;
-      heading = mix(treatFrom, job!.face, smooth(k / 0.4));
+      me.turn(job!.face, dt);
       kneel = Math.min(smooth(k / KNEEL), smooth((TREAT - k) / KNEEL));
       if (!marked && k > TREAT - KNEEL) {
         marked = true;
@@ -504,23 +549,22 @@ export function attachMedic(model: Group, plan: MedicPlan) {
       if (k >= TREAT) {
         const next = pick();
         if (next) dispatch(t, next, 0.3); // straight on to the next one
-        else startLeg(t, plan.home, true, 0.3);
+        else {
+          me.go(t, w.home, -1, true, 0.3);
+          mode = "walk";
+        }
       }
     } else {
-      const k = (t - settleStart) / 0.6;
-      heading = mix(settleFrom, homeHeading, smooth(k));
-      swing = 0.4 * (1 - smooth(k));
-      if (k >= 1) {
+      me.turn(w.homeHeading, dt);
+      swing = 0.3;
+      if (Math.abs(wrap(w.homeHeading - w.heading)) < 0.05 || t - settleStart > 1.2) {
         mode = "idle";
-        at = { x: home.x, y: home.z };
-        heading = homeHeading;
+        w.heading = w.homeHeading;
         swing = 0;
       }
     }
     phase += dt * STRIDE * swing * 1.2;
-    model.position.x = at.x;
-    model.position.z = at.y;
-    model.rotation.y = -heading;
+    me.place(t);
     pose({ phase, swing, kneel, t });
   };
 }
