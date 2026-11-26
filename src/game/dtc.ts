@@ -55,16 +55,17 @@ export function dtcScene(ox: number, oy: number): Scene {
 
   // ---- the casualties, each lying where they were thrown. The key is the triage colour (g green: walking wounded, y yellow: can wait, r red:
   // needs help now) and a number for what they wear and how they lie (g1 waves); `angle` is the way their head points. `medic` is where a
-  // medic kneels beside them and `robot` where the robot stands to scan them: each on a side, or an end, that leaves the paths open.
+  // medic kneels beside them and `robot` where the robot stands to scan them: the medic right beside them, the robot about 10 px from their
+  // body (it never goes closer to a casualty than that: a robot near someone hurt is a danger to them).
   // (The key also has k, black, for someone past help: there is none here.)
   const CASUALTIES = [
-    { key: "g0", x: 74, y: 96, angle: 0.3, medic: [74, 102], robot: [63, 93] },
-    { key: "y0", x: 78, y: 52, angle: -0.4, medic: [77, 47], robot: [88, 47] },
-    { key: "r0", x: 90, y: 103, angle: 3.4, medic: [89, 109], robot: [101, 107] },
-    { key: "y1", x: 68, y: 72, angle: 1.0, medic: [72, 68], robot: [63, 64] }, // thrown clear, between the tail and the front section
-    { key: "g1", x: 144, y: 50, angle: 2.9, medic: [146, 55], robot: [155, 47] },
-    { key: "y2", x: 146, y: 116, angle: 0.2, medic: [146, 110], robot: [144, 124] },
-    { key: "r1", x: 30, y: 96, angle: -0.5, medic: [32, 101], robot: [25, 89] },
+    { key: "g0", x: 74, y: 96, angle: 0.3, medic: [74, 102], robot: [89, 88] },
+    { key: "y0", x: 78, y: 52, angle: -0.4, medic: [77, 47], robot: [89, 39] },
+    { key: "r0", x: 90, y: 103, angle: 3.4, medic: [89, 109], robot: [105, 95] },
+    { key: "y1", x: 68, y: 72, angle: 1.0, medic: [72, 68], robot: [81, 83] }, // thrown clear, between the tail and the front section
+    { key: "g1", x: 144, y: 50, angle: 2.9, medic: [146, 55], robot: [157, 61] },
+    { key: "y2", x: 146, y: 116, angle: 0.2, medic: [146, 110], robot: [146, 101] },
+    { key: "r1", x: 30, y: 96, angle: -0.5, medic: [32, 101], robot: [44, 104] },
   ] as const;
   props.push(...CASUALTIES.map((c): Prop => ({ sprite: `dtc-casualty-${c.key}`, ...at(c.x, c.y), angle: c.angle })));
 

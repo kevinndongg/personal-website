@@ -17,7 +17,7 @@
 import type { Group } from "three";
 import { lapCurve } from "./drive";
 import type { AnimCtx } from "./models";
-import { Nav, PEOPLE } from "./dtcnav";
+import { ATTEND, Nav, PEOPLE } from "./dtcnav";
 import type { Pt } from "./dtcnav";
 import type { MedicPlan, NavShape } from "./scenes";
 
@@ -50,7 +50,7 @@ export const DRONE = {
   alt: 30, // how high it flies (px), cruising and looking at a casualty alike
   hit: 12, // a casualty this near (horizontally) is scanned, which only happens while it is down over them
 };
-export const SPOT = { hit: 16 };
+export const SPOT = { hit: 22 }; // a casualty this near (to their middle) is within the robot's scan: it stands about 10 px from their body
 
 /** What the drone model is told each frame (`userData.setFlight`). */
 export interface FlightPose {
@@ -91,6 +91,7 @@ const GAP = [3, 5]; // seconds from landing to the next take-off (a battery swap
 const SCOUT_RUN = 27; // px/s
 const SCOUT_STRIDE = 15; // rad/s of its stride at full swing
 const SCOUT_REACT = 0.4; // seconds from a casualty being found to the robot setting off
+const SCOUT_KEEP = { body: 8, beside: 8 }; // how far the robot keeps from a body, everywhere, even the one it scans (a robot near a casualty is a danger to them)
 const SCAN = 2.8; // seconds it spends scanning one casualty
 const CONFIRM_AT = 0.55; // the casualty is confirmed this far (as a fraction) into the scan
 
@@ -101,6 +102,7 @@ const REACT = 1.0; // seconds from a casualty being confirmed to the medic setti
 const TREAT = 4.6; // seconds spent kneeling by them
 const KNEEL = 0.5; // seconds to get down, and up again
 const SEPARATE = 6.4; // walkers closer than this ease apart
+const FOLLOW = 7; // somebody this close ahead, on the walker's own line, is waited for
 
 /** Who is seen to first: red, then yellow, then green (and black last, by the robot only: a medic does not go to them). */
 const RANK: Record<string, number> = { r: 0, y: 1, g: 2, k: 3 };
@@ -248,11 +250,11 @@ function navFor(plan: MedicPlan): Nav {
 const callFor = (plan: MedicPlan, x: number, z: number) => plan.calls.findIndex((c) => Math.hypot(c.at.x - x, c.at.y - z) < 4);
 
 /**
- * What the robot and the medics have in common: walking (`speed` px/s) to a place by a path that keeps clear of the wreck and the bodies
+ * What the robot and the medics have in common: walking (`speed` px/s) to a place by a path that keeps clear of the wreck and the bodies (by `keep`)
  * and of anybody standing still, turning to face the way it goes, easing round anybody else who is moving, and being pushed out of anything
  * it has been nudged into. A walker publishes where it is and whether it stands still, so that the others can walk round it.
  */
-function makeWalker(model: Group, plan: MedicPlan, speed: number) {
+function makeWalker(model: Group, plan: MedicPlan, speed: number, keep = ATTEND) {
   const id = ++walkerCount;
   const nav = navFor(plan);
   const home = { x: model.position.x, y: model.position.z, ry: model.rotation.y };
@@ -276,6 +278,8 @@ function makeWalker(model: Group, plan: MedicPlan, speed: number) {
   let leg: Leg | null = null;
   let lastReplan = -9;
   const aside = { x: 0, y: 0 }; // how far it is eased off its path to keep clear of the others
+  let waited = 0; // how long it has been waiting for somebody ahead of it to clear the way
+  let noWaitUntil = 0;
 
   /** The others, as far as they have been seen lately (a walker that has stopped updating is gone: a hot reload leaves them behind). */
   const others = (t: number, stillOnly: boolean): Pt[] => {
@@ -288,7 +292,7 @@ function makeWalker(model: Group, plan: MedicPlan, speed: number) {
   const go = (t: number, to: Pt, target: number, toHome: boolean, delay: number) => {
     // (round everybody standing still; if that leaves no way, as if they were not there, for they will ease aside; and if the ground itself
     // leaves none, in a line)
-    const pts = nav.path(w.at, to, { target, agents: others(t, true) }) ?? nav.path(w.at, to, { target }) ?? [{ x: w.at.x, y: w.at.y }, to];
+    const pts = nav.path(w.at, to, { target, agents: others(t, true), margins: keep }) ?? nav.path(w.at, to, { target, margins: keep }) ?? [{ x: w.at.x, y: w.at.y }, to];
     const cum = [0];
     for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
     leg = { pts, cum, L: cum[cum.length - 1], start: t, delay, target, to, toHome };
@@ -308,9 +312,30 @@ function makeWalker(model: Group, plan: MedicPlan, speed: number) {
   /** One step of the walk. `walking`: it has set off; `arrived`: it is there. */
   const walk = (t: number, dt: number) => {
     const l = leg!;
-    const e = t - l.start - l.delay;
-    const s = Math.min(l.L, Math.max(0, e) * speed);
-    const here = along(l, s);
+    let e = t - l.start - l.delay;
+    let s = Math.min(l.L, Math.max(0, e) * speed);
+    let here = along(l, s);
+    // somebody is just ahead on the same line and has the right of way (they stand still, or they have been about longer): wait for them to
+    // clear, rather than walk through them (but never for long: two that wait for each other would stand there for good)
+    if (e > 0 && t >= noWaitUntil) {
+      let ahead = false;
+      for (const [k, o] of walkers) {
+        if (k === id || t - o.t >= 1 || !(o.still || id > k)) continue;
+        const d = Math.hypot(o.x - here.x, o.y - here.y);
+        if (d < FOLLOW && Math.abs(wrap(Math.atan2(o.y - here.y, o.x - here.x) - here.dir)) < 0.9) ahead = true;
+      }
+      if (ahead) {
+        waited += dt;
+        l.start += dt; // (its place on the leg is what time has made it: not moving on holds it where it is)
+        e -= dt;
+        s = Math.min(l.L, Math.max(0, e) * speed);
+        here = along(l, s);
+        if (waited > 1.2) {
+          waited = 0;
+          noWaitUntil = t + 2;
+        }
+      } else waited = 0;
+    }
     // somebody standing still has turned up on the way: go round them
     if (e > 0 && t - lastReplan > 0.6) {
       const still = others(t, true);
@@ -326,21 +351,32 @@ function makeWalker(model: Group, plan: MedicPlan, speed: number) {
       }
     }
     w.heading += wrap(here.dir - w.heading) * (1 - Math.exp(-dt * 10));
-    // ease round anybody else who is close (a walker who is moving moves aside by half, one who is standing still not at all), smoothly
+    // ease round anybody else who is close, smoothly, mostly sideways (to the side away from them, so that two who meet head on each go to
+    // their own right and pass), a walker who is moving doing most of the moving over and one who is standing still little (it cannot)
     let wantX = 0;
     let wantY = 0;
     for (const [k, o] of walkers) {
       if (k === id || t - o.t >= 1) continue;
       const d = Math.hypot(here.x - o.x, here.y - o.y);
       if (d >= SEPARATE || d < 1e-6) continue;
-      const push = (SEPARATE - d) * (o.still ? 1 : 0.5);
-      wantX += ((here.x - o.x) / d) * push;
-      wantY += ((here.y - o.y) / d) * push;
+      const ax = (here.x - o.x) / d;
+      const ay = (here.y - o.y) / d;
+      const px = -Math.sin(here.dir);
+      const py = Math.cos(here.dir);
+      const side = ax * px + ay * py >= 0 ? 1 : -1;
+      let dx = ax * 0.4 + px * side;
+      let dy = ay * 0.4 + py * side;
+      const len = Math.hypot(dx, dy);
+      dx /= len;
+      dy /= len;
+      const push = (SEPARATE - d) * (o.still ? 1 : 0.85);
+      wantX += dx * push;
+      wantY += dy * push;
     }
     const ease = 1 - Math.exp(-dt * 8);
     aside.x += (wantX - aside.x) * ease;
     aside.y += (wantY - aside.y) * ease;
-    w.at = nav.resolve({ x: here.x + aside.x, y: here.y + aside.y });
+    w.at = nav.resolve({ x: here.x + aside.x, y: here.y + aside.y }, keep === ATTEND ? 0.3 : keep.body * 0.6);
     const walking = e > 0;
     w.still = !walking;
     return { walking, arrived: walking && s >= l.L - 0.01 };
@@ -371,7 +407,7 @@ function makeWalker(model: Group, plan: MedicPlan, speed: number) {
  */
 export function attachScout(model: Group, plan: MedicPlan) {
   const pose = model.userData.pose as (p: SpotPose) => void;
-  const me = makeWalker(model, plan, SCOUT_RUN);
+  const me = makeWalker(model, plan, SCOUT_RUN, SCOUT_KEEP);
   const { w } = me;
 
   let mode: "idle" | "walk" | "scan" | "settle" = "idle";

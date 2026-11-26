@@ -24,7 +24,12 @@ interface Ctx {
   leaving: number[];
   target: number;
   agents: Pt[];
+  body: number; // how far this walker keeps from a body
+  beside: number; // and from the body it is going to, or has just left, close to the ends of its path
 }
+
+/** How far a walker keeps from the bodies, and how close it goes to the one it is attending to: the medics' ways. */
+export const ATTEND = { body: AGENT, beside: BESIDE };
 
 /** Whether (x, y) is inside `shape` grown by `margin`. */
 function near(s: NavShape, x: number, y: number, margin: number): boolean {
@@ -123,7 +128,7 @@ export class Nav {
     if (this.fixedBlocked(x, y)) return true;
     for (let i = 0; i < this.bodies.length; i++) {
       const close = (ctx.leaving.includes(i) && Math.hypot(x - ctx.from.x, y - ctx.from.y) < NEAR_ENDS) || (i === ctx.target && Math.hypot(x - ctx.to.x, y - ctx.to.y) < NEAR_ENDS);
-      if (near(this.bodies[i], x, y, close ? BESIDE : AGENT)) return true;
+      if (near(this.bodies[i], x, y, close ? ctx.beside : ctx.body)) return true;
     }
     return ctx.agents.some((a) => Math.hypot(x - a.x, y - a.y) < PEOPLE);
   }
@@ -240,9 +245,10 @@ export class Nav {
    * casualty it has just treated, a goal that has been crowded); the path then leaves it, or ends, at the nearest clear ground. If there is
    * no way at all it is null.
    */
-  path(from: Pt, to: Pt, opts: { target?: number; agents?: Pt[] } = {}): Pt[] | null {
+  path(from: Pt, to: Pt, opts: { target?: number; agents?: Pt[]; margins?: { body: number; beside: number } } = {}): Pt[] | null {
     // the casualty it is going to may be gone right up to; so may any it is standing beside now (it has just treated them), where it starts
-    const ctx: Ctx = { from, to, leaving: this.bodiesNear(from, 8), target: opts.target ?? -1, agents: opts.agents ?? [] };
+    const margins = opts.margins ?? ATTEND;
+    const ctx: Ctx = { from, to, leaving: this.bodiesNear(from, 8), target: opts.target ?? -1, agents: opts.agents ?? [], body: margins.body, beside: margins.beside };
     const free = (cx: number, cy: number) => !this.blockedCell(cx, cy, ctx);
     const s0 = this.cellOf(from);
     const g0 = this.cellOf(to);
@@ -279,8 +285,8 @@ export class Nav {
     return out.filter((p, k) => k === 0 || Math.hypot(p.x - out[k - 1].x, p.y - out[k - 1].y) > 0.3 || k === out.length - 1);
   }
 
-  /** The safety net: (x, y) pushed out of anything it has been nudged into (not by as much as a path keeps clear: this is only to stop it standing in them). */
-  resolve(p: Pt): Pt {
+  /** The safety net: (x, y) pushed out of anything it has been nudged into (not by as much as a path keeps clear: this is only to stop it standing in them; `bodyMargin` is how far from a body). */
+  resolve(p: Pt, bodyMargin = 0.3): Pt {
     let x = p.x;
     let y = p.y;
     for (let pass = 0; pass < 3; pass++) {
@@ -292,7 +298,7 @@ export class Nav {
         }
       }
       for (const s of this.bodies) {
-        const push = pushOut(s, x, y, 0.3);
+        const push = pushOut(s, x, y, bodyMargin);
         if (push) {
           x += push.x;
           y += push.y;
