@@ -356,7 +356,7 @@ const limeMat = new MeshBasicMaterial({ color: LIME });
 /**
  * A casualty lying on the ground, head to +x. `key` is the triage colour (g, y, r, k) and a number for what they wear and how they lie.
  * Their vest starts grey (nobody has looked at them yet); when the drone's or the robot's sensor is on them a lime box flashes round
- * them, a marker floats above, and the vest takes the triage colour.
+ * them, and the vest takes the triage colour.
  */
 export function casualtyModel(key: string): Group {
   const tag = key[0] in TAGS ? key[0] : "g";
@@ -388,7 +388,7 @@ export function casualtyModel(key: string): Group {
   vest.position.set(0, 2.85, 0);
   g.add(vest);
 
-  // the detection: a box round the body, flat on the ground, and a marker above
+  // the detection: corner brackets round the body, flat on the ground
   const bbox = new Group();
   const hx = 8.4;
   const hz = 6.2;
@@ -407,11 +407,6 @@ export function casualtyModel(key: string): Group {
   scan.position.y = 0.35;
   scan.visible = false;
   g.add(scan);
-  const chipMat = new MeshBasicMaterial({ color: TAGS[tag] });
-  const chip = new Mesh(new BoxGeometry(2.8, 2.8, 2.8), chipMat);
-  chip.rotation.set(Math.PI / 4, Math.PI / 4, 0);
-  chip.visible = false;
-  g.add(chip);
 
   // a ping on the ground round a casualty who has been found and is waiting for a medic: a ring in their colour that swells and fades
   const pingMat = new MeshBasicMaterial({ color: TAGS[tag], transparent: true, opacity: 0, depthWrite: false });
@@ -428,9 +423,6 @@ export function casualtyModel(key: string): Group {
     vest.position.y = 2.85 + (rate ? 0.2 * Math.sin(t * rate + v) : 0);
     bbox.visible = boxAmt > 0.03;
     bbox.scale.set(1 + (1 - boxAmt) * 0.7, 1, 1 + (1 - boxAmt) * 0.7);
-    chip.visible = seen > 0.05;
-    chip.position.set(1, 10 + 0.5 * Math.sin(t * 3 + v) + (1 - seen) * 3, 0);
-    chip.scale.setScalar(0.4 + 0.6 * seen);
     scan.visible = sweep >= 0 && boxAmt > 0.5;
     if (scan.visible) scan.position.x = -0.8 - hx + 2 * hx * sweep;
     ping.visible = pinging;
@@ -475,7 +467,7 @@ export function casualtyModel(key: string): Group {
     const sweep = hit ? 1 - Math.abs((((t - hitStart) / 1.1) % 2) - 1) : -1; // 0 .. 1 .. 0, back and forth along the casualty
     apply(seen < 0.01 ? 0 : seen, boxAmt, t, state.found && !state.helped && seen > 0.9, sweep);
   };
-  markMoving(g, vest, bbox, chip, arm, ping, scan);
+  markMoving(g, vest, bbox, arm, ping, scan);
   return g;
 }
 
