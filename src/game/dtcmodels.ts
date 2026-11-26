@@ -104,42 +104,65 @@ function wingOutline(side: 1 | -1, span: number, lead: number, rootChord: number
   ];
 }
 
-const NOSE = 1.4; // the nose is half an ellipsoid: R across and above, NOSE * R long
+// The nose is the front half of a sphere reshaped into an airliner's nose: it tapers to a small rounded tip over NOSE_LEN, following the curve
+// (x / NOSE_LEN) ^ NOSE_P + (r / R) ^ NOSE_P = 1 (a power of 2 would be an ellipse, a blunt dome; lower is pointier), and droops, the tip
+// sitting NOSE_DROOP below the fuselage's axis. Anything drawn on the nose is made from the same sphere and run through the same reshaping,
+// so that it follows the skin exactly.
+const NOSE_LEN = 1.9 * R;
+const NOSE_P = 1.5;
+const NOSE_DROOP = 0.22 * R;
 
-// Cockpit glass is painted on the nose: patches of a sphere with the nose's own shape, a hair larger, so that they lie right on the skin and
-// follow its curve, with no thickness. The sphere has its poles up, so a patch is a range of angles from the top (theta, which sets the
+/** Where a point of the unit sphere (its front half) goes on the nose, `off` px out from the skin. Relative to the nose's base, on the axis. */
+function noseVertex(ux: number, uy: number, uz: number, off: number): [number, number, number] {
+  const front = Math.max(0, ux);
+  const x = NOSE_LEN * Math.pow(front, 2 / NOSE_P);
+  const r = R * Math.pow(Math.max(0, 1 - front * front), 1 / NOSE_P);
+  const rho = Math.hypot(uy, uz);
+  const k = rho > 1e-6 ? (r + off) / rho : 0;
+  const t = x / NOSE_LEN;
+  return [x + off * 0.6, uy * k - NOSE_DROOP * t * t, uz * k];
+}
+
+function reshapeNose<G extends SphereGeometry>(geo: G, off = 0): G {
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const [x, y, z] = noseVertex(pos.getX(i) / R, pos.getY(i) / R, pos.getZ(i) / R, off);
+    pos.setXYZ(i, x, y, z);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// Cockpit glass is painted on the nose: patches of the same sphere, reshaped with it and a hair proud of it, so that they lie right on the
+// skin and follow its curve, with no thickness. The sphere has its poles up, so a patch is a range of angles from the top (theta, which sets the
 // height: 0 is straight up) and of angles round it (phi, which sets where along the nose and which side); the bars between the panes are
 // the skin left bare between two patches. `from` and `to` are degrees round from the front of the nose, on `side` (+1 south, -1 north).
 const glassMat = new MeshBasicMaterial({ color: GLASS, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-function nosePane(parent: Group, centre: number, y0: number, side: 1 | -1, from: number, to: number, top: number, bottom: number): void {
+function nosePane(parent: Group, base: number, y0: number, side: 1 | -1, from: number, to: number, top: number, bottom: number): void {
   const deg = Math.PI / 180;
   const front = Math.PI; // phi of the front of the nose (the sphere's +x)
   const phiStart = side > 0 ? front - to * deg : front + from * deg;
-  const patch = new Mesh(
-    new SphereGeometry(R * 1.015, Math.max(4, Math.round((to - from) / 3)), 6, phiStart, (to - from) * deg, top * deg, (bottom - top) * deg),
-    glassMat
-  );
-  patch.scale.set(NOSE, 1, 1);
-  patch.position.set(centre, y0, 0);
+  const geo = new SphereGeometry(R, Math.max(4, Math.round((to - from) / 2)), 10, phiStart, (to - from) * deg, top * deg, (bottom - top) * deg);
+  const patch = new Mesh(reshapeNose(geo, 0.18), glassMat);
+  patch.position.set(base, y0, 0);
   parent.add(patch);
 }
 
-/** The front of the airliner: rounded nose and cockpit glass, the north wing (an engine torn off it), the stub of the south one, the torn end to the west. Length 62 (the nose reaches 13 further). */
+/** The front of the airliner: rounded nose and cockpit glass, the north wing (an engine torn off it), the stub of the south one, the torn end to the west. Length 62 (the nose reaches 19 further). */
 export function fuselageModel(): Group {
   const L = 62;
   const y0 = R - 0.5;
   const g = new Group();
   g.add(tube(R, R, L, WHITE, 0, y0, 0, 22));
-  // the nose: a rounded dome, white to the tip
-  const nose = mesh(new SphereGeometry(R, 22, 14), toon(WHITE), L / 2, y0, 0);
-  nose.scale.set(NOSE, 1, 1);
-  g.add(nose);
-  // the cockpit, as on a 737: one dark band round the nose. Two windshield panes face forward with a thin post between them, and behind them
-  // each side has a sliding window and a fixed one, close together, each pair separated by a bar of bare skin of the same width
+  // the nose: an ogive that tapers to a small rounded tip and droops, white to the end
+  g.add(mesh(reshapeNose(new SphereGeometry(R, 44, 30, Math.PI / 2, Math.PI)), toon(WHITE), L / 2, y0, 0));
+  // the cockpit, as on a 737: one dark band round the nose, with a continuous top edge and a continuous bottom edge. Two windshield panes
+  // face forward with a thin post between them, and behind them each side has a sliding window and a fixed one, each pair separated by a
+  // bar of bare skin of the same width
   for (const side of [-1, 1] as const) {
-    nosePane(g, L / 2, y0, side, 3, 27, 44, 76); // the windshield pane (the post is the 6 degrees between the two)
-    nosePane(g, L / 2, y0, side, 31, 50, 50, 74); // the sliding window
-    nosePane(g, L / 2, y0, side, 54, 70, 52, 72); // the fixed one
+    nosePane(g, L / 2, y0, side, 3, 28, 40, 62); // the windshield pane (the post is the 6 degrees between the two)
+    nosePane(g, L / 2, y0, side, 32, 52, 40, 62); // the sliding window
+    nosePane(g, L / 2, y0, side, 56, 74, 40, 62); // the fixed one
   }
   for (const side of [-1, 1]) g.add(box(L - 2, 1.8, 0.8, BLUE, 0, y0 - 2.5 - 0.9, side * (R - 0.2))); // the cheat line
   windows(g, -24, 22, 6, y0, R);
