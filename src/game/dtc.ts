@@ -1,4 +1,4 @@
-import type { Decal, Footprint, Prop, Scene } from "./scenes";
+import type { Decal, Footprint, NavShape, Prop, Scene } from "./scenes";
 
 // The DARPA Triage Challenge area: an airliner has come down. It slid in from the west across a scorched, gouged field and broke
 // in three: the tail stopped first, the front section slid on, a wing and an engine came off (the engine is burning). Casualties
@@ -28,7 +28,7 @@ export function dtcScene(ox: number, oy: number): Scene {
   props.push(
     { sprite: "dtc-tail", ...at(40, 72), angle: 0.45, solid: rect(40, 20) },
     { sprite: "dtc-fuselage", ...at(108, 70), angle: 0.05, solid: rect(62, 20) },
-    { sprite: "dtc-wing", ...at(114, 114), angle: 0.15, solid: rect(16, 28) },
+    { sprite: "dtc-wing", ...at(122, 122), angle: 0.15, solid: rect(16, 28) },
     { sprite: "dtc-engine", ...at(66, 110), angle: 0.9, solid: rect(11, 8) },
     // the fire at the engine's burnt end
     { sprite: "dtc-fire", ...at(62.5, 105.5) }
@@ -54,141 +54,24 @@ export function dtcScene(ox: number, oy: number): Scene {
   );
 
   // ---- the casualties, each lying where they were thrown. The key is the triage colour (g green: walking wounded, y yellow: can wait, r red:
-  // needs help now) and a number for what they wear and how they lie (g1 waves). The robot walks out to the red one at (92, 96); the drone
-  // passes over all of them. (The key also has k, black, for someone past help: there is none here.)
-  const casualty = (key: string, x: number, y: number, angle: number): Prop => ({ sprite: `dtc-casualty-${key}`, ...at(x, y), angle });
-  props.push(
-    casualty("g0", 74, 96, 0.3),
-    casualty("y0", 78, 52, -0.4),
-    casualty("r0", 92, 96, 3.4),
-    casualty("y1", 68, 72, 1.0), // thrown clear, between the tail and the front section
-    casualty("g1", 144, 50, 2.9),
-    casualty("y2", 146, 116, 0.2),
-    casualty("r1", 30, 96, -0.5)
-  );
+  // needs help now) and a number for what they wear and how they lie (g1 waves); `angle` is the way their head points. `medic` is where a
+  // medic kneels beside them and `robot` where the robot stands to scan them: each on a side, or an end, that leaves the paths open.
+  // (The key also has k, black, for someone past help: there is none here.)
+  const CASUALTIES = [
+    { key: "g0", x: 74, y: 96, angle: 0.3, medic: [74, 102], robot: [63, 93] },
+    { key: "y0", x: 78, y: 52, angle: -0.4, medic: [77, 47], robot: [88, 47] },
+    { key: "r0", x: 90, y: 103, angle: 3.4, medic: [89, 109], robot: [101, 107] },
+    { key: "y1", x: 68, y: 72, angle: 1.0, medic: [72, 68], robot: [63, 64] }, // thrown clear, between the tail and the front section
+    { key: "g1", x: 144, y: 50, angle: 2.9, medic: [146, 55], robot: [155, 47] },
+    { key: "y2", x: 146, y: 116, angle: 0.2, medic: [146, 110], robot: [144, 124] },
+    { key: "r1", x: 30, y: 96, angle: -0.5, medic: [32, 101], robot: [25, 89] },
+  ] as const;
+  props.push(...CASUALTIES.map((c): Prop => ({ sprite: `dtc-casualty-${c.key}`, ...at(c.x, c.y), angle: c.angle })));
 
-  // ---- the medical tent, in the north-east, and its two medics. They go out to whoever the drone and the robot find (red first, then
-  // yellow, then green), kneel to treat them and, if somebody else is waiting, go straight on to them; they only come back to the tent when
-  // nobody is. They walk the site's paths: a few corridors round the wreck (south of the front section, north of the wing, down the east
-  // side and round the south), each ending in a spot beside a casualty where the medic kneels.
-  const NODES: Record<string, [number, number]> = {
-    postA: [160, 62],
-    postB: [170, 66],
-    n0: [156, 56], // east of the nose
-    e1: [158, 74],
-    e2: [156, 88],
-    e3: [158, 98],
-    e4: [156, 108],
-    s1: [134, 91.5], // the corridor between the front section and the wing
-    s2: [112, 91.5],
-    s3: [90, 90],
-    v1: [80, 87],
-    w1: [104, 98],
-    n1: [160, 48], // north, past the wing's tip
-    n2: [158, 36],
-    n3: [146, 30],
-    n4: [124, 27],
-    n5: [100, 27],
-    n6: [84, 34],
-    b1: [150, 122], // round the south of the wing and the engine
-    b2: [130, 134],
-    b3: [98, 136],
-    b4: [70, 130],
-    b5: [48, 122],
-    b6: [38, 108],
-    x1: [92, 114],
-    x2: [92, 128],
-    // where a medic kneels
-    standR0: [98, 102],
-    standG0: [80, 91],
-    standY1: [73, 80],
-    standY0: [83, 46],
-    standG1: [150, 54],
-    standY2: [152, 112],
-    standR1: [35, 102],
-    // where the robot stands to scan them (on a different side from the medic) and its post, beside the drone's pad
-    homeSpot: [152, 92],
-    spotR0: [101, 93],
-    spotG0: [70, 89],
-    spotY1: [62, 64],
-    spotY0: [89, 43],
-    spotG1: [156, 46],
-    spotR1: [28, 106],
-    p1: [70, 46], // the way to the casualty in the gap, round the north-west of the front section
-    p2: [62, 56],
-  };
-  const EDGES: [string, string][] = [
-    ["postA", "postB"],
-    ["postA", "n0"],
-    ["postA", "n1"],
-    ["postA", "e1"],
-    ["postB", "e1"],
-    ["n0", "e1"],
-    ["n0", "n1"],
-    ["n0", "standG1"],
-    ["e1", "e2"],
-    ["e2", "e3"],
-    ["e3", "e4"],
-    ["e4", "standY2"],
-    ["e2", "s1"],
-    ["s1", "s2"],
-    ["s2", "s3"],
-    ["s2", "w1"],
-    ["w1", "standR0"],
-    ["s3", "standG0"],
-    ["s3", "v1"],
-    ["v1", "standY1"],
-    ["n1", "n2"],
-    ["n2", "n3"],
-    ["n3", "n4"],
-    ["n4", "n5"],
-    ["n5", "n6"],
-    ["n6", "standY0"],
-    ["e3", "b1"],
-    ["b1", "b2"],
-    ["b2", "b3"],
-    ["b3", "b4"],
-    ["b4", "b5"],
-    ["b5", "b6"],
-    ["b6", "standR1"],
-    ["standR0", "x1"],
-    ["x1", "x2"],
-    ["x2", "b3"],
-    ["homeSpot", "e2"],
-    ["homeSpot", "s1"],
-    ["s2", "spotR0"],
-    ["s3", "spotR0"],
-    ["v1", "spotG0"],
-    ["standY0", "p1"],
-    ["p1", "p2"],
-    ["p2", "spotY1"],
-    ["n6", "spotY0"],
-    ["standY0", "spotY0"],
-    ["n1", "spotG1"],
-    ["n0", "spotG1"],
-    ["b6", "spotR1"],
-  ];
-  const nodes = Object.fromEntries(Object.entries(NODES).map(([id, [x, y]]) => [id, at(x, y)]));
-  const stand = (node: string, spotNode: string, cas: [number, number]) => {
-    const c = at(cas[0], cas[1]);
-    const facing = (id: string) => Math.atan2(c.y - nodes[id].y, c.x - nodes[id].x);
-    return { at: c, node, face: facing(node), spot: { node: spotNode, face: facing(spotNode) } };
-  };
-  const calls = [
-    stand("standR0", "spotR0", [92, 96]),
-    stand("standG0", "spotG0", [74, 96]),
-    stand("standY1", "spotY1", [68, 72]),
-    stand("standY0", "spotY0", [78, 52]),
-    stand("standG1", "spotG1", [144, 50]),
-    stand("standY2", "b1", [146, 116]),
-    stand("standR1", "spotR1", [30, 96]),
-  ];
-  props.push(
-    { sprite: "tent", ...at(178, 48), solid: rect(24, 24) },
-    { sprite: "dtc-medic", ...at(160, 62), angle: 2.4, medic: { home: "postA", nodes, edges: EDGES, calls } },
-    { sprite: "dtc-medic", ...at(170, 66), angle: 2.0, medic: { home: "postB", nodes, edges: EDGES, calls } }
-  );
-  for (const [x, y] of [
+  // ---- the medical tent, in the north-east, and its two medics. They go out to whoever the robot has confirmed (red first, then yellow, then
+  // green), kneel to treat them and, if somebody else is waiting, go straight on to them; they only come back to the tent when nobody is.
+  // The cones stand round the site.
+  const CONES = [
     [150, 22],
     [170, 84],
     [156, 128],
@@ -199,8 +82,45 @@ export function dtcScene(ox: number, oy: number): Scene {
     [16, 40],
     [60, 30],
     [112, 18],
-  ])
-    props.push({ sprite: "cone-o", ...at(x, y), solid: circle(3) });
+  ];
+  props.push({ sprite: "tent", ...at(178, 48), solid: rect(24, 24) });
+  for (const [x, y] of CONES) props.push({ sprite: "cone-o", ...at(x, y), solid: circle(3) });
+
+  // ---- the map the robot and the medics walk by: the ground, the things in their way (the wreck, the tent, the cones: the casualties' bodies
+  // they know already), and the points they are parked at and go to. They find their own way between them, round everything.
+  const ring = (x: number, y: number, r: number): NavShape => ({ kind: "circle", ...at(x, y), r });
+  const slab = (x: number, y: number, w: number, h: number, angle = 0): NavShape => ({ kind: "rect", ...at(x, y), w, h, angle });
+  const obstacles: NavShape[] = [
+    slab(108, 70, 62, 20, 0.05), // the front section...
+    ring(143, 70.5, 9.5), // ...and its nose, tapering
+    ring(150.5, 71, 6.5),
+    ring(156, 71.5, 3.5),
+    slab(111, 51, 26, 22), // its north wing
+    slab(112, 83, 24, 8), // and the stub of the south one
+    slab(122, 122, 22, 30, 0.15), // the loose wing
+    ring(66, 110, 6.5), // the engine
+    ring(62, 105, 4), // and its fire
+    slab(40, 72, 40, 20, 0.45), // the tail...
+    slab(26, 65.3, 10, 28, 0.45), // ...and its tailplane
+    slab(178, 36, 24, 24), // the tent
+    ...CONES.map(([x, y]) => ring(x, y, 3)),
+  ];
+  const named: Record<string, [number, number]> = { postA: [160, 62], postB: [170, 66], homeSpot: [152, 92] };
+  for (const c of CASUALTIES) {
+    named[`${c.key}M`] = [c.medic[0], c.medic[1]];
+    named[`${c.key}S`] = [c.robot[0], c.robot[1]];
+  }
+  const nodes = Object.fromEntries(Object.entries(named).map(([id, [x, y]]) => [id, at(x, y)]));
+  const calls = CASUALTIES.map((c) => {
+    const lies = at(c.x, c.y);
+    const facing = (id: string) => Math.atan2(lies.y - nodes[id].y, lies.x - nodes[id].x);
+    return { at: lies, angle: c.angle, node: `${c.key}M`, face: facing(`${c.key}M`), spot: { node: `${c.key}S`, face: facing(`${c.key}S`) } };
+  });
+  const plan = (home: string) => ({ home, nodes, area: { x: ox, y: oy, w: W, h: H }, obstacles, calls });
+  props.push(
+    { sprite: "dtc-medic", ...at(160, 62), angle: 2.4, medic: plan("postA") },
+    { sprite: "dtc-medic", ...at(170, 66), angle: 2.0, medic: plan("postB") }
+  );
 
   // ---- the drone, parked on its pad in the south-east. It flies slowly from casualty to casualty and stops over each one, locking its camera
   // on them, and then goes on: out over the south side, back along the north, and home to the pad (its first and last
@@ -214,7 +134,7 @@ export function dtcScene(ox: number, oy: number): Scene {
       pad,
       { x: 146, y: 116, hold: HOLD }, // each casualty it stops over is on the path itself
       { x: 120, y: 104 },
-      { x: 92, y: 96, hold: HOLD },
+      { x: 90, y: 103, hold: HOLD },
       { x: 74, y: 96, hold: HOLD },
       { x: 30, y: 96, hold: HOLD },
       { x: 50, y: 86 },
@@ -233,7 +153,7 @@ export function dtcScene(ox: number, oy: number): Scene {
     sprite: "dtc-spot",
     ...at(152, 92),
     angle: Math.PI,
-    scout: { home: "homeSpot", nodes, edges: EDGES, calls },
+    scout: plan("homeSpot"),
   });
 
   // ---- the ground: the burnt field round the wreck, the furrow the plane cut as it came in from the west, and the drone's pad

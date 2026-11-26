@@ -127,17 +127,21 @@ export interface RobotJob {
   score: { at: { x: number; y: number }; target: { x: number; y: number }; rim: number; basket: number };
 }
 
+/** Something in the walkers' way: a rectangle (centre, size, turned `angle` radians) or a circle. World px. */
+export type NavShape = { kind: "rect"; x: number; y: number; w: number; h: number; angle?: number } | { kind: "circle"; x: number; y: number; r: number };
+
 /**
- * What a medic knows of the site: the paths it can walk (`nodes` are points in world px, `edges` the straight-ish links between them),
- * the node it is parked at, and the casualties it can be sent to, each with the node it kneels at and the heading it kneels facing.
- * See dtcflight.ts.
+ * What the robot and the medics know of the site: the ground they can walk and what stands in the way (`obstacles`: the wreck, the tent,
+ * the cones), some named points (their posts, and where each stands beside a casualty), the node each is parked at, and the casualties
+ * they can be sent to: where each lies (`at`) and how (`angle`), where the medic kneels (`node`, facing `face`) and where the robot stands
+ * to scan them (`spot`). They find their own way between the points, round the obstacles and the casualties' bodies. See dtcflight.ts.
  */
 export interface MedicPlan {
   home: string;
   nodes: Record<string, { x: number; y: number }>;
-  edges: [string, string][];
-  /** Per casualty: where the medic kneels (`node`) and faces, and where the robot stands to scan them and faces (`spot`). */
-  calls: { at: { x: number; y: number }; node: string; face: number; spot?: { node: string; face: number } }[];
+  area: { x: number; y: number; w: number; h: number };
+  obstacles: NavShape[];
+  calls: { at: { x: number; y: number }; angle: number; node: string; face: number; spot?: { node: string; face: number } }[];
 }
 
 export interface PropFocus {
