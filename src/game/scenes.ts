@@ -54,8 +54,8 @@ export interface Prop {
   csCycle?: CenterStageCycle;
   /** The survey the drone flies, over and over (world px; the first and last points are its pad; a point with a `hold` is a casualty it stops over for that many seconds). See dtcflight.ts. */
   flight?: { x: number; y: number; hold?: number }[];
-  /** A walk the robot makes now and then (world px, from where it is parked to where it stops). See dtcflight.ts. */
-  patrol?: { x: number; y: number }[];
+  /** The robot: parked at its post, it goes to casualties the drone finds, scans them and so sends the medics; it walks the same paths. See dtcflight.ts. */
+  scout?: MedicPlan;
   /** A medic: parked at its post, it is sent to casualties the drone and the robot find, and walks the site's paths to them. See dtcflight.ts. */
   medic?: MedicPlan;
 }
@@ -136,7 +136,8 @@ export interface MedicPlan {
   home: string;
   nodes: Record<string, { x: number; y: number }>;
   edges: [string, string][];
-  calls: { at: { x: number; y: number }; node: string; face: number }[];
+  /** Per casualty: where the medic kneels (`node`) and faces, and where the robot stands to scan them and faces (`spot`). */
+  calls: { at: { x: number; y: number }; node: string; face: number; spot?: { node: string; face: number } }[];
 }
 
 export interface PropFocus {

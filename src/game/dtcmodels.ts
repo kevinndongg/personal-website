@@ -428,12 +428,12 @@ export function casualtyModel(key: string): Group {
   };
   apply(0, 0, 0, false);
 
-  // What the others know of them (see `dtcScan.casualties`): found by the drone or the robot, then waiting for a medic, who kneels by them
-  // and so they are helped. When the drone or the robot comes to look at them again, they are due another visit.
+  // What the others know of them (see `dtcScan.casualties`): found by the drone, confirmed by the robot (the ping round them then says a medic
+  // is needed), helped by a medic. When the drone comes to look at them again after that, the round starts over for them.
   let state: CasualtyState | null = null;
   let seen = 0;
   let boxAmt = 0;
-  let wasHit = false;
+  let wasDrone = false;
   let last = -1;
   g.userData.animate = ({ t }: AnimCtx) => {
     if (t <= 0) {
@@ -441,21 +441,22 @@ export function casualtyModel(key: string): Group {
       return;
     }
     if (!state) {
-      state = { x: g.position.x, z: g.position.z, tag, found: false, claimed: false, helped: false, helpedAt: 0 };
+      state = { x: g.position.x, z: g.position.z, tag, found: false, scouted: false, confirmed: false, claimed: false, helped: false, helpedAt: 0 };
       dtcScan.casualties.set(`${Math.round(state.x)},${Math.round(state.z)}`, state);
     }
     const dt = last < 0 ? 0 : Math.min(0.1, Math.max(0, t - last));
     last = t;
     const near = (s: { on: boolean; x: number; z: number }, r: number) => s.on && Math.hypot(s.x - g.position.x, s.z - g.position.z) < r;
-    const hit = near(dtcScan.drone, DRONE.hit) || near(dtcScan.spot, SPOT.hit);
-    if (hit && !wasHit) {
+    const byDrone = near(dtcScan.drone, DRONE.hit);
+    const hit = byDrone || near(dtcScan.spot, SPOT.hit); // (the robot's scan only flashes the brackets: it confirms through its own walk)
+    if (byDrone && !wasDrone) {
       if (!state.found) state.found = true;
-      else if (state.helped) state.helped = state.claimed = false; // looked at again: a medic is due back
+      else if (state.helped) state.scouted = state.confirmed = state.claimed = state.helped = false; // the drone is back: the round starts over
     }
-    wasHit = hit;
+    wasDrone = byDrone;
     seen += ((state.found ? 1 : 0) - seen) * (1 - Math.exp(-dt * (state.found ? 7 : 2.2)));
     boxAmt += ((hit ? 1 : 0) - boxAmt) * (1 - Math.exp(-dt * 10));
-    apply(seen < 0.01 ? 0 : seen, boxAmt, t, state.found && !state.helped && seen > 0.9);
+    apply(seen < 0.01 ? 0 : seen, boxAmt, t, state.found && state.confirmed && !state.helped && seen > 0.9);
   };
   markMoving(g, vest, bbox, arm, ping);
   return g;
@@ -598,7 +599,7 @@ export function droneModel(): Group {
 // ---------------------------------------------------------------- the robot
 
 /**
- * A Spot-like legged robot, yellow with a black head, a sensor mast on its back, facing +x. `attachPatrol` moves it and calls
+ * A Spot-like legged robot, yellow with a black head, a sensor mast on its back, facing +x. `attachScout` moves it and calls
  * `userData.pose` with the stride and how far the mast is up and sweeping.
  */
 export function spotModel(): Group {
