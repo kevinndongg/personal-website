@@ -1,10 +1,19 @@
-// The movers of the DARPA Triage Challenge area (see dtc.ts): the drone that flies a survey of the crash site now and then, and
-// the Spot robot that walks out to a casualty, checks it over and walks back. Like drive.ts and errand.ts, they only set the
-// prop's x and z (and the heading, for the robot); the hover lift owns its height. What they do to the model, they do through
-// `userData`: the drone is told how high it is (`setFlight`), the robot how it walks and scans (`pose`).
+// The movers of the DARPA Triage Challenge area (see dtc.ts), who work as a team on the casualties:
 //
-// Both leave a note in `dtcScan` of where their sensor is and whether it is on, which the casualties read: a casualty the drone
-// or the robot has its sensor on is "seen", and its tag turns from grey to its triage colour (see dtcmodels.ts).
+//   1. the drone flies a survey over the site, stopping over each casualty it comes to: they are FOUND (their vest takes the triage colour);
+//   2. the Spot robot goes to whoever has been found and not yet checked, walks up to them and scans them close up: they are CONFIRMED
+//      (a ping appears on the ground round them: a medic is needed here), and it moves on to the next one at once;
+//   3. a medic goes to whoever has been confirmed, kneels and treats them: they are HELPED, and the medic goes on to the next one.
+//
+// So each works one step behind the one before, all at the same time, and each hands the casualty on to the next. When the drone comes
+// round again to someone already helped, the round starts over for them. The robots and medics walk the site's paths (a map of nodes and
+// edges, `MedicPlan`), the shortest way between where they are and where they are going.
+//
+// Like drive.ts and errand.ts, they only set the prop's x and z (and the heading for the walkers); the hover lift owns its height. What
+// they do to the model, they do through `userData`: the drone is told how high it is (`setFlight`), the robot how it walks and scans
+// (`pose`), the medic how it walks and kneels (`pose`).
+//
+// They leave a note in `dtcScan` of where each sensor is and whether it is on, which the casualties read to flash their brackets.
 import type { Group } from "three";
 import { lapCurve } from "./drive";
 import type { AnimCtx } from "./models";
@@ -14,26 +23,26 @@ import type { MedicPlan } from "./scenes";
 export const dtcScan = {
   drone: { on: false, x: 0, z: 0 },
   spot: { on: false, x: 0, z: 0 },
-  /** What is known of each casualty, by where they lie (the casualties put themselves here; the medics read it). */
+  /** What is known of each casualty, by where they lie (the casualties put themselves here; the robot and the medics read it). */
   casualties: new Map<string, CasualtyState>(),
 };
 
 /**
- * One casualty as the team sees them: `found` once the drone or the robot has had a sensor on them, `claimed` once a medic is on the way,
- * `helped` once a medic has treated them (at `helpedAt`, seconds). When the drone or the robot looks at them again, they are
- * due another visit.
+ * One casualty as the team sees them: `found` once the drone has had a sensor on them, `scouted` once the robot is on the way, `confirmed`
+ * once it has checked them close up, `claimed` once a medic is on the way, `helped` once a medic has treated them (at `helpedAt`, seconds).
+ * When the drone comes to look at them again after that, the round starts over for them.
  */
 export interface CasualtyState {
   x: number;
   z: number;
   tag: string; // triage colour: g, y, r, k
   found: boolean;
+  scouted: boolean;
+  confirmed: boolean;
   claimed: boolean;
   helped: boolean;
   helpedAt: number;
 }
-
-
 
 export const DRONE = {
   alt: 30, // how high it flies (px), cruising and looking at a casualty alike
@@ -62,18 +71,6 @@ export interface SpotPose {
   t: number;
 }
 
-const SPEED = 28; // px/s between casualties
-const LIFT = 1.5; // seconds to climb out and to settle back
-const FIRST = [2, 3]; // seconds after the scene starts to the first flight
-const GAP = [3, 5]; // seconds from landing to the next take-off (a battery swap)
-
-const WALK = 15; // px/s
-const STRIDE = 8.5; // rad/s of the stride at full swing
-const FIRST_WALK = [6, 9];
-const GAP_WALK = [14, 22];
-const SCAN = 3.4; // seconds spent over the casualty
-const TURN = 0.8; // turning round at the casualty, and again at home
-
 /** What the medic model is told each frame (`userData.pose`). */
 export interface MedicPose {
   phase: number; // radians through the stride
@@ -82,11 +79,28 @@ export interface MedicPose {
   t: number;
 }
 
+// the drone
+const SPEED = 28; // px/s between casualties
+const LIFT = 1.5; // seconds to climb out and to settle back
+const FIRST = [2, 3]; // seconds after the scene starts to the first flight
+const GAP = [3, 5]; // seconds from landing to the next take-off (a battery swap)
+
+// the robot: quick on its feet, and always on its way to the next casualty
+const SCOUT_RUN = 27; // px/s
+const SCOUT_STRIDE = 15; // rad/s of its stride at full swing
+const SCOUT_REACT = 0.4; // seconds from a casualty being found to the robot setting off
+const SCAN = 2.8; // seconds it spends scanning one casualty
+const CONFIRM_AT = 0.55; // the casualty is confirmed this far (as a fraction) into the scan
+
+// the medics
 const RUN = 24; // px/s a medic goes at
-const REACT = 1.0; // seconds from a casualty being found to the medic setting off
+const STRIDE = 8.5; // rad/s of a medic's stride at full swing
+const REACT = 1.0; // seconds from a casualty being confirmed to the medic setting off
 const TREAT = 4.6; // seconds spent kneeling by them
 const KNEEL = 0.5; // seconds to get down, and up again
-const RANK: Record<string, number> = { r: 0, y: 1, g: 2 }; // who is seen to first: red, then yellow, then green (black is not visited)
+
+/** Who is seen to first: red, then yellow, then green (and black last, by the robot only: a medic does not go to them). */
+const RANK: Record<string, number> = { r: 0, y: 1, g: 2, k: 3 };
 
 const between = ([a, b]: number[]) => a + Math.random() * (b - a);
 const smooth = (k: number) => {
@@ -202,113 +216,12 @@ export function attachFlight(model: Group, path: { x: number; y: number; hold?: 
   };
 }
 
-/**
- * Makes `model` (a robot with `userData.pose`) walk `route` (world px; the first point is where it is parked, facing along the
- * way out; the last is where it stops, with the casualty straight ahead), scan, turn round, walk back and turn to its parked
- * heading again, every so often.
- */
-export function attachPatrol(model: Group, route: { x: number; y: number }[]) {
-  const curve = lapCurve(route);
-  const L = curve.getLength();
-  const walk = L / WALK;
-  const total = walk + SCAN + TURN + walk + TURN;
-  const pose = model.userData.pose as (p: SpotPose) => void;
-  const home = { x: model.position.x, z: model.position.z, ry: model.rotation.y };
-  const at = (s: number) => curve.getPointAt(Math.min(1, Math.max(0, s / L)));
-  const out = (s: number) => {
-    const d = curve.getTangentAt(Math.min(1, Math.max(0, s / L)));
-    return Math.atan2(d.z, d.x);
-  };
-  const headOut = out(0);
-  const headStop = out(L);
-
-  let start = -1;
-  let next = -1;
-  let last = -1;
-  let phase = 0;
-
-  model.userData.animate = ({ t }: AnimCtx) => {
-    if (t <= 0) return; // reduced motion: parked
-    const dt = last < 0 ? 0 : Math.min(0.1, Math.max(0, t - last));
-    last = t;
-    if (next < 0) next = t + between(FIRST_WALK);
-    if (start < 0) {
-      if (t < next) return;
-      start = t;
-    }
-    const e = t - start;
-    if (e >= total) {
-      start = -1;
-      next = t + between(GAP_WALK);
-      model.position.x = home.x;
-      model.position.z = home.z;
-      model.rotation.y = home.ry;
-      pose({ phase, swing: 0, scan: 0, t });
-      dtcScan.spot.on = false;
-      return;
-    }
-
-    let s: number; // distance along the route
-    let heading: number;
-    let swing = 1;
-    let scan = 0;
-    let scanning = false;
-    if (e < walk) {
-      s = (e / walk) * L;
-      heading = out(s);
-    } else if (e < walk + SCAN) {
-      s = L;
-      heading = headStop;
-      swing = 0;
-      const k = e - walk;
-      scan = Math.min(smooth(k / 0.6), smooth((SCAN - k) / 0.6));
-      scanning = k > 0.5;
-    } else if (e < walk + SCAN + TURN) {
-      s = L;
-      const k = smooth((e - walk - SCAN) / TURN);
-      heading = headStop + Math.PI * k;
-      swing = 0.5;
-    } else if (e < walk + SCAN + TURN + walk) {
-      const k = (e - walk - SCAN - TURN) / walk;
-      s = L - k * L;
-      heading = out(s) + Math.PI;
-    } else {
-      s = 0;
-      const k = smooth((e - total + TURN) / TURN);
-      const back = headOut + Math.PI;
-      heading = back + wrap(-home.ry - back) * k;
-      swing = 0.5;
-    }
-    const p = at(s);
-    phase += dt * STRIDE * swing;
-    model.position.x = p.x;
-    model.position.z = p.z;
-    model.rotation.y = -heading;
-    pose({ phase, swing, scan, t });
-    dtcScan.spot.on = scanning;
-    dtcScan.spot.x = p.x;
-    dtcScan.spot.z = p.z;
-  };
-}
-
 type Pt = { x: number; y: number };
 
 const mix = (a: number, b: number, k: number) => a + wrap(b - a) * k;
 
-/**
- * Makes `model` (a medic with `userData.pose`), parked at its post (`plan.home`), answer the drone and the robot: when a casualty has
- * been found and nobody is on the way (the most urgent first, then the nearest to where the medic is), it walks there along the site's
- * paths (`plan.nodes` and `plan.edges`, the shortest way), kneels and treats them. Then, if another casualty is waiting, it goes straight
- * on to them from where it kneels; only when nobody is waiting does it walk back to its post and turn to face the way it did. A medic on
- * its way home turns back if somebody is found. Casualties that none of the `plan.calls` reach are left alone.
- */
-export function attachMedic(model: Group, plan: MedicPlan) {
-  const pose = model.userData.pose as (p: MedicPose) => void;
-  const home = { x: model.position.x, z: model.position.z, ry: model.rotation.y };
-  const homeHeading = -home.ry;
-  const calls = plan.calls;
-
-  // the paths: shortest way between two nodes (Dijkstra; there are few of them)
+/** The site's paths as something to walk: the curve of the shortest way from a point to a node (Dijkstra; there are few of them). */
+function navigator(plan: MedicPlan) {
   const ids = Object.keys(plan.nodes);
   const adjacent = new Map<string, { to: string; w: number }[]>(ids.map((id) => [id, []]));
   for (const [a, b] of plan.edges) {
@@ -345,15 +258,172 @@ export function attachMedic(model: Group, plan: MedicPlan) {
     }
     return way;
   };
+  return (from: Pt, to: string) => {
+    const way = shortest(nearest(from), to).map((id) => plan.nodes[id]);
+    const points = way.length && Math.hypot(way[0].x - from.x, way[0].y - from.y) > 1 ? [{ x: from.x, y: from.y }, ...way] : way.slice();
+    if (points.length < 2) points.push({ x: points[0].x + 0.01, y: points[0].y });
+    const curve = lapCurve(points);
+    return { curve, L: curve.getLength() };
+  };
+}
 
-  interface Leg {
-    curve: ReturnType<typeof lapCurve>;
-    L: number;
-    start: number;
-    delay: number; // seconds standing before it sets off
-    headStart: number; // the heading it begins with, which it turns from onto the way
-    toHome: boolean;
-  }
+/** A walk along a curve: when it began, how long it stands first, the heading it turns from onto the way, and whether it is the walk home. */
+interface Leg {
+  curve: ReturnType<typeof lapCurve>;
+  L: number;
+  start: number;
+  delay: number;
+  headStart: number;
+  toHome: boolean;
+}
+
+/** Where a walker is on its leg at time `t` going `speed` px/s, the way it faces, whether it is walking and whether it has got there. */
+function walkLeg(l: Leg, t: number, speed: number) {
+  const e = t - l.start - l.delay;
+  const s = Math.min(l.L, Math.max(0, e) * speed);
+  const u = Math.min(1, Math.max(0, s / l.L));
+  const v = l.curve.getTangentAt(u);
+  const q = l.curve.getPointAt(u);
+  return {
+    at: { x: q.x, y: q.z } as Pt,
+    heading: mix(l.headStart, Math.atan2(v.z, v.x), smooth(e / 0.35)),
+    walking: e > 0,
+    arrived: e > 0 && s >= l.L,
+  };
+}
+
+/** The plan's call for a casualty at (x, z), or -1. */
+const callFor = (plan: MedicPlan, x: number, z: number) => plan.calls.findIndex((c) => Math.hypot(c.at.x - x, c.at.y - z) < 4);
+
+/**
+ * Makes `model` (the robot, with `userData.pose`), parked at its post (`plan.home`), the team's scout: when the drone has found a casualty
+ * and the robot has not yet been to them (red first, then yellow, then green, then the nearest to where it is), it walks to the spot the plan
+ * gives it beside them, scans them close up and so CONFIRMS them (which is what sends a medic), and at once goes on to the next. Only when
+ * nobody is waiting does it walk back to its post and turn to face the way it did; if somebody is found on the way back, it turns round.
+ */
+export function attachScout(model: Group, plan: MedicPlan) {
+  const pose = model.userData.pose as (p: SpotPose) => void;
+  const home = { x: model.position.x, z: model.position.z, ry: model.rotation.y };
+  const homeHeading = -home.ry;
+  const route = navigator(plan);
+
+  let mode: "idle" | "walk" | "scan" | "settle" = "idle";
+  let at: Pt = { x: home.x, y: home.z };
+  let heading = homeHeading;
+  let leg: Leg | null = null;
+  let job: { st: CasualtyState; face: number } | null = null;
+  let scanStart = 0;
+  let scanFrom = 0;
+  let marked = false;
+  let settleStart = 0;
+  let settleFrom = 0;
+  let phase = 0;
+  let last = -1;
+
+  const startLeg = (t: number, to: string, toHome: boolean, delay: number) => {
+    leg = { ...route(at, to), start: t, delay, headStart: heading, toHome };
+    mode = "walk";
+  };
+  const pick = () => {
+    let best: { ci: number; st: CasualtyState; score: number } | null = null;
+    for (const st of dtcScan.casualties.values()) {
+      if (!st.found || st.scouted || st.confirmed) continue;
+      const ci = callFor(plan, st.x, st.z);
+      if (ci < 0 || !plan.calls[ci].spot) continue;
+      const score = (RANK[st.tag] ?? 3) * 1000 + Math.hypot(st.x - at.x, st.z - at.y);
+      if (!best || score < best.score) best = { ci, st, score };
+    }
+    return best;
+  };
+  const dispatch = (t: number, next: { ci: number; st: CasualtyState }, delay: number) => {
+    next.st.scouted = true;
+    const spot = plan.calls[next.ci].spot!;
+    job = { st: next.st, face: spot.face };
+    startLeg(t, spot.node, false, delay);
+  };
+
+  model.userData.animate = ({ t }: AnimCtx) => {
+    if (t <= 0) return; // reduced motion: the robot waits at its post
+    const dt = last < 0 ? 0 : Math.min(0.1, Math.max(0, t - last));
+    last = t;
+    let swing = 0;
+    let scan = 0;
+
+    if (mode === "idle") {
+      const next = pick();
+      if (next) dispatch(t, next, SCOUT_REACT);
+      return;
+    }
+    if (mode === "walk") {
+      if (leg!.toHome) {
+        const next = pick(); // somebody was found on the way home: turn back
+        if (next) dispatch(t, next, 0.1);
+      }
+      const w = walkLeg(leg!, t, SCOUT_RUN);
+      at = w.at;
+      heading = w.heading;
+      swing = w.walking ? 1 : 0;
+      if (w.arrived) {
+        if (leg!.toHome) {
+          mode = "settle";
+          settleStart = t;
+          settleFrom = heading;
+        } else {
+          mode = "scan";
+          scanStart = t;
+          scanFrom = heading;
+          marked = false;
+        }
+      }
+    } else if (mode === "scan") {
+      const k = t - scanStart;
+      heading = mix(scanFrom, job!.face, smooth(k / 0.35));
+      scan = Math.min(smooth(k / 0.5), smooth((SCAN - k) / 0.5));
+      dtcScan.spot.on = k > 0.35 && k < SCAN - 0.3;
+      dtcScan.spot.x = at.x;
+      dtcScan.spot.z = at.y;
+      if (!marked && k > SCAN * CONFIRM_AT) {
+        marked = true;
+        job!.st.confirmed = true; // the medics' cue
+      }
+      if (k >= SCAN) {
+        dtcScan.spot.on = false;
+        const next = pick();
+        if (next) dispatch(t, next, 0); // straight on to the next one
+        else startLeg(t, plan.home, true, 0.2);
+      }
+    } else {
+      const k = (t - settleStart) / 0.6;
+      heading = mix(settleFrom, homeHeading, smooth(k));
+      swing = 0.4 * (1 - smooth(k));
+      if (k >= 1) {
+        mode = "idle";
+        at = { x: home.x, y: home.z };
+        heading = homeHeading;
+        swing = 0;
+      }
+    }
+    phase += dt * SCOUT_STRIDE * swing;
+    model.position.x = at.x;
+    model.position.z = at.y;
+    model.rotation.y = -heading;
+    pose({ phase, swing, scan, t });
+  };
+}
+
+/**
+ * Makes `model` (a medic with `userData.pose`), parked at its post (`plan.home`), the team's last step: when the robot has confirmed a
+ * casualty and nobody is on the way (the most urgent first, then the nearest to where the medic is), it walks there, kneels and treats them.
+ * Then, if another casualty is waiting, it goes straight on to them from where it kneels; only when nobody is waiting does it walk back to
+ * its post and turn to face the way it did. A medic on its way home turns back if somebody is confirmed. A casualty that none of the
+ * `plan.calls` reach, or that is black, is left alone.
+ */
+export function attachMedic(model: Group, plan: MedicPlan) {
+  const pose = model.userData.pose as (p: MedicPose) => void;
+  const home = { x: model.position.x, z: model.position.z, ry: model.rotation.y };
+  const homeHeading = -home.ry;
+  const route = navigator(plan);
+
   let mode: "idle" | "walk" | "treat" | "settle" = "idle";
   let at: Pt = { x: home.x, y: home.z };
   let heading = homeHeading;
@@ -368,30 +438,25 @@ export function attachMedic(model: Group, plan: MedicPlan) {
   let last = -1;
 
   const startLeg = (t: number, to: string, toHome: boolean, delay: number) => {
-    const way = shortest(nearest(at), to).map((id) => plan.nodes[id]);
-    const points = way.length && Math.hypot(way[0].x - at.x, way[0].y - at.y) > 1 ? [{ x: at.x, y: at.y }, ...way] : way.slice();
-    if (points.length < 2) points.push({ x: points[0].x + 0.01, y: points[0].y });
-    const curve = lapCurve(points);
-    leg = { curve, L: curve.getLength(), start: t, delay, headStart: heading, toHome };
+    leg = { ...route(at, to), start: t, delay, headStart: heading, toHome };
     mode = "walk";
   };
-
-  /** The casualty to go to: found, nobody on the way, not yet treated, and one of ours; the most urgent, then the nearest. */
+  /** The casualty to go to: confirmed, nobody on the way, not yet treated, and one of ours; the most urgent, then the nearest. */
   const pick = () => {
     let best: { ci: number; st: CasualtyState; score: number } | null = null;
     for (const st of dtcScan.casualties.values()) {
-      if (!st.found || st.claimed || st.helped || !(st.tag in RANK)) continue;
-      const ci = calls.findIndex((c) => Math.hypot(c.at.x - st.x, c.at.y - st.z) < 4);
+      if (!st.found || !st.confirmed || st.claimed || st.helped || st.tag === "k") continue;
+      const ci = callFor(plan, st.x, st.z);
       if (ci < 0) continue;
-      const score = RANK[st.tag] * 1000 + Math.hypot(st.x - at.x, st.z - at.y);
+      const score = (RANK[st.tag] ?? 3) * 1000 + Math.hypot(st.x - at.x, st.z - at.y);
       if (!best || score < best.score) best = { ci, st, score };
     }
     return best;
   };
   const dispatch = (t: number, next: { ci: number; st: CasualtyState }, delay: number) => {
     next.st.claimed = true;
-    job = { st: next.st, face: calls[next.ci].face };
-    startLeg(t, calls[next.ci].node, false, delay);
+    job = { st: next.st, face: plan.calls[next.ci].face };
+    startLeg(t, plan.calls[next.ci].node, false, delay);
   };
 
   model.userData.animate = ({ t }: AnimCtx) => {
@@ -408,20 +473,15 @@ export function attachMedic(model: Group, plan: MedicPlan) {
     }
     if (mode === "walk") {
       if (leg!.toHome) {
-        const next = pick(); // somebody was found on the way home: turn back
+        const next = pick(); // somebody was confirmed on the way home: turn back
         if (next) dispatch(t, next, 0.2);
       }
-      const l = leg!;
-      const e = t - l.start - l.delay;
-      const s = Math.min(l.L, Math.max(0, e) * RUN);
-      const u = Math.min(1, Math.max(0, s / l.L));
-      const v = l.curve.getTangentAt(u);
-      heading = mix(l.headStart, Math.atan2(v.z, v.x), smooth(e / 0.35));
-      const q = l.curve.getPointAt(u);
-      at = { x: q.x, y: q.z };
-      swing = e > 0 ? 1 : 0;
-      if (e > 0 && s >= l.L) {
-        if (l.toHome) {
+      const w = walkLeg(leg!, t, RUN);
+      at = w.at;
+      heading = w.heading;
+      swing = w.walking ? 1 : 0;
+      if (w.arrived) {
+        if (leg!.toHome) {
           mode = "settle";
           settleStart = t;
           settleFrom = heading;

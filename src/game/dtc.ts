@@ -106,6 +106,16 @@ export function dtcScene(ox: number, oy: number): Scene {
     standG1: [150, 54],
     standY2: [152, 112],
     standR1: [35, 102],
+    // where the robot stands to scan them (on a different side from the medic) and its post, beside the drone's pad
+    homeSpot: [152, 92],
+    spotR0: [101, 93],
+    spotG0: [70, 89],
+    spotY1: [62, 64],
+    spotY0: [89, 43],
+    spotG1: [156, 46],
+    spotR1: [28, 106],
+    p1: [70, 46], // the way to the casualty in the gap, round the north-west of the front section
+    p2: [62, 56],
   };
   const EDGES: [string, string][] = [
     ["postA", "postB"],
@@ -144,20 +154,34 @@ export function dtcScene(ox: number, oy: number): Scene {
     ["standR0", "x1"],
     ["x1", "x2"],
     ["x2", "b3"],
+    ["homeSpot", "e2"],
+    ["homeSpot", "s1"],
+    ["s2", "spotR0"],
+    ["s3", "spotR0"],
+    ["v1", "spotG0"],
+    ["standY0", "p1"],
+    ["p1", "p2"],
+    ["p2", "spotY1"],
+    ["n6", "spotY0"],
+    ["standY0", "spotY0"],
+    ["n1", "spotG1"],
+    ["n0", "spotG1"],
+    ["b6", "spotR1"],
   ];
   const nodes = Object.fromEntries(Object.entries(NODES).map(([id, [x, y]]) => [id, at(x, y)]));
-  const stand = (node: string, cas: [number, number]) => {
+  const stand = (node: string, spotNode: string, cas: [number, number]) => {
     const c = at(cas[0], cas[1]);
-    return { at: c, node, face: Math.atan2(c.y - nodes[node].y, c.x - nodes[node].x) };
+    const facing = (id: string) => Math.atan2(c.y - nodes[id].y, c.x - nodes[id].x);
+    return { at: c, node, face: facing(node), spot: { node: spotNode, face: facing(spotNode) } };
   };
   const calls = [
-    stand("standR0", [92, 96]),
-    stand("standG0", [74, 96]),
-    stand("standY1", [68, 72]),
-    stand("standY0", [78, 52]),
-    stand("standG1", [144, 50]),
-    stand("standY2", [146, 116]),
-    stand("standR1", [30, 96]),
+    stand("standR0", "spotR0", [92, 96]),
+    stand("standG0", "spotG0", [74, 96]),
+    stand("standY1", "spotY1", [68, 72]),
+    stand("standY0", "spotY0", [78, 52]),
+    stand("standG1", "spotG1", [144, 50]),
+    stand("standY2", "b1", [146, 116]),
+    stand("standR1", "spotR1", [30, 96]),
   ];
   props.push(
     { sprite: "tent", ...at(178, 48), solid: rect(24, 24) },
@@ -203,18 +227,13 @@ export function dtcScene(ox: number, oy: number): Scene {
     ].map(({ x, y, hold }) => ({ ...at(x, y), hold })),
   });
 
-  // ---- the robot, parked beside it facing west, and its walk: along the south side of the front section, to where the red casualty is
-  // just ahead of it
+  // ---- the robot, parked beside the pad facing west. It is the team's scout: it goes to whoever the drone has found, scans them close up and,
+  // having confirmed them, goes straight on to the next (see dtcflight.ts); it walks the same paths as the medics.
   props.push({
     sprite: "dtc-spot",
     ...at(152, 92),
     angle: Math.PI,
-    patrol: [
-      { x: 152, y: 92 },
-      { x: 138, y: 92 },
-      { x: 120, y: 92 },
-      { x: 104, y: 92 },
-    ].map((p) => at(p.x, p.y)),
+    scout: { home: "homeSpot", nodes, edges: EDGES, calls },
   });
 
   // ---- the ground: the burnt field round the wreck, the furrow the plane cut as it came in from the west, and the drone's pad
